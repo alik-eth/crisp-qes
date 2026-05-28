@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TrustServiceStatusList xmlns="http://uri.etsi.org/02231/v2#">
+  <SchemeInformation>
+    <TSLType>http://uri.etsi.org/TrstSvc/TrustedList/TSLType/EUlistofthelists</TSLType>
+    <PointersToOtherTSL>
+      <OtherTSLPointer>
+        <TSLLocation>ms-tl-ee.xml</TSLLocation>
+        <AdditionalInformation>
+          <OtherInformation>
+            <SchemeTerritory>EE</SchemeTerritory>
+            <MimeType>application/vnd.etsi.tsl+xml</MimeType>
+          </OtherInformation>
+        </AdditionalInformation>
+      </OtherTSLPointer>
+      <OtherTSLPointer>
+        <TSLLocation>ms-tl-pl.xml</TSLLocation>
+        <AdditionalInformation>
+          <OtherInformation>
+            <SchemeTerritory>PL</SchemeTerritory>
+            <MimeType>application/vnd.etsi.tsl+xml</MimeType>
+          </OtherInformation>
+        </AdditionalInformation>
+      </OtherTSLPointer>
+    </PointersToOtherTSL>
+  </SchemeInformation>
+</TrustServiceStatusList>
