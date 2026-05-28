@@ -1,0 +1,85 @@
+{
+  "commit": "",
+  "host": {
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.7827.3 Safari/537.36",
+    "hardwareConcurrency": 16,
+    "crossOriginIsolated": true,
+    "deviceMemory": 32
+  },
+  "target": "browser",
+  "circuit": "v2",
+  "browser": "chromium",
+  "cpuThrottle": 4,
+  "variant": "chromium-cpuThrottle4",
+  "n": 2,
+  "runs": [
+    {
+      "run": 1,
+      "totalMs": 3803.919999986887,
+      "circuitFetchMs": 79.22999998927116,
+      "proveMs": 3724.689999997616,
+      "proofBytes": 8640,
+      "memory": {
+        "jsHeapSizeLimitMb": 3760,
+        "usedJSHeapSizeMb": 10
+      },
+      "events": [
+        {
+          "at": 1093.1100000143051,
+          "stage": "loadingCircuit"
+        },
+        {
+          "at": 1098.6500000059605,
+          "stage": "proving"
+        },
+        {
+          "at": 4823.340000003576,
+          "stage": "done"
+        }
+      ]
+    },
+    {
+      "run": 2,
+      "totalMs": 2676.3849999904633,
+      "circuitFetchMs": 79.0300000011921,
+      "proveMs": 2597.354999989271,
+      "proofBytes": 8640,
+      "memory": {
+        "jsHeapSizeLimitMb": 3760,
+        "usedJSHeapSizeMb": 10
+      },
+      "events": [
+        {
+          "at": 295.82000002264977,
+          "stage": "loadingCircuit"
+        },
+        {
+          "at": 299.7950000166893,
+          "stage": "proving"
+        },
+        {
+          "at": 2897.1500000059605,
+          "stage": "done"
+        }
+      ]
+    }
+  ],
+  "proveMs": {
+    "n": 2,
+    "mean": 3161.02,
+    "median": 3161.02,
+    "min": 2597.35,
+    "max": 3724.69,
+    "stddev": 563.67
+  },
+  "totalMs": {
+    "n": 2,
+    "mean": 3240.15,
+    "median": 3240.15,
+    "min": 2676.38,
+    "max": 3803.92,
+    "stddev": 563.77
+  },
+  "proofBytes": 8640,
+  "timestamp": "2026-05-28T21:57:28.992Z"
+}

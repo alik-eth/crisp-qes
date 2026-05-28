@@ -31,13 +31,23 @@ pnpm contracts:build
 
 ## Performance
 
-Measured 2026-05-28 on a 16-vCPU Linux box; full methodology + tables in
-[`bench/results-2026-05-28.md`](bench/results-2026-05-28.md).
+Same 16-vCPU Linux box for both passes. Full methodology + raw per-run
+records in [`bench/results-2026-05-28.md`](bench/results-2026-05-28.md)
+(MVP) and [`bench/v2-results-2026-05-29.md`](bench/v2-results-2026-05-29.md) (v2).
 
-- Proof generation, **desktop Chromium WASM** (live web app, n=3): **~80 s** median (76,962 ± 7,473 ms)
-- Proof generation, **native Node + bb.js** (threads=auto, n=5): **~14.5 s** median, peak RSS ~350 MB
-- Proof size on the wire: **10,176 bytes**, constant per signature
-- **On-chain signature cost on Base Sepolia: 4,242,422 gas ≈ $0.09 per signature** at ETH = $3,500 (verifier 63 %, calldata 4.4 %, two RIP-7212 P-256 verifies + storage < 1 %)
+| Metric                              | MVP (2026-05-28) | v2 (2026-05-29) | Δ                    |
+| ----------------------------------- | ---------------- | ---------------- | -------------------- |
+| Browser prove (Chromium, median)    | 79.7 s           | **2.4 s**        | **34× faster**       |
+| Native prove (Node, threads=auto)   | 14.5 s           | **0.47 s**       | **30× faster**       |
+| Proof size on the wire              | 10,176 B         | **8,640 B**      | 15 % smaller         |
+| Native peak RSS                     | 346 MB           | **228 MB**       | 34 % smaller         |
+| On-chain `signPetition` gas         | 4,242,422        | **2,620,543**    | 38 % cheaper         |
+| Per-signature cost @ ETH = $3,500   | $0.091           | **$0.057**       | 38 % cheaper         |
+
+The v2 jump comes from moving both P-256 ECDSA verifications **out of
+the ZK circuit** — they run once at enrollment (via OPRF + Diia QES
+check), not per signature. The circuit shrinks from ~100 k constraints
+to ~28 k and from 15 to 3 public inputs.
 
 ## Status
 

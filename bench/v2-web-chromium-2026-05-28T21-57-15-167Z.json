@@ -1,0 +1,110 @@
+{
+  "commit": "",
+  "host": {
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.7827.3 Safari/537.36",
+    "hardwareConcurrency": 16,
+    "crossOriginIsolated": true,
+    "deviceMemory": 32
+  },
+  "target": "browser",
+  "circuit": "v2",
+  "browser": "chromium",
+  "cpuThrottle": 1,
+  "variant": "chromium",
+  "n": 3,
+  "runs": [
+    {
+      "run": 1,
+      "totalMs": 3591.979999989271,
+      "circuitFetchMs": 78.25999999046326,
+      "proveMs": 3513.719999998808,
+      "proofBytes": 8640,
+      "memory": {
+        "jsHeapSizeLimitMb": 3760,
+        "usedJSHeapSizeMb": 10
+      },
+      "events": [
+        {
+          "at": 729.9950000047684,
+          "stage": "loadingCircuit"
+        },
+        {
+          "at": 734.7750000059605,
+          "stage": "proving"
+        },
+        {
+          "at": 4248.495000004768,
+          "stage": "done"
+        }
+      ]
+    },
+    {
+      "run": 2,
+      "totalMs": 2436.109999984503,
+      "circuitFetchMs": 79.26999998092651,
+      "proveMs": 2356.8400000035763,
+      "proofBytes": 8640,
+      "memory": {
+        "jsHeapSizeLimitMb": 3760,
+        "usedJSHeapSizeMb": 10
+      },
+      "events": [
+        {
+          "at": 237.76499998569489,
+          "stage": "loadingCircuit"
+        },
+        {
+          "at": 241.7049999833107,
+          "stage": "proving"
+        },
+        {
+          "at": 2598.544999986887,
+          "stage": "done"
+        }
+      ]
+    },
+    {
+      "run": 3,
+      "totalMs": 2392.130000025034,
+      "circuitFetchMs": 80.82000002264977,
+      "proveMs": 2311.310000002384,
+      "proofBytes": 8640,
+      "memory": {
+        "jsHeapSizeLimitMb": 3760,
+        "usedJSHeapSizeMb": 10
+      },
+      "events": [
+        {
+          "at": 240.82499998807907,
+          "stage": "loadingCircuit"
+        },
+        {
+          "at": 245.7800000011921,
+          "stage": "proving"
+        },
+        {
+          "at": 2557.0900000035763,
+          "stage": "done"
+        }
+      ]
+    }
+  ],
+  "proveMs": {
+    "n": 3,
+    "mean": 2727.29,
+    "median": 2356.84,
+    "min": 2311.31,
+    "max": 3513.72,
+    "stddev": 556.4
+  },
+  "totalMs": {
+    "n": 3,
+    "mean": 2806.74,
+    "median": 2436.11,
+    "min": 2392.13,
+    "max": 3591.98,
+    "stddev": 555.54
+  },
+  "proofBytes": 8640,
+  "timestamp": "2026-05-28T21:57:15.167Z"
+}
