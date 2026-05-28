@@ -20,9 +20,13 @@ import {
 import { config } from "../config";
 import { petitionRegistryAbi } from "../lib/abi";
 import {
-    connectWallet,
+    connectInjected,
+    connectWalletConnect,
     ensureChain,
     disconnectWallet,
+    listInjectedProviders,
+    startInjectedDiscovery,
+    type InjectedDetail,
     type WalletSession,
 } from "../lib/wallet";
 
@@ -71,6 +75,7 @@ export function Create({ onBack, onCreated }: Props) {
     const [threshold, setThreshold] = useState("100");
     const [session, setSession] = useState<WalletSession | null>(null);
     const [phase, setPhase] = useState<Phase>({ kind: "idle" });
+    const [injected, setInjected] = useState<InjectedDetail[]>([]);
 
     const byteLen = useMemo(() => utf8ByteLength(text), [text]);
 
@@ -102,33 +107,52 @@ export function Create({ onBack, onCreated }: Props) {
         (phase.kind === "idle" || phase.kind === "error");
 
     useEffect(() => {
-        return () => {
-            // Best-effort: nothing to do here. The WalletConnect provider is
-            // module-cached; we keep it alive across navigations on purpose.
-        };
+        startInjectedDiscovery();
+        // Browser wallets announce themselves synchronously, but some inject
+        // a tick late. We re-read after a short delay so the picker shows
+        // the full list on first render.
+        setInjected(listInjectedProviders());
+        const t = setTimeout(() => setInjected(listInjectedProviders()), 400);
+        return () => clearTimeout(t);
     }, []);
 
-    async function handleConnect() {
-        setPhase({ kind: "connecting" });
-        try {
-            const s = await connectWallet();
-            setSession(s);
-            if (s.chainId !== config.chainId) {
-                setPhase({ kind: "switching" });
+    async function finishConnect(s: WalletSession) {
+        setSession(s);
+        if (s.chainId !== config.chainId) {
+            setPhase({ kind: "switching" });
+            try {
                 const post = await ensureChain(s);
                 setSession({ ...s, chainId: post });
+            } catch (err) {
+                setPhase({ kind: "error", message: friendlyError(err, t) });
+                return;
             }
-            setPhase({ kind: "idle" });
+        }
+        setPhase({ kind: "idle" });
+    }
+
+    async function handleConnectInjected(detail: InjectedDetail) {
+        setPhase({ kind: "connecting" });
+        try {
+            const s = await connectInjected(detail);
+            await finishConnect(s);
         } catch (err) {
-            setPhase({
-                kind: "error",
-                message: err instanceof Error ? err.message : String(err),
-            });
+            setPhase({ kind: "error", message: friendlyError(err, t) });
+        }
+    }
+
+    async function handleConnectWalletConnect() {
+        setPhase({ kind: "connecting" });
+        try {
+            const s = await connectWalletConnect();
+            await finishConnect(s);
+        } catch (err) {
+            setPhase({ kind: "error", message: friendlyError(err, t) });
         }
     }
 
     async function handleDisconnect() {
-        await disconnectWallet();
+        await disconnectWallet(session);
         setSession(null);
         setPhase({ kind: "idle" });
     }
@@ -306,17 +330,67 @@ export function Create({ onBack, onCreated }: Props) {
                 {!session ? (
                     <>
                         <p className="note">{t("create.wallet.needed")}</p>
+
+                        <ul className="wallet-picker">
+                            {injected.map((d) => (
+                                <li key={d.info.uuid}>
+                                    <button
+                                        className="wallet-pick"
+                                        type="button"
+                                        onClick={() => handleConnectInjected(d)}
+                                        disabled={phase.kind === "connecting"}
+                                    >
+                                        {d.info.icon ? (
+                                            <img
+                                                className="wallet-pick__icon"
+                                                src={d.info.icon}
+                                                alt=""
+                                                width={28}
+                                                height={28}
+                                            />
+                                        ) : (
+                                            <span className="wallet-pick__icon wallet-pick__icon--blank" />
+                                        )}
+                                        <span className="wallet-pick__body">
+                                            <span className="wallet-pick__name">
+                                                {d.info.name}
+                                            </span>
+                                            <span className="wallet-pick__hint">
+                                                {t("create.wallet.injectedHint")}
+                                            </span>
+                                        </span>
+                                    </button>
+                                </li>
+                            ))}
+                            <li>
+                                <button
+                                    className="wallet-pick"
+                                    type="button"
+                                    onClick={handleConnectWalletConnect}
+                                    disabled={phase.kind === "connecting"}
+                                >
+                                    <span className="wallet-pick__icon wallet-pick__icon--wc" aria-hidden>
+                                        WC
+                                    </span>
+                                    <span className="wallet-pick__body">
+                                        <span className="wallet-pick__name">
+                                            {t("create.wallet.walletConnect")}
+                                        </span>
+                                        <span className="wallet-pick__hint">
+                                            {t("create.wallet.walletConnectHint")}
+                                        </span>
+                                    </span>
+                                </button>
+                            </li>
+                        </ul>
+
+                        {injected.length === 0 ? (
+                            <p className="note" style={{ marginTop: 12 }}>
+                                {t("create.wallet.noInjected")}
+                            </p>
+                        ) : null}
+
                         <div className="actions">
-                            <button
-                                className="btn btn--accent"
-                                type="button"
-                                onClick={handleConnect}
-                                disabled={phase.kind === "connecting"}
-                            >
-                                {phase.kind === "connecting"
-                                    ? t("create.wallet.connecting")
-                                    : t("create.wallet.connect")}
-                            </button>
                             <button
                                 className="btn btn--ghost"
                                 type="button"
@@ -328,6 +402,10 @@ export function Create({ onBack, onCreated }: Props) {
                     </>
                 ) : (
                     <>
+                        <dl className="field-row">
+                            <dt>{t("create.wallet.connected")}</dt>
+                            <dd className="mono">{session.label}</dd>
+                        </dl>
                         <dl className="field-row">
                             <dt>{t("create.wallet.address")}</dt>
                             <dd className="mono">{shortAddr(session.address)}</dd>

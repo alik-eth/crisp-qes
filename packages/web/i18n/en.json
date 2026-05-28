@@ -163,10 +163,14 @@
         },
         "wallet": {
             "title": "Wallet",
-            "needed": "Creating a petition requires a wallet holding ETH on Base Sepolia. We use WalletConnect — scan the QR code with your wallet app.",
-            "connect": "Connect wallet",
+            "needed": "Creating a petition requires a wallet holding ETH on Base Sepolia. Pick the wallet you want to use.",
+            "injectedHint": "Browser extension",
+            "walletConnect": "WalletConnect",
+            "walletConnectHint": "QR code for a mobile wallet",
+            "noInjected": "No browser-extension wallet detected. Install MetaMask, Rabby, or any other EIP-1193 wallet, or use WalletConnect for a mobile wallet.",
             "connecting": "Connecting…",
             "disconnect": "Disconnect",
+            "connected": "Wallet",
             "address": "Address",
             "chain": "Network",
             "wrongChain": "Wallet is on chain {{current}}; expected {{target}}. Please switch to Base Sepolia."

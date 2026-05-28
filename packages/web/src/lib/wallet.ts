@@ -1,42 +1,155 @@
-// WalletConnect v2 (raw @walletconnect/ethereum-provider) wired into viem.
+// Wallet connectors for the create-petition flow.
 //
-// We deliberately keep this thin: no wagmi, no reown/appkit, no tanstack-query.
-// The provider package ships its own modal — `showQrModal: true` makes it open
-// automatically on `connect()`. The result is wrapped in a viem
-// `walletClient` so the rest of the app can call `writeContract` etc. with
-// the same ergonomics as `publicClient`.
+// We deliberately do NOT pull in wagmi, reown/appkit, or tanstack — the brief
+// asks for raw plumbing. The catch with bare `@walletconnect/ethereum-provider`
+// is that its built-in modal only offers mobile QR linking: it has no
+// browser-extension picker. That's confusing for desktop users who already
+// have MetaMask / Rabby / Frame / etc. installed.
+//
+// So we expose TWO connection paths and let the page render its own picker:
+//
+//   1. EIP-1193 injected providers, discovered via the EIP-6963 multi-provider
+//      announcement protocol — covers all modern browser extensions; falls
+//      back to the legacy `window.ethereum` shim if nothing announces itself.
+//   2. WalletConnect v2 — opens the WC modal for mobile wallet QR pairing.
+//
+// Both paths return the same `WalletSession` shape so the page doesn't care
+// which one the user picked.
 
 import { custom, createWalletClient, type WalletClient, type Address } from "viem";
 import { config } from "../config";
-
-// `@walletconnect/ethereum-provider` only ships ESM; we import the named
-// `EthereumProvider` factory and use its `.init({ ... })` static.
 import { EthereumProvider } from "@walletconnect/ethereum-provider";
 
+// EIP-1193 provider surface we actually use. Keeping it structural avoids
+// importing wallet-specific types.
+export interface Eip1193Provider {
+    request(args: { method: string; params?: unknown[] | object }): Promise<unknown>;
+    on?(event: string, listener: (...args: unknown[]) => void): void;
+    removeListener?(event: string, listener: (...args: unknown[]) => void): void;
+}
+
+// EIP-6963 announcement record — what a browser wallet broadcasts.
+export interface InjectedDetail {
+    info: {
+        uuid: string;
+        name: string;
+        icon: string; // data: URL
+        rdns: string; // reverse-dns id, e.g. io.metamask
+    };
+    provider: Eip1193Provider;
+}
+
+export type WalletKind = "injected" | "walletconnect";
+
 export interface WalletSession {
-    provider: Awaited<ReturnType<typeof EthereumProvider.init>>;
+    kind: WalletKind;
+    provider: Eip1193Provider;
     client: WalletClient;
     address: Address;
     chainId: number;
+    /** Human-readable label for the connected wallet (e.g. "MetaMask"). */
+    label: string;
+    /** Optional data: URL icon, set for EIP-6963 wallets. */
+    icon?: string;
 }
 
-let cached: Promise<Awaited<ReturnType<typeof EthereumProvider.init>>> | null = null;
+// -------------------- EIP-6963 discovery --------------------
 
-async function getProvider() {
-    if (cached) return cached;
+const _injected: InjectedDetail[] = [];
+let _injectedListening = false;
+
+/**
+ * Start listening for EIP-6963 announcements. Wallets respond synchronously
+ * to a `requestProvider` event with a `providerDetail`. Subsequent
+ * announcements are also captured (some wallets announce on every load).
+ *
+ * Safe to call repeatedly; it's idempotent.
+ */
+export function startInjectedDiscovery(): void {
+    if (_injectedListening || typeof window === "undefined") return;
+    _injectedListening = true;
+
+    window.addEventListener("eip6963:announceProvider", (ev: Event) => {
+        const detail = (ev as CustomEvent<InjectedDetail>).detail;
+        if (!detail || !detail.info) return;
+        // Dedupe by uuid — extensions sometimes announce more than once.
+        if (_injected.some((d) => d.info.uuid === detail.info.uuid)) return;
+        _injected.push(detail);
+    });
+
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
+}
+
+/**
+ * Return all injected wallets known so far. If no EIP-6963 wallet has
+ * announced itself, fall back to the legacy `window.ethereum` shim
+ * (covers old MetaMask versions and a few exotic mobile in-app browsers).
+ */
+export function listInjectedProviders(): InjectedDetail[] {
+    if (_injected.length > 0) return _injected.slice();
+    if (typeof window !== "undefined") {
+        const legacy = (window as unknown as { ethereum?: Eip1193Provider }).ethereum;
+        if (legacy) {
+            return [
+                {
+                    info: {
+                        uuid: "legacy-window-ethereum",
+                        name: "Browser wallet",
+                        icon: "",
+                        rdns: "legacy",
+                    },
+                    provider: legacy,
+                },
+            ];
+        }
+    }
+    return [];
+}
+
+// -------------------- injected (browser extension) --------------------
+
+export async function connectInjected(detail: InjectedDetail): Promise<WalletSession> {
+    const provider = detail.provider;
+    const accounts = (await provider.request({
+        method: "eth_requestAccounts",
+    })) as Address[];
+    const address = accounts && accounts.length > 0 ? accounts[0] : undefined;
+    if (!address) throw new Error("Wallet returned no accounts");
+
+    const chainIdHex = (await provider.request({ method: "eth_chainId" })) as string;
+    const chainId = Number.parseInt(chainIdHex, 16);
+
+    const client = createWalletClient({
+        account: address,
+        chain: config.chain,
+        transport: custom(provider as unknown as { request: (a: { method: string; params?: unknown }) => Promise<unknown> }),
+    });
+
+    return {
+        kind: "injected",
+        provider,
+        client,
+        address,
+        chainId,
+        label: detail.info.name,
+        icon: detail.info.icon || undefined,
+    };
+}
+
+// -------------------- WalletConnect v2 --------------------
+
+let _wcInit: Promise<Awaited<ReturnType<typeof EthereumProvider.init>>> | null = null;
+
+async function getWcProvider() {
+    if (_wcInit) return _wcInit;
     if (!config.walletConnectProjectId) {
         throw new Error("VITE_WALLETCONNECT_PROJECT_ID is not configured");
     }
-    cached = EthereumProvider.init({
+    _wcInit = EthereumProvider.init({
         projectId: config.walletConnectProjectId,
         showQrModal: true,
-        // We only need a single EVM chain. `optionalChains` lets the wallet
-        // upgrade the session if it already supports something else, but we
-        // require Base Sepolia for our writes.
         chains: [config.chainId],
         optionalChains: [config.chainId],
-        // RPC for direct dapp->wallet reads (rarely used; viem reads go via
-        // publicClient). Keep it consistent with our config.
         rpcMap: { [config.chainId]: config.rpcUrl },
         methods: [
             "eth_sendTransaction",
@@ -59,26 +172,18 @@ async function getProvider() {
             icons: [],
         },
     });
-    return cached;
+    return _wcInit;
 }
 
-/**
- * Open the WalletConnect modal (if not already connected), then return a
- * viem walletClient wrapping the resulting EIP-1193 provider.
- *
- * Caller must `await ensureChain(...)` before submitting writes — we expose
- * that as a separate step so the UI can show a "switch chain" prompt.
- */
-export async function connectWallet(): Promise<WalletSession> {
-    const provider = await getProvider();
+export async function connectWalletConnect(): Promise<WalletSession> {
+    const provider = await getWcProvider();
     if (!provider.session) {
         await provider.connect();
     }
     const accounts = (await provider.request({ method: "eth_accounts" })) as Address[];
     const address = accounts && accounts.length > 0 ? accounts[0] : undefined;
-    if (!address) {
-        throw new Error("Wallet returned no accounts");
-    }
+    if (!address) throw new Error("Wallet returned no accounts");
+
     const chainIdHex = (await provider.request({ method: "eth_chainId" })) as string;
     const chainId = Number.parseInt(chainIdHex, 16);
 
@@ -88,12 +193,21 @@ export async function connectWallet(): Promise<WalletSession> {
         transport: custom(provider as unknown as { request: (a: { method: string; params?: unknown }) => Promise<unknown> }),
     });
 
-    return { provider, client, address, chainId };
+    return {
+        kind: "walletconnect",
+        provider: provider as unknown as Eip1193Provider,
+        client,
+        address,
+        chainId,
+        label: "WalletConnect",
+    };
 }
 
+// -------------------- chain switch / disconnect --------------------
+
 /**
- * Ask the wallet to switch to our target chain. Returns the resulting
- * chainId. Throws if the user rejects.
+ * Ask the wallet to switch to our target chain. Returns the resulting chainId.
+ * Throws if the user rejects.
  */
 export async function ensureChain(session: WalletSession): Promise<number> {
     if (session.chainId === config.chainId) return session.chainId;
@@ -104,7 +218,6 @@ export async function ensureChain(session: WalletSession): Promise<number> {
             params: [{ chainId: targetHex }],
         });
     } catch (err) {
-        // 4902 = chain unknown to wallet; try adding it.
         const code = (err as { code?: number }).code;
         if (code === 4902) {
             await session.provider.request({
@@ -129,12 +242,17 @@ export async function ensureChain(session: WalletSession): Promise<number> {
     return Number.parseInt(post, 16);
 }
 
-export async function disconnectWallet(): Promise<void> {
-    if (!cached) return;
-    const provider = await cached;
-    try {
-        await provider.disconnect();
-    } catch {
-        // ignore — provider may already be torn down
+export async function disconnectWallet(session: WalletSession | null): Promise<void> {
+    if (!session) return;
+    if (session.kind === "walletconnect" && _wcInit) {
+        try {
+            const p = await _wcInit;
+            await p.disconnect();
+        } catch {
+            // ignore
+        }
     }
+    // For injected wallets, EIP-1193 has no canonical disconnect — extensions
+    // manage their own permission state. We just clear our local state in the
+    // caller.
 }
