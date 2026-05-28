@@ -4,19 +4,33 @@
 // (UltraHonk ZK proof generation) into the two flows the rest of the SDK
 // needs:
 //
-//   - `prove(witness, compiledCircuit)` — full eligibility proof, returning
-//     the EVM-flavoured ZK Honk proof bytes plus the 7 public inputs as
+//   - `prove(witness, compiledCircuit)` - full eligibility proof, returning
+//     the EVM-flavoured ZK Honk proof bytes plus the 15 public inputs as
 //     bytes32 hex strings in the exact order `PetitionRegistry.signPetition`
 //     consumes them.
 //
-//   - `computeNullifier({pubkey, petitionId})` — the same Pedersen-on-BN254
+//   - `computeNullifier({pubkey, petitionId})` - the same Pedersen-on-BN254
 //     hash the circuit computes for slot [1]. The web flow surfaces this to
 //     the signer ahead of submission so they see the nullifier they're
 //     about to publish.
+//
+// bb.js 4.x notes:
+//   - `Fr` is no longer exported from the package root; production code
+//     uses raw 32-byte big-endian `Uint8Array`s for field elements.
+//   - `pedersenHash` takes a single object: `{ inputs: Uint8Array[], hashIndex }`
+//     and returns `{ hash: Uint8Array }`.
+//   - `UltraHonkBackend` constructor takes `(acirBytecode, api: Barretenberg)`
+//     and `generateProof` consumes the *serialised* witness produced by
+//     `Noir.execute` (already a `Uint8Array` in noir_js 1.0.0-beta.19).
+//   - `keccakZK: true` is deprecated in favour of `verifierTarget: "evm"`.
 
 import type { CompiledCircuit } from "@noir-lang/noir_js";
 import { Noir } from "@noir-lang/noir_js";
-import { BarretenbergSync, Fr, UltraHonkBackend } from "@aztec/bb.js";
+import {
+    Barretenberg,
+    BarretenbergSync,
+    UltraHonkBackend,
+} from "@aztec/bb.js";
 
 import type { FieldHex, WitnessInputs } from "./witness.js";
 import { splitPubkey } from "./witness.js";
@@ -31,7 +45,7 @@ export const DOMAIN_PETITION_V1: bigint =
 export interface Proof {
     /** Raw ZK Honk proof bytes for the EVM verifier. */
     proofBytes: Uint8Array;
-    /** Public inputs (length 11) as bytes32-hex strings in registry order. */
+    /** Public inputs (length 15) as bytes32-hex strings in registry order. */
     publicInputs: string[];
 }
 
@@ -42,30 +56,34 @@ export interface ProveArgs {
 }
 
 /**
- * Generate a ZK Honk proof for the eligibility circuit. Uses the same
- * `keccakZK` Honk variant the regenerated Solidity verifier expects
- * (`bb write_solidity_verifier -t evm`).
+ * Generate a ZK Honk proof for the eligibility circuit. Uses the EVM
+ * verifier target (replaces the bb.js 1.x `keccakZK: true` option), which
+ * matches the regenerated Solidity verifier emitted by
+ * `bb write_solidity_verifier -t evm`.
  *
- * Returns the raw proof bytes plus the 11 public inputs already cast to
+ * Returns the raw proof bytes plus the 15 public inputs already cast to
  * bytes32-hex in `PetitionRegistry.signPetition` order. The caller drops
  * those straight into the `publicInputs[]` calldata array.
  */
 export async function prove(args: ProveArgs): Promise<Proof> {
     const { witness, circuit } = args;
     const noir = new Noir(circuit);
-    const { witness: solvedWitness } = await noir.execute(
+    // noir_js 1.0.0-beta.19's `execute` returns `witness: Uint8Array` —
+    // already the gzip-compressed witness format the backend expects.
+    const { witness: compressedWitness } = await noir.execute(
         witness as unknown as Parameters<Noir["execute"]>[0],
     );
 
-    const backend = new UltraHonkBackend(circuit.bytecode);
+    const api = await Barretenberg.new();
     try {
+        const backend = new UltraHonkBackend(circuit.bytecode, api);
         const { proof, publicInputs } = await backend.generateProof(
-            solvedWitness,
-            { keccakZK: true },
+            compressedWitness,
+            { verifierTarget: "evm" },
         );
         return { proofBytes: proof, publicInputs };
     } finally {
-        await backend.destroy();
+        await api.destroy();
     }
 }
 
@@ -96,20 +114,47 @@ export async function computeNullifier(
 ): Promise<FieldHex> {
     const api = await BarretenbergSync.initSingleton();
     const { xHi, xLo, yHi, yLo } = splitPubkey(args.pubkey);
-    const inputs = [
-        new Fr(xHi),
-        new Fr(xLo),
-        new Fr(yHi),
-        new Fr(yLo),
-        new Fr(args.petitionId),
-        new Fr(DOMAIN_PETITION_V1),
+    const inputs: Uint8Array[] = [
+        bigintToBE32(xHi),
+        bigintToBE32(xLo),
+        bigintToBE32(yHi),
+        bigintToBE32(yLo),
+        bigintToBE32(args.petitionId),
+        bigintToBE32(DOMAIN_PETITION_V1),
     ];
-    const out = api.pedersenHash(inputs, 0);
-    const hex = out.toString();
-    if (!hex.startsWith("0x")) {
-        throw new Error(`computeNullifier: unexpected Fr.toString output: ${hex}`);
+    const { hash } = api.pedersenHash({ inputs, hashIndex: 0 });
+    return `0x${bytesToHex(hash)}`;
+}
+
+// ----------------------------------------------------------------------------
+// Helpers (internal): big-endian encoding for BN254 field elements.
+// ----------------------------------------------------------------------------
+
+/**
+ * Encode a non-negative bigint as a 32-byte big-endian buffer. bb.js 4.x
+ * field-element inputs to `pedersenHash` are 32 BE bytes per Field; no
+ * Fr wrapper exists at the package root.
+ */
+function bigintToBE32(v: bigint): Uint8Array {
+    if (v < 0n) {
+        throw new Error(`bigintToBE32: negative value ${v}`);
     }
-    // bb.js Fr.toString omits leading zeros — pad to 32-byte width so the
-    // value drops straight into a bytes32 calldata slot.
-    return `0x${hex.slice(2).padStart(64, "0")}`;
+    const out = new Uint8Array(32);
+    let x = v;
+    for (let i = 31; i >= 0; i--) {
+        out[i] = Number(x & 0xffn);
+        x >>= 8n;
+    }
+    if (x !== 0n) {
+        throw new Error(`bigintToBE32: value ${v} exceeds 32 bytes`);
+    }
+    return out;
+}
+
+function bytesToHex(b: Uint8Array): string {
+    let s = "";
+    for (let i = 0; i < b.length; i++) {
+        s += b[i]!.toString(16).padStart(2, "0");
+    }
+    return s;
 }

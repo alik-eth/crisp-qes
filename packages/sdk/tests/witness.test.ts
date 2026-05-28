@@ -185,6 +185,27 @@ describe("computeNullifier", () => {
         expect(diffPid).not.toBe(base);
         expect(diffX).not.toBe(base);
     });
+
+    // Regression: pins the off-chain Pedersen output across bb.js upgrades
+    // (currently 4.0.0-nightly.20260120). The 6-element tuple mirrors the
+    // circuit's `nullifier_matches_offchain_definition` test in
+    // packages/circuit/src/main.nr — pubkey limbs (x_hi, x_lo, y_hi, y_lo) =
+    // (1, 2, 3, 4), petitionId = 42, and DOMAIN_PETITION_V1 baked in.
+    // If bb.js ever changes its Pedersen format and this fails, the
+    // circuit's `nullifier_matches_offchain_definition` would still pass on
+    // chain — but the SDK-emitted nullifier would diverge from what the
+    // proof binds in slot [1]. That's a hard break and must be caught here.
+    it("matches a hand-pinned vector (regression across bb.js upgrades)", async () => {
+        const x = (1n << 128n) | 2n;
+        const y = (3n << 128n) | 4n;
+        const n = await computeNullifier({
+            pubkey: { x, y },
+            petitionId: 42n,
+        });
+        expect(n).toBe(
+            "0x2577a16b365dc2736d58d9ce187c48164c9aba732171b26f19dea551402f6202",
+        );
+    });
 });
 
 describe("buildWitness — shape contract (D-v2)", () => {

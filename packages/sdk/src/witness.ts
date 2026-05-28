@@ -245,7 +245,17 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
     const { hi: tbsHi, lo: tbsLo } = splitSha256(parsed.leafTbsSha256);
     const { hi: saHi, lo: saLo } = splitSha256(parsed.signedAttrsSha256);
 
-    const subjectSerial = padBytesRight(parsed.subjectSerial, SUBJECT_SERIAL_LEN);
+    // Slice the 32-byte window directly out of the TBS rather than zero-padding
+    // the ASN.1-decoded subject-serial value. The circuit binds
+    // `subject_serial[i] == leaf_tbs_bytes[subject_serial_offset + i]` for ALL
+    // 32 bytes; the actual serial is shorter (e.g. "TINUA-3627506575" is 16),
+    // so zero-padding past the real bytes would break the binding because the
+    // bytes that actually follow inside the TBS are the next ASN.1 element,
+    // not zeros. The TINUA- prefix lives in bytes [0..6] regardless.
+    const subjectSerial = parsed.leafTbsBytes.slice(
+        parsed.subjectSerialOffset,
+        parsed.subjectSerialOffset + SUBJECT_SERIAL_LEN,
+    );
     const leafTbsBytes = padBytesRight(parsed.leafTbsBytes, LEAF_TBS_MAX_BYTES);
     const intermediateSpkiBytes = padBytesRight(
         intermediateSpkiDer,

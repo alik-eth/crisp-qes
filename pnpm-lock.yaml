@@ -15,8 +15,8 @@ importers:
   packages/lotl-flattener:
     dependencies:
       '@aztec/bb.js':
-        specifier: ^1.0.0
-        version: 1.2.1
+        specifier: 4.0.0-nightly.20260120
+        version: 4.0.0-nightly.20260120
       commander:
         specifier: ^12.0.0
         version: 12.1.0
@@ -62,11 +62,11 @@ importers:
   packages/sdk:
     dependencies:
       '@aztec/bb.js':
-        specifier: ^1.0.0
-        version: 1.2.1
+        specifier: 4.0.0-nightly.20260120
+        version: 4.0.0-nightly.20260120
       '@noir-lang/noir_js':
-        specifier: ^1.0.0-beta.19
-        version: 1.0.0-beta.21
+        specifier: 1.0.0-beta.19
+        version: 1.0.0-beta.19
       asn1js:
         specifier: ^3.0.5
         version: 3.0.10
@@ -93,8 +93,8 @@ importers:
   packages/web:
     dependencies:
       '@aztec/bb.js':
-        specifier: ^1.0.0
-        version: 1.2.1
+        specifier: 4.0.0-nightly.20260120
+        version: 4.0.0-nightly.20260120
       '@crisp-qes/sdk':
         specifier: workspace:*
         version: link:../sdk
@@ -102,8 +102,8 @@ importers:
         specifier: ^1.4.0
         version: 1.8.0
       '@noir-lang/noir_js':
-        specifier: ^1.0.0-beta.19
-        version: 1.0.0-beta.21
+        specifier: 1.0.0-beta.19
+        version: 1.0.0-beta.19
       i18next:
         specifier: ^23.15.0
         version: 23.16.8
@@ -141,8 +141,8 @@ packages:
   '@adraffy/ens-normalize@1.11.1':
     resolution: {integrity: sha512-nhCBV3quEgesuf7c7KYfperqSS14T8bYuvJ8PcLJp6znkZpFc0AuW4qBtr8eKVyPPe/8RSr7sglCWPU5eaxwKQ==}
 
-  '@aztec/bb.js@1.2.1':
-    resolution: {integrity: sha512-q1AuP74adCUdqhDM3nXpqX8rVz5iPSPb0t/bnqIUGp97Ta/YTJP/zDYv7Z3c3Eiqq/bBpCIAfK9D5z96LKMfTQ==}
+  '@aztec/bb.js@4.0.0-nightly.20260120':
+    resolution: {integrity: sha512-ajXLuuX7J9g3Hk5GB3JusslELNGjWB2FvcLYuscIui6pI2p1SII+Jq4SR4adSjsSad18MnKmJ3+0yU9WYG7QPw==}
     hasBin: true
 
   '@babel/code-frame@7.29.7':
@@ -606,17 +606,17 @@ packages:
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
     engines: {node: ^14.21.3 || >=16}
 
-  '@noir-lang/acvm_js@1.0.0-beta.21':
-    resolution: {integrity: sha512-Lp5TuxMHvbk4yz6jgo/ccbMdnBO14nuqDuWv/PHxbXiEIi3/11NkgoacKOsjCiXIy9Ju6RrSNyHckInUvKS4gg==}
+  '@noir-lang/acvm_js@1.0.0-beta.19':
+    resolution: {integrity: sha512-J4i5SkZ8SYMAfl3yNyneI3DorEfE5zsgsHljm0aY6mV4x+LcbqxzM6hdsSbXqboZ1ZUXXmmHjE9WqFMkJC94eQ==}
 
-  '@noir-lang/noir_js@1.0.0-beta.21':
-    resolution: {integrity: sha512-kFWPK8Sc+287N9kkpZUFO09lc1rInVjtG/sFzN15VATj3cLo/i696+qO1hZDx/v0i80Qs7ymTKZnP+Jl/BTcpA==}
+  '@noir-lang/noir_js@1.0.0-beta.19':
+    resolution: {integrity: sha512-KtuO37XuBn+7PHReLGCyLVxKGBk+hSvUQs0r/rtNFTYty/KmSq/NwEXkwiA7aQTNUykrzTJGFbIForQWjIJT4g==}
 
-  '@noir-lang/noirc_abi@1.0.0-beta.21':
-    resolution: {integrity: sha512-GRY4OWs3GGu0mzSHaOqn5E1S+BEd6wyu9iXBt86BRLRUqgPgMpMmjHNrKP0yp+CQb4gs4HacaMZIkibET+TzuA==}
+  '@noir-lang/noirc_abi@1.0.0-beta.19':
+    resolution: {integrity: sha512-rCEVNmXwfxC70VVJqOjvgP9mga+HVOIYzmsTQV9JeNG/BiWbxdHPJ+K0gT7EoCpz7VOVwfgWjFepxfbQk++GSw==}
 
-  '@noir-lang/types@1.0.0-beta.21':
-    resolution: {integrity: sha512-9EmkLKAhBZ89xK9/E2ElfmuAOMRuggfcvnoJSXHMGBgZISAH5SZfT7kJMVDeSQRdzkfZZetSAasf3O6fKXWlqQ==}
+  '@noir-lang/types@1.0.0-beta.19':
+    resolution: {integrity: sha512-px/gpC8tvOvCPY6TbVYqMDqDadA75I2woOZ3b5vbyjxqaE4UtsKtcdsWQ9titSCslkYCe1WYRGiFE/LPyRgOpQ==}
 
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
@@ -1117,9 +1117,6 @@ packages:
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
-  pino-abstract-transport@2.0.0:
-    resolution: {integrity: sha512-F63x5tizV6WCh4R6RHyi2Ml+M70DNRXt/+HANowMflpgGFMAym/VKm6G7ZOQRjqN7XbGxK1Lg9t6ZrtzOaivMw==}
-
   pino-abstract-transport@3.0.0:
     resolution: {integrity: sha512-wlfUczU+n7Hy/Ha5j9a/gZNy7We5+cXp8YL+X+PG8S0KXxw7n/JXA3c46Y0zQznIJ83URJiwy7Lh56WLokNuxg==}
 
@@ -1128,10 +1125,6 @@ packages:
 
   pino@10.3.1:
     resolution: {integrity: sha512-r34yH/GlQpKZbU1BvFFqOjhISRo1MNx1tWYsYvmj6KIRHSPMT2+yHOEb1SG6NMvRoHRF0a07kCOox/9yakl1vg==}
-    hasBin: true
-
-  pino@9.14.0:
-    resolution: {integrity: sha512-8OEwKp5juEvb/MjpIc4hjqfgCNysrS94RIOMXYvpYCdm/jglrKEiAYmiumbmGhCvs+IcInsphYDFwqrjr7398w==}
     hasBin: true
 
   pkijs@3.4.0:
@@ -1262,9 +1255,6 @@ packages:
 
   strnum@1.1.2:
     resolution: {integrity: sha512-vrN+B7DBIoTTZjnPNewwhx6cBA/H+IS7rfW68n7XxC1y7uoiGQBxaKzqucGUgavX15dJgiGztLJ8vxuEzwqBdA==}
-
-  thread-stream@3.1.0:
-    resolution: {integrity: sha512-OqyPZ9u96VohAyMfJykzmivOrY2wfMSf3C5TtFJVgN+Hm6aj+voFhlK+kZEIv2FBh1X6Xp3DlnCOfEQ3B2J86A==}
 
   thread-stream@4.2.0:
     resolution: {integrity: sha512-e2zZ96wSChazBsbENf/Pcm/4swHt2cEKQ92rhUjkL9GCKiTDJIaTBenjE/m9DXi0QBmTMDkFDdOomUy20A1tDQ==}
@@ -1414,14 +1404,13 @@ snapshots:
 
   '@adraffy/ens-normalize@1.11.1': {}
 
-  '@aztec/bb.js@1.2.1':
+  '@aztec/bb.js@4.0.0-nightly.20260120':
     dependencies:
       comlink: 4.4.2
       commander: 12.1.0
       idb-keyval: 6.2.4
       msgpackr: 1.11.12
       pako: 2.1.0
-      pino: 9.14.0
       tslib: 2.8.1
 
   '@babel/code-frame@7.29.7':
@@ -1755,20 +1744,20 @@ snapshots:
 
   '@noble/hashes@1.8.0': {}
 
-  '@noir-lang/acvm_js@1.0.0-beta.21': {}
+  '@noir-lang/acvm_js@1.0.0-beta.19': {}
 
-  '@noir-lang/noir_js@1.0.0-beta.21':
+  '@noir-lang/noir_js@1.0.0-beta.19':
     dependencies:
-      '@noir-lang/acvm_js': 1.0.0-beta.21
-      '@noir-lang/noirc_abi': 1.0.0-beta.21
-      '@noir-lang/types': 1.0.0-beta.21
+      '@noir-lang/acvm_js': 1.0.0-beta.19
+      '@noir-lang/noirc_abi': 1.0.0-beta.19
+      '@noir-lang/types': 1.0.0-beta.19
       pako: 2.1.0
 
-  '@noir-lang/noirc_abi@1.0.0-beta.21':
+  '@noir-lang/noirc_abi@1.0.0-beta.19':
     dependencies:
-      '@noir-lang/types': 1.0.0-beta.21
+      '@noir-lang/types': 1.0.0-beta.19
 
-  '@noir-lang/types@1.0.0-beta.21': {}
+  '@noir-lang/types@1.0.0-beta.19': {}
 
   '@pinojs/redact@0.4.0': {}
 
@@ -2271,10 +2260,6 @@ snapshots:
 
   picocolors@1.1.1: {}
 
-  pino-abstract-transport@2.0.0:
-    dependencies:
-      split2: 4.2.0
-
   pino-abstract-transport@3.0.0:
     dependencies:
       split2: 4.2.0
@@ -2294,20 +2279,6 @@ snapshots:
       safe-stable-stringify: 2.5.0
       sonic-boom: 4.2.1
       thread-stream: 4.2.0
-
-  pino@9.14.0:
-    dependencies:
-      '@pinojs/redact': 0.4.0
-      atomic-sleep: 1.0.0
-      on-exit-leak-free: 2.1.2
-      pino-abstract-transport: 2.0.0
-      pino-std-serializers: 7.1.0
-      process-warning: 5.0.0
-      quick-format-unescaped: 4.0.4
-      real-require: 0.2.0
-      safe-stable-stringify: 2.5.0
-      sonic-boom: 4.2.1
-      thread-stream: 3.1.0
 
   pkijs@3.4.0:
     dependencies:
@@ -2434,10 +2405,6 @@ snapshots:
   std-env@3.10.0: {}
 
   strnum@1.1.2: {}
-
-  thread-stream@3.1.0:
-    dependencies:
-      real-require: 0.2.0
 
   thread-stream@4.2.0:
     dependencies:

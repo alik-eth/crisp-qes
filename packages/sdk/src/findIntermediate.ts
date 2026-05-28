@@ -18,7 +18,7 @@
 // See `packages/circuit/src/spki.nr` and
 // `packages/lotl-flattener/src/ca/spkiCommit.ts`.
 
-import { BarretenbergSync, Fr } from "@aztec/bb.js";
+import { BarretenbergSync } from "@aztec/bb.js";
 import type { ParsedP7s } from "./p7s.js";
 import { findIssuerInBundle, parseP7bBundle } from "./bundle.js";
 
@@ -169,21 +169,28 @@ export async function spkiCommit(spkiDer: Uint8Array): Promise<bigint> {
     const padded = new Uint8Array(SPKI_MAX_BYTES);
     padded.set(spkiDer, 0);
 
-    const fields = new Array<Fr>(SPKI_NUM_CHUNKS);
+    // bb.js 4.x: each Field input is a 32-byte big-endian Uint8Array.
+    // Chunk inputs are <= 31 bytes wide so the leading byte stays zero —
+    // each chunk value is strictly < 2^248, safely inside the BN254 prime.
+    const inputs = new Array<Uint8Array>(SPKI_NUM_CHUNKS);
     for (let c = 0; c < SPKI_FULL_CHUNKS; c++) {
         const start = c * SPKI_CHUNK_BYTES;
-        fields[c] = new Fr(packBE(padded.subarray(start, start + SPKI_CHUNK_BYTES)));
+        const buf = new Uint8Array(32);
+        buf.set(padded.subarray(start, start + SPKI_CHUNK_BYTES), 1);
+        inputs[c] = buf;
     }
-    fields[SPKI_FULL_CHUNKS] = new Fr(BigInt(padded[SPKI_MAX_BYTES - 1]!));
+    const tail = new Uint8Array(32);
+    tail[31] = padded[SPKI_MAX_BYTES - 1]!;
+    inputs[SPKI_FULL_CHUNKS] = tail;
 
     const api = await BarretenbergSync.initSingleton();
-    const out = api.pedersenHash(fields, SPKI_COMMIT_DOMAIN);
-    return BigInt(out.toString());
+    const { hash } = api.pedersenHash({ inputs, hashIndex: SPKI_COMMIT_DOMAIN });
+    return bytesBEToBigInt(hash);
 }
 
-function packBE(chunk: Uint8Array): bigint {
+function bytesBEToBigInt(b: Uint8Array): bigint {
     let acc = 0n;
-    for (let i = 0; i < chunk.length; i++) acc = (acc << 8n) | BigInt(chunk[i]!);
+    for (let i = 0; i < b.length; i++) acc = (acc << 8n) | BigInt(b[i]!);
     return acc;
 }
 
