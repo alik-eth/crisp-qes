@@ -19,7 +19,11 @@
 
 use sha256::sha256_var;
 
-pub global SIGNED_ATTRS_MAX_BYTES: u32 = 512;
+// CAdES-T signedAttrs (Diia's default profile) run ~1.3 KB on real fixtures.
+// 2048 leaves headroom for a typical signing-time TST while still keeping
+// the SHA-256 in-circuit cost tractable (every padded byte enters the
+// compression loop).
+pub global SIGNED_ATTRS_MAX_BYTES: u32 = 2048;
 global INNER_MSG_LEN: u32 = 66; // 32 (petition_id) + 2 (::) + 32 (text_hash)
 
 /// 32-byte SHA-256 of (petition_id big-endian 32 bytes || "::" || petition_text_hash).
