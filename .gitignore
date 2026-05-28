@@ -32,3 +32,11 @@ fixtures/diia/
 .vscode/
 .idea/
 *.swp
+
+# Local agent / tool state
+.claude/
+.playwright-mcp/
+
+# Ad-hoc screenshots taken during reviews
+review-*.png
+live-*.png
