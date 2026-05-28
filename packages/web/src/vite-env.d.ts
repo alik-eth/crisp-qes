@@ -8,6 +8,7 @@ interface ImportMetaEnv {
     readonly VITE_TRUST_MANIFEST_URL?: string;
     readonly VITE_CIRCUIT_URL?: string;
     readonly VITE_BLOCK_EXPLORER?: string;
+    readonly VITE_WALLETCONNECT_PROJECT_ID?: string;
 }
 
 interface ImportMeta {

@@ -2,9 +2,10 @@ import { useTranslation } from "react-i18next";
 
 interface Props {
     onTogglePetitions?: () => void;
+    onCreate?: () => void;
 }
 
-export function Masthead({ onTogglePetitions }: Props) {
+export function Masthead({ onTogglePetitions, onCreate }: Props) {
     const { t, i18n } = useTranslation();
     const other = i18n.language === "uk" ? "en" : "uk";
     return (
@@ -17,6 +18,9 @@ export function Masthead({ onTogglePetitions }: Props) {
                 <span>{t("app.issue")}</span>
                 <button onClick={onTogglePetitions} type="button">
                     {t("nav.petitions")}
+                </button>
+                <button onClick={onCreate} type="button">
+                    {t("nav.create")}
                 </button>
                 <button onClick={() => void i18n.changeLanguage(other)} type="button">
                     {t("meta.languageNameOther")}

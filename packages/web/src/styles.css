@@ -700,6 +700,76 @@ button:disabled {
     color: var(--ink-faint);
 }
 
+/* -------------------- create-petition form -------------------- */
+
+.field-block {
+    display: block;
+    margin: 18px 0;
+}
+
+.field-block__label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 8px;
+}
+
+.field-block__hint {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    margin-top: 6px;
+    letter-spacing: 0.02em;
+}
+
+.input,
+.textarea {
+    width: 100%;
+    font-family: var(--sans);
+    font-size: 15px;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    padding: 10px 12px;
+    box-sizing: border-box;
+    outline: none;
+    transition:
+        border-color 120ms ease,
+        background 120ms ease;
+}
+
+.input:focus,
+.textarea:focus {
+    border-color: var(--ink);
+    background: var(--paper-bright);
+}
+
+.textarea {
+    font-family: var(--display);
+    font-size: 16px;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 180px;
+}
+
+.validation {
+    list-style: none;
+    margin: 14px 0 0;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--rule-faint);
+}
+
+.validation li {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.5;
+    padding: 4px 0;
+}
+
 /* misc */
 
 .text-warn {

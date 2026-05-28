@@ -12,6 +12,7 @@
     },
     "nav": {
         "petitions": "Petitions",
+        "create": "Create petition",
         "about": "About",
         "language": "Language"
     },
@@ -125,6 +126,66 @@
                 "Network": "Network error while contacting the relayer.",
                 "Unknown": "Unknown relayer error."
             }
+        }
+    },
+    "create": {
+        "heading": "Create a petition",
+        "intro": "Publish a petition text into the PetitionRegistry contract on Base. Creating a petition requires connecting a wallet and locking a refundable anti-spam deposit.",
+        "back": "Back to petitions",
+        "submit": "Publish petition",
+        "submitting": "Publishing…",
+        "tx": "Transaction",
+        "privacy": {
+            "title": "What is visible on-chain",
+            "body": "Creating a petition is a public action. Your wallet address is recorded in the contract as the petition's creator. This is fundamentally different from signing, which remains anonymous via the ZK proof. The petition text is also stored on-chain verbatim."
+        },
+        "form": {
+            "title": "Petition content",
+            "text": "Petition text",
+            "textPlaceholder": "Write the petition: the problem, the demand on a public body, the reasoning. UTF-8, up to 8 KB.",
+            "bytes": "{{n}} / {{max}} bytes",
+            "deadline": "Deadline",
+            "deadlineHint": "Signatures are accepted up to this moment. After this, the petition closes and the deposit becomes withdrawable.",
+            "threshold": "Signature threshold",
+            "thresholdHint": "Number of signatures at which the petition is considered to have gathered support."
+        },
+        "validation": {
+            "emptyText": "The petition text cannot be empty.",
+            "textTooLarge": "The text exceeds the 8 KB limit — the contract will reject the transaction.",
+            "deadlineInPast": "The deadline must be in the future.",
+            "thresholdInvalid": "The threshold must be a positive integer.",
+            "thresholdTooLarge": "The threshold is too large (maximum 2^32 − 1)."
+        },
+        "deposit": {
+            "title": "Anti-spam deposit",
+            "amount": "Amount",
+            "body": "The deposit is locked by the contract and refundable to the creator after the petition's deadline has passed — regardless of whether the threshold was reached."
+        },
+        "wallet": {
+            "title": "Wallet",
+            "needed": "Creating a petition requires a wallet holding ETH on Base Sepolia. We use WalletConnect — scan the QR code with your wallet app.",
+            "connect": "Connect wallet",
+            "connecting": "Connecting…",
+            "disconnect": "Disconnect",
+            "address": "Address",
+            "chain": "Network",
+            "wrongChain": "Wallet is on chain {{current}}; expected {{target}}. Please switch to Base Sepolia."
+        },
+        "phase": {
+            "connecting": "Waiting for wallet approval…",
+            "switching": "Switching the wallet to Base Sepolia…",
+            "submitting": "Sign the transaction in your wallet…",
+            "mining": "Waiting for network confirmation…"
+        },
+        "errors": {
+            "wrongDeposit": "Deposit must be exactly 0.001 ETH. Please retry.",
+            "emptyText": "Petition text cannot be empty.",
+            "textTooLarge": "Text exceeds the 8 KB limit — the contract rejected the transaction.",
+            "deadlineInPast": "Deadline must be in the future.",
+            "wrongChain": "Wallet is not on Base Sepolia. Please switch and retry.",
+            "userRejected": "Signing was cancelled in the wallet.",
+            "txReverted": "Transaction was reverted by the contract.",
+            "unknown": "Unknown error while creating the petition."
         }
     },
     "done": {

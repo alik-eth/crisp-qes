@@ -12,6 +12,7 @@ primary_region = "fra"
     VITE_TRUST_MANIFEST_URL = "/trust-manifest.json"
     VITE_CIRCUIT_URL = "/crisp_qes_circuit.json"
     VITE_BLOCK_EXPLORER = "https://sepolia.basescan.org"
+    VITE_WALLETCONNECT_PROJECT_ID = "33a263ffda20d72b289cf92b369cfa47"
 
 [http_service]
   internal_port = 80

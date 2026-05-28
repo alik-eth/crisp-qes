@@ -52,6 +52,22 @@ export const petitionRegistryAbi = [
         inputs: [{ name: "id", type: "uint256" }],
         outputs: [{ name: "", type: "uint32" }],
     },
+    {
+        type: "function",
+        name: "createPetition",
+        stateMutability: "payable",
+        inputs: [
+            { name: "fullText", type: "bytes" },
+            { name: "deadline", type: "uint64" },
+            { name: "threshold", type: "uint32" },
+        ],
+        outputs: [{ name: "id", type: "uint256" }],
+    },
+    // Surfaced solely to decode createPetition revert reasons in the UI.
+    { type: "error", name: "WrongDeposit", inputs: [] },
+    { type: "error", name: "EmptyText", inputs: [] },
+    { type: "error", name: "TextTooLarge", inputs: [] },
+    { type: "error", name: "DeadlineInPast", inputs: [] },
 ] as const;
 
 export type PetitionStatusCode = 0 | 1 | 2 | 3;

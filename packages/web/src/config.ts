@@ -44,6 +44,9 @@ export interface AppConfig {
     trustManifestUrl: string;
     circuitUrl: string;
     blockExplorerUrl: string;
+    walletConnectProjectId: string;
+    creationDepositWei: bigint;
+    maxTextBytes: number;
 }
 
 export const config: AppConfig = {
@@ -65,4 +68,9 @@ export const config: AppConfig = {
               ? "https://sepolia.basescan.org"
               : "",
     ),
+    walletConnectProjectId: req("VITE_WALLETCONNECT_PROJECT_ID", ""),
+    // Mirrors PetitionRegistry.DEFAULT_CREATION_DEPOSIT (0.001 ether).
+    creationDepositWei: 1_000_000_000_000_000n,
+    // Mirrors PetitionRegistry.MAX_TEXT_BYTES (8 * 1024).
+    maxTextBytes: 8 * 1024,
 };
