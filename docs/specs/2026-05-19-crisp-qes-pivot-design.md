@@ -46,14 +46,14 @@ No login, no wallet for signers. Petition creators need a wallet (gas). Signers 
 A Noir circuit proves, for a signature submission:
 
 1. Citizen's `.p7s` (CAdES detached signature) is structurally valid.
-2. The signer cert is on a chain to the UA Diia trusted root (Poseidon Merkle, pinned
+2. The signer cert is on a chain to the UA Diia trusted root (Pedersen Merkle, pinned
    on-chain).
 3. The signer cert's subject serial matches the `TINUA-<tax-id>` pattern (proves it's a
    real Ukrainian QES, not a generic cert).
 4. The signature is a valid P-256 ECDSA signature over the CAdES `signedAttrs`.
 5. The `signedAttrs` `messageDigest` matches `SHA-256(petition_id || "::" || petition_text_hash)`
    — binding the signature to a specific petition.
-6. The emitted **nullifier** equals `Poseidon(cert_pubkey_x, cert_pubkey_y, petition_id, DOMAIN)`.
+6. The emitted **nullifier** equals `Pedersen(cert_pubkey_x, cert_pubkey_y, petition_id, DOMAIN)`.
 
 **Public signals (minimal):**
 - `petition_id` (uint256)
@@ -72,23 +72,38 @@ A Noir circuit proves, for a signature submission:
 ### 2.2 Nullifier — the design choice that matters
 
 ```
-nullifier = Poseidon(pubkey.x, pubkey.y, petition_id, DOMAIN_PETITION_V1)
+nullifier = Pedersen(pubkey.x, pubkey.y, petition_id, DOMAIN_PETITION_V1)
 ```
 
 Where `pubkey.x`, `pubkey.y` are the P-256 public key affine coordinates of the
 citizen's QES cert, extracted privately inside the circuit.
 
+**Why Pedersen.** Both Pedersen and Poseidon are SNARK-friendly and either would
+work cryptographically. Pedersen is in Noir 1.0.0-beta.19's stdlib (`std::hash::
+pedersen_hash`) with no extra dependency; the public Poseidon symbols are not.
+Picking Pedersen lets the circuit, SDK (`@aztec/bb.js`), and trust-root flattener
+all agree on a single hash without pulling in a third-party library. We also use
+Pedersen Merkle for the trust-root commitment (§2.1) for the same reason.
+
 **Why pubkey, not tax-ID or signature:**
 
 | Candidate | Per-petition unique | Cross-petition unlinkable | Dictionary-attack resistant | Notes |
 |---|---|---|---|---|
-| `Poseidon(tax_id, petition_id)` | ✓ | ✓ | **✗** (10¹⁰ values, ~laptop-hour) | Bucket A failure |
-| `Poseidon(signature, petition_id)` | **✗** (ECDSA non-deterministic) | ✓ | ✓ | Sybil broken |
-| `Poseidon(pubkey, petition_id)` | ✓ (within cert lifetime) | ✓ | ✓ (pubkey ≈256b entropy, not enumerable) | **CHOSEN** |
+| `Pedersen(tax_id, petition_id)` | ✓ | ✓ | **✗** (10¹⁰ values brute-forceable in hours regardless of hash) | Bucket A failure |
+| `Pedersen(signature, petition_id)` | **✗** (ECDSA non-deterministic) | ✓ | ✓ | Sybil broken |
+| `Pedersen(pubkey, petition_id)` | ✓ (within cert lifetime) | ✓ | ✓ (pubkey ≈256b entropy, not enumerable) | **CHOSEN** |
 
 The pubkey is high-entropy and Diia QTSPs do not publish full issued-cert corpora
 (CRLs + OCSP are the public surface, not the cert set). So an attacker can't enumerate
 pubkeys to dictionary-attack the nullifier set.
+
+**Load-bearing assumption: Diia-only.** Pubkey-as-identity is sound *because* the
+MVP admits exactly one QTSP (Diia), which issues a single active cert per citizen
+at a time (renewal replaces, doesn't stack). If a second QTSP were admitted, a
+citizen could present distinct pubkeys under different trust roots and re-sign the
+same petition — a Sybil channel the circuit can't see. Multi-QTSP is therefore not
+a "nice-to-have v2 feature" but a change that *requires* moving away from the
+pubkey-nullifier scheme (toward FHE-enrolled per-citizen secrets, §6).
 
 ### 2.3 Honest limitations
 
@@ -118,7 +133,7 @@ acceptable. v2 closes both gaps via CRISP composition.
 - **Relayer:** Minimal Node service. Accepts `{petition_id, nullifier, proof}` from
   signers, submits to contract, pays gas. Stateless. Fly.io / Heroku target.
 - **Reused from `identityescroworg`** (copy with attribution, no submodule):
-  - LOTL flattener output format (Diia trusted CA Poseidon Merkle root)
+  - LOTL flattener output format (Diia trusted CA Pedersen Merkle root)
   - `.p7s` TypeScript parser (subject extraction, signedAttrs validation)
   - Privacy-trilemma analysis (trilemma framing in user copy)
   - Country-identifier bucket model (informs the honest-limitation table)

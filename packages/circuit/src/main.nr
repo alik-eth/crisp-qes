@@ -5,6 +5,12 @@
 // a per-petition nullifier that is unique within cert lifetime and
 // unlinkable across petitions.
 //
+// MVP scope: Diia is the only supported QTSP. The pubkey-nullifier scheme
+// (see assert below) only resists Sybil because Diia issues a single active
+// cert per citizen at a time. Admitting additional QTSPs would let a citizen
+// present distinct pubkeys under different trust roots and re-sign the same
+// petition. Multi-QTSP is a v2 concern (see spec section 5, "Out of scope").
+//
 // See docs/specs/2026-05-19-crisp-qes-pivot-design.md section 2.1.
 //
 // Public signals:
@@ -46,11 +52,10 @@ fn main(
     // TODO(circuit): Merkle membership of leaf-cert commit in trust_root.
     // TODO(circuit): assert subject_serial starts with b"TINUA-".
 
-    // Nullifier binding (the only constraint enforced in the skeleton).
-    // TODO: swap to Poseidon BN254 to match SDK + on-chain side. Using
-    // pedersen_hash here only because Noir 1.0.0-beta.19 stdlib does not
-    // expose a stable Poseidon hash function and the external poseidon
-    // dependency is not yet wired into Nargo.toml.
+    // Nullifier = Pedersen(pubkey.x, pubkey.y, petition_id, DOMAIN).
+    // Pedersen (not Poseidon) is the chosen MVP hash; the SDK must compute
+    // the same Pedersen off-chain so the signer can preview their nullifier
+    // before submission.
     let expected = std::hash::pedersen_hash(
         [pubkey_x, pubkey_y, petition_id, DOMAIN_PETITION_V1]
     );
