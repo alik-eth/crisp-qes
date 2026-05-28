@@ -46,7 +46,7 @@ Three layers, each using the production-ready primitive for its job:
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ Layer 3 — Tally + threshold (per petition, FHE)             │
-│ primitive: threshold-FHE (BFV / CKKS, CRISP/Enclave stack)  │
+│ primitive: threshold-FHE (BFV / CKKS, Interfold's CRISP)    │
 │ aggregates ciphertext signatures → encrypted count          │
 │ decrypts only the threshold predicate, never per-citizen    │
 └─────────────────────────────────────────────────────────────┘
@@ -270,7 +270,7 @@ This is the exact shape Vitalik's bar accepts:
   *additive aggregation* of bit ciphertexts and a final
   *comparison* against a public threshold.
 - Both operations have efficient FHE primitives in BFV/CKKS schemes.
-- CRISP / Enclave already deployed this exact shape — reusing their
+- Interfold (formerly Enclave) has already deployed this exact shape via CRISP — reusing their
   infrastructure, not inventing it.
 
 ### 4.3 Voting modes
@@ -364,11 +364,63 @@ Within the $25 k envelope, plausible deliverables:
 | Layer 1 OPRF prototype (single-node, not threshold)        | 2     |
 | Layer 3 stub: tally counter (no FHE yet, just transparent) | 1     |
 | Integration testnet deployment on Base Sepolia             | 1     |
-| Documentation + Enclave partnership scoping memo           | 1     |
+| Documentation + Interfold partnership scoping memo         | 1     |
 
 Total: ~10 weeks of focused work for a 2-person student team.
 Threshold-OPRF and FHE-tally are demonstrated as design but not
 production-implemented within this grant.
+
+### 9.1 Two committees, two cryptographic primitives — why this is the honest framing
+
+The Phase-2 architecture splits across **two independent ciphernode
+committees**, each running the production-ready primitive for its
+specific job:
+
+| Committee  | Primitive                                              | Operation                                                              | Status at grant ship                              | Operated by                              |
+| ---------- | ------------------------------------------------------ | ---------------------------------------------------------------------- | -------------------------------------------------- | ---------------------------------------- |
+| Enrollment | threshold OPRF (2HashDH over ristretto255, RFC 9497)   | Set-membership uniqueness check on RNOKPP-derived commit               | Single-node demo at grant ship; threshold post-grant | This project (we run it)                |
+| Tally      | threshold BFV-FHE (Interfold's existing E3 committee)  | Encrypted additive aggregation + threshold-predicate decryption        | Plug-in target; integration follows CRISP client SDK | Interfold (we are a downstream consumer) |
+
+Both committees implement the same logical guarantee — *"no single
+operator sees the citizen's private input"* — but using the primitive
+that's actually production-ready for its specific operation. **OPRF is
+not a fallback for FHE; it is the right tool for the enrollment job.**
+The case:
+
+- **Enrollment requires set-membership / collision checking over
+  arbitrary scalar inputs.** Vitalik's mid-2026 framing of the
+  threshold-FHE production envelope — quoted in §0 — explicitly
+  excludes this shape. Forcing it through FHE-PSI either scales
+  linearly per enrollment (untenable past ~10⁴ citizens) or pushes us
+  into research-grade FHE-PSI protocols not yet in production at any
+  committee.
+- **OPRF (2HashDH) fits this shape natively.** Two scalar
+  multiplications per share, a Lagrange combine, a hash — all sub-50
+  ms operations at production scale. RFC 9497 is stable.
+  Threshold-share over the OPRF key via Shamir is well-understood. The
+  protocol *naturally* surfaces collisions: two enrollments for the
+  same RNOKPP produce the same `F_k(RNOKPP)`, detected by
+  ciphernode-quorum attestation (§2.3).
+- **Tally is the operation FHE was built for, and Interfold has
+  already deployed it via CRISP.** Per-petition signatures carry 1- or
+  2-bit ciphertexts. Aggregation is additive. The output is a
+  threshold predicate. This is the exact CRISP shape — we ride on
+  Interfold's existing committee as a downstream consumer, not as a
+  new infrastructure ask.
+
+**The partnership ask to Interfold is therefore scoped and honest:**
+we are a downstream consumer of their existing BFV tally committee for
+Layer 3. We are *not* asking them to build us a new primitive, operate
+our enrollment committee, or extend their stack. The integration
+surface is their CRISP client SDK; the partnership memo (deliverable
+in §9 above) is the scoping conversation, not an infrastructure build.
+
+**OPRF → FHE migration** is captured as Phase-3 research: if and when
+Interfold ships sub-second threshold-FHE equality checks at our
+enrollment scale (production-ready FHE-PSI), the enrollment committee
+could migrate from OPRF to FHE without any user-visible change. Until
+then, OPRF is the production-deployable primitive, and v2.1 ships
+behind it.
 
 ## 10. Open research questions
 
@@ -379,7 +431,7 @@ production-implemented within this grant.
    Shorter epochs = better forward secrecy but more re-enrollment
    pain. Suggest 12 months for v2.1.
 3. **Ciphernode committee bootstrapping**: how does the first
-   committee get selected? Likely: Enclave's existing operator set
+   committee get selected? Likely: Interfold's existing operator set
    plus 2–3 Ukrainian civic-tech orgs. Needs partnership memos.
 4. **Passkey PRF salt management**: each origin needs a stable salt,
    but the salt should not be globally guessable. Recommend a per-user
@@ -391,7 +443,7 @@ production-implemented within this grant.
 ## 11. Status
 
 - Draft: 2026-05-29.
-- Reviewers needed: Enclave / CRISP team (for FHE-tally feasibility),
+- Reviewers needed: Interfold team (formerly Enclave) (for FHE-tally feasibility),
   Iryna Vovkotrub (for legal framing under Ukrainian data-protection
   law), independent crypto reviewer (for OPRF + Passkey-PRF
   composition).
