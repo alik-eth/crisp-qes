@@ -1,6 +1,138 @@
 {
+    "meta": {
+        "lang": "en",
+        "languageName": "English",
+        "languageNameOther": "Українська"
+    },
     "app": {
-        "title": "CRISP-QES — Petitions",
-        "subtitle": "Sign petitions with your Diia QES without revealing your identity."
+        "name": "CRISP-QES",
+        "tagline": "Citizen petitions signed with Diia QES — without revealing your identity",
+        "issue": "Issue 01",
+        "footnote": "Independent open-source client. Not an official Diia service."
+    },
+    "nav": {
+        "petitions": "Petitions",
+        "about": "About",
+        "language": "Language"
+    },
+    "landing": {
+        "lede": "An open-source client for collecting publicly verifiable signatures on citizen-initiative petitions. Signing happens entirely in your browser using your Diia QES (.p7s) file. Only a zero-knowledge proof and a nullifier reach the Base blockchain — never your name, tax ID, or document serial.",
+        "sectionGuarantees": "What is guaranteed",
+        "sectionLimits": "What is not guaranteed",
+        "guarantees": [
+            "No party — not us, not the smart contract, not a network observer — learns your name, tax ID, passport serial, or certificate identifier.",
+            "One certificate signs each petition at most once. Replays by the same QES are rejected by an on-chain nullifier.",
+            "Signature counts are publicly auditable. Anyone can recompute the tally from on-chain data and confirm we have not invented signatures.",
+            "Petition text is stored on-chain verbatim. No backend can silently edit it."
+        ],
+        "limits": [
+            "The nullifier is deterministic per certificate and per petition. It does not link two of your signatures across different petitions, but if you re-issue your Diia QES you can sign the same petition twice.",
+            "The proof is generated in your browser — a non-trivial computation (30s–2min) that requires a modern device with sufficient memory.",
+            "The on-chain transaction is submitted by a sponsor relayer. The relayer sees your IP address and timing; metadata-correlation attacks are still possible unless you use Tor or a VPN.",
+            "The trusted CA list (LOTL) is frozen at contract deployment. If Diia rotates the roots, the contract must be redeployed or the trust-root upgraded."
+        ],
+        "cta": "Browse petitions"
+    },
+    "list": {
+        "heading": "Open petitions",
+        "empty": "No petitions have been created yet. Any wallet can create one via the PetitionRegistry contract.",
+        "loading": "Loading petitions…",
+        "error": "Could not read the petition registry. Check the network configuration.",
+        "card": {
+            "id": "Petition #{{id}}",
+            "deadline": "Deadline",
+            "threshold": "Threshold",
+            "count": "Signatures collected",
+            "of": "of",
+            "creator": "Created by",
+            "sign": "Sign"
+        },
+        "status": {
+            "Open": "Open",
+            "Closed": "Closed",
+            "ThresholdReached": "Threshold reached",
+            "Unknown": "Unknown"
+        }
+    },
+    "sign": {
+        "heading": "Signing petition #{{id}}",
+        "back": "Back to petitions",
+        "steps": {
+            "upload": "1. Upload your Diia QES file",
+            "verify": "2. Certificate check",
+            "trust": "3. Trust tree",
+            "nullifier": "4. Nullifier",
+            "prove": "5. Zero-knowledge proof",
+            "submit": "6. Submit"
+        },
+        "upload": {
+            "headline": "Drop your .p7s file here or click to choose",
+            "hint": "The file is produced by the Diia app under «Накласти КЕП». It stays in your browser — nothing is uploaded.",
+            "browse": "Choose file",
+            "parsing": "Parsing .p7s…",
+            "parsed": "File parsed successfully",
+            "wrongPrefix": "This certificate is not a Ukrainian Diia QES (expected TINUA- prefix).",
+            "parseError": "Failed to parse .p7s: {{detail}}"
+        },
+        "verify": {
+            "subjectSerial": "Subject serial",
+            "subjectSerialOk": "Matches TINUA- pattern",
+            "messageDigest": "messageDigest in signedAttrs",
+            "messageDigestOk": "Matches sha256(petition_id || \"::\" || textHash)",
+            "messageDigestMismatch": "messageDigest in the file does not match this petition. You likely signed a different document in Diia."
+        },
+        "trust": {
+            "loadingManifest": "Loading trust-list manifest…",
+            "missingLeaf": "This certificate is not under any trusted CA in the current trust-root.",
+            "leafOk": "Trusted CA found: {{tsp}}",
+            "manifestError": "Could not load the trust-list manifest."
+        },
+        "nullifier": {
+            "explainer": "The nullifier is a public, deterministic value that the contract uses to prevent double-signing. It does NOT contain your name or identifier and does NOT link this signature to any of your other petitions.",
+            "label": "Your nullifier for this petition"
+        },
+        "prove": {
+            "intro": "Your browser will now compute the ZK proof. This takes 30 seconds to 2 minutes — do not close the tab.",
+            "start": "Generate proof",
+            "stages": {
+                "initWorker": "Initialising worker…",
+                "loadingCircuit": "Loading circuit…",
+                "buildWitness": "Assembling witness…",
+                "proving": "Generating proof…",
+                "done": "Proof ready"
+            },
+            "error": "Error during proof generation: {{detail}}"
+        },
+        "submit": {
+            "intro": "The proof is ready. Submit your signature to Base via the relayer.",
+            "send": "Submit signature",
+            "sending": "Submitting…",
+            "errors": {
+                "NullifierAlreadyUsed": "This certificate has already signed this petition.",
+                "PetitionClosed": "The petition's deadline has passed — the signature is rejected.",
+                "UnknownPetition": "Petition not found in the registry.",
+                "InvalidSignature": "The P-256 signature failed RIP-7212 verification.",
+                "InvalidProof": "The ZK proof failed verification.",
+                "InvalidTrustRoot": "trust-root does not match the one pinned in the contract.",
+                "RelayerSubmitFailed": "The relayer could not submit the transaction.",
+                "RateLimited": "The relayer rate-limited the request. Try again in a minute.",
+                "BadRequest": "The relayer rejected the request as malformed.",
+                "Network": "Network error while contacting the relayer.",
+                "Unknown": "Unknown relayer error."
+            }
+        }
+    },
+    "done": {
+        "heading": "Signature counted",
+        "lede": "Your signature on petition #{{id}} has been added to the contract. Current tally:",
+        "tx": "Transaction",
+        "viewOnExplorer": "View on Basescan",
+        "signAnother": "Sign another petition"
+    },
+    "common": {
+        "copy": "Copy",
+        "copied": "Copied",
+        "cancel": "Cancel",
+        "continue": "Continue"
     }
 }

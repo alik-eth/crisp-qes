@@ -73,7 +73,8 @@ const VALID_BODY = {
         "0x" + "aa".repeat(32),
         "0x" + "22".repeat(32),
         "0x" + "33".repeat(32),
-        "0x" + "bb".repeat(32),
+        "0x" + "00".repeat(16) + "bb".repeat(16), // signedAttrsSha256_hi (128-bit limb)
+        "0x" + "00".repeat(16) + "cc".repeat(16), // signedAttrsSha256_lo (128-bit limb)
     ],
 };
 

@@ -5,16 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@aztec/bb.js": "^1.0.0",
     "@crisp-qes/sdk": "workspace:*",
+    "@noble/hashes": "^1.4.0",
+    "@noir-lang/noir_js": "^1.0.0-beta.19",
+    "i18next": "^23.15.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-i18next": "^15.0.0",
-    "i18next": "^23.15.0",
     "viem": "^2.21.0"
   },
   "devDependencies": {

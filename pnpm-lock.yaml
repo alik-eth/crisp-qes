@@ -89,9 +89,18 @@ importers:
 
   packages/web:
     dependencies:
+      '@aztec/bb.js':
+        specifier: ^1.0.0
+        version: 1.2.1
       '@crisp-qes/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@noble/hashes':
+        specifier: ^1.4.0
+        version: 1.8.0
+      '@noir-lang/noir_js':
+        specifier: ^1.0.0-beta.19
+        version: 1.0.0-beta.21
       i18next:
         specifier: ^23.15.0
         version: 23.16.8

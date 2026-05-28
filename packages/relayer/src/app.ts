@@ -25,7 +25,7 @@ const SubmitBody = z.object({
     sigR: hex32,
     sigS: hex32,
     proof: hex,
-    publicInputs: z.array(hex32).length(6),
+    publicInputs: z.array(hex32).length(7),
 });
 
 const TxParams = z.object({
