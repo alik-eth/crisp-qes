@@ -1,0 +1,12 @@
+{
+  "name": "@crisp-qes/circuit",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "check": "nargo check",
+    "compile": "nargo compile",
+    "test": "nargo test",
+    "vk": "bb write_vk -b target/crisp_qes_circuit.json -o target/vk",
+    "verifier": "bb write_solidity_verifier -k target/vk -o ../contracts/src/UltraVerifier.sol"
+  }
+}

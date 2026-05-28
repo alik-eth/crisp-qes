@@ -1,0 +1,34 @@
+# Node / pnpm
+node_modules/
+.pnpm-store/
+*.log
+.DS_Store
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Foundry
+packages/contracts/cache/
+packages/contracts/out/
+packages/contracts/broadcast/
+packages/contracts/.openzeppelin/
+
+# Noir / Barretenberg
+packages/circuit/target/
+packages/circuit/proofs/
+packages/circuit/Prover.toml
+packages/circuit/Verifier.toml
+
+# Fixtures — legally sensitive Diia identity material, never commit
+fixtures/diia/
+
+# Editor
+.vscode/
+.idea/
+*.swp

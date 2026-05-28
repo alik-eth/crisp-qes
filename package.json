@@ -1,0 +1,23 @@
+{
+  "name": "crisp-qes",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Privacy-preserving petition signatures backed by Ukrainian Diia QES, on-chain on Base.",
+  "license": "MIT",
+  "packageManager": "pnpm@10.28.2",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "circuit:check": "pnpm --filter @crisp-qes/circuit check",
+    "circuit:compile": "pnpm --filter @crisp-qes/circuit compile",
+    "contracts:build": "pnpm --filter @crisp-qes/contracts build",
+    "contracts:test": "pnpm --filter @crisp-qes/contracts test",
+    "sdk:build": "pnpm --filter @crisp-qes/sdk build",
+    "web:dev": "pnpm --filter @crisp-qes/web dev",
+    "relayer:dev": "pnpm --filter @crisp-qes/relayer dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test"
+  }
+}
