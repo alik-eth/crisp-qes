@@ -31,7 +31,7 @@ contract UltraVerifierV2GasTest is Test {
 
     function setUp() public {
         verifier = new UltraVerifierV2();
-        enrollment = new EnrollmentRegistry(attester, ENROLLMENT_ROOT, address(this));
+        enrollment = new EnrollmentRegistry(attester, ENROLLMENT_ROOT, 0, address(this));
         registry = new PetitionRegistryV2(
             IVerifierV2(address(verifier)), enrollment, 0.001 ether
         );

@@ -35,17 +35,23 @@ contract DeployV2 is Script {
         // isn't wired yet. Admin rotates to the real value via
         // `EnrollmentRegistry.setOprfAttester(...)` once available.
         address oprfAttester = vm.envOr("OPRF_ATTESTER", OPRF_ATTESTER_PLACEHOLDER);
-        // Optional genesis root. Defaults to bytes32(0), meaning "empty
-        // enrollment set"; the first `updateRoot` call rolls in the
-        // initial batch.
+        // Genesis root must match the OPRF service's current tree root.
+        // Default `bytes32(0)` only makes sense for a fresh deploy where
+        // backend's tree is also empty.
         bytes32 genesisRoot = vm.envOr("V2_GENESIS_ROOT", bytes32(0));
+        // Genesis leaf count must equal backend's `leafCount` at deploy
+        // time so the first signed `updateRoot(leafIndex=N)` verifies.
+        // Default 0 for a fresh deploy.
+        uint256 genesisLeafCount = vm.envOr("V2_GENESIS_LEAF_COUNT", uint256(0));
         uint256 creationDeposit = vm.envOr("CREATION_DEPOSIT_WEI", DEFAULT_CREATION_DEPOSIT);
         // Admin is whoever signed the deploy tx. Pass through env if the
         // production multisig is known up-front.
         address admin = vm.envOr("V2_ADMIN", msg.sender);
 
         vm.startBroadcast();
-        enrollmentRegistry = new EnrollmentRegistry(oprfAttester, genesisRoot, admin);
+        enrollmentRegistry = new EnrollmentRegistry(
+            oprfAttester, genesisRoot, genesisLeafCount, admin
+        );
         verifier = new UltraVerifierV2();
         registry = new PetitionRegistryV2(
             IVerifierV2(address(verifier)), enrollmentRegistry, creationDeposit
@@ -57,6 +63,7 @@ contract DeployV2 is Script {
         console.log("PetitionRegistryV2: ", address(registry));
         console.log("oprfAttester:       ", oprfAttester);
         console.log("admin:              ", admin);
+        console.log("genesisLeafCount:   ", genesisLeafCount);
         console.log("CREATION_DEPOSIT:   ", creationDeposit);
         if (oprfAttester == OPRF_ATTESTER_PLACEHOLDER) {
             console.log("WARNING: deployed with placeholder attester; admin must");
