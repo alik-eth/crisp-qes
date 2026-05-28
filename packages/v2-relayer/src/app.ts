@@ -1,0 +1,291 @@
+// v2 relayer Fastify app.
+//
+// Two-route surface:
+//   POST /v2/submit  — relay a v2 UltraHonk signature proof to
+//                      PetitionRegistryV2.signPetition.
+//   GET  /tx/:hash   — same shape as MVP relayer; decodes the new
+//                      PetitionSigned / PetitionVoted events.
+//   GET  /healthz    — config snapshot + chain probe.
+//
+// Differences from the MVP relayer's `/submit`:
+//
+//   * Public-input shape is now length-3 `[petitionId, enrollmentRoot,
+//     nullifier]` — no CAdES limbs, no SPKI limbs, no leaf-cert sig.
+//     v2 circuit moved that work to enrollment time.
+//   * We additionally read `EnrollmentRegistry.enrollmentRoot()` and
+//     reject the submit pre-flight if `publicInputs[1]` doesn't match.
+//     This save a doomed simulate round-trip when the citizen's path
+//     was generated under an old root.
+//   * `vote` is now a uint8 (Signature: 0, YesNo: 0|1, YesNoAbstain:
+//     0|1|2). Wire-validated against the mode the petition was
+//     created with by the contract; here we only bound-check.
+
+import Fastify, { type FastifyInstance } from "fastify";
+import fastifyCors from "@fastify/cors";
+import {
+    type Hex,
+    decodeEventLog,
+    getAddress,
+    hexToBigInt,
+} from "viem";
+import { z } from "zod";
+
+import { enrollmentRegistryAbi, petitionRegistryV2Abi } from "./abi.js";
+import { makeClients, type Clients } from "./chain.js";
+import type { RelayerConfig } from "./config.js";
+import { mapContractError } from "./errors.js";
+import { makeRateLimiter, type RateLimiter } from "./rateLimit.js";
+
+const hex32 = z.string().regex(/^0x[0-9a-fA-F]{64}$/, "expected 32-byte hex");
+const hex = z.string().regex(/^0x[0-9a-fA-F]+$/, "expected hex string");
+const decimalUint = z.string().regex(/^\d+$/, "expected decimal integer");
+
+// Body shape pinned by v2-web's submit() — see N4 wire contract:
+//   { petitionId, vote, nullifier, proof, publicInputs[] }
+const SubmitBody = z.object({
+    petitionId: decimalUint,
+    vote: z.number().int().min(0).max(2),
+    nullifier: hex32,
+    proof: hex,
+    publicInputs: z.array(hex32).length(3),
+});
+
+const TxParams = z.object({
+    hash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+});
+
+export interface BuildAppOptions {
+    config: RelayerConfig;
+    /** Override for tests; defaults to live viem clients. */
+    clientsFactory?: (cfg: RelayerConfig) => Clients;
+    rateLimiter?: RateLimiter;
+}
+
+export function buildApp(opts: BuildAppOptions): FastifyInstance {
+    const { config } = opts;
+    const factory = opts.clientsFactory ?? makeClients;
+    const clients = factory(config);
+    const rateLimiter =
+        opts.rateLimiter ?? makeRateLimiter(config.rateLimitWindowMs);
+
+    const app = Fastify({ logger: { level: config.isProd ? "info" : "warn" } });
+
+    const allowAll = config.corsAllowedOrigins.includes("*");
+    void app.register(fastifyCors, {
+        origin: allowAll ? true : config.corsAllowedOrigins,
+        methods: ["GET", "POST", "OPTIONS"],
+        credentials: false,
+        maxAge: 86400,
+    });
+
+    app.get("/healthz", async () => ({
+        ok: true,
+        chainId: config.chainId,
+        petitionRegistry: config.petitionRegistry,
+        enrollmentRegistry: config.enrollmentRegistry,
+        relayerAddr: clients.account.address,
+    }));
+
+    app.post("/v2/submit", async (req, reply) => {
+        const ip = req.ip ?? "unknown";
+        if (!rateLimiter.take(ip)) {
+            return reply.code(429).send({
+                error: "RateLimited",
+                retryAfterMs: config.rateLimitWindowMs,
+            });
+        }
+
+        const parsed = SubmitBody.safeParse(req.body);
+        if (!parsed.success) {
+            return reply
+                .code(400)
+                .send({ error: "BadRequest", detail: parsed.error.flatten() });
+        }
+        const body = parsed.data;
+
+        // 1. Cross-field sanity vs the (small) public input array.
+        //    [0] petitionId   [1] enrollmentRoot   [2] nullifier
+        const piPetition = hexToBigInt(body.publicInputs[0] as Hex);
+        if (piPetition.toString() !== body.petitionId) {
+            return reply
+                .code(400)
+                .send({ error: "BadRequest", detail: "publicInputs[0] != petitionId" });
+        }
+        if (body.publicInputs[2] !== body.nullifier) {
+            return reply
+                .code(400)
+                .send({ error: "BadRequest", detail: "publicInputs[2] != nullifier" });
+        }
+
+        // 2. Live-root pre-flight. Reads `enrollmentRoot()` from the
+        //    deployed EnrollmentRegistry; bails before simulate if the
+        //    citizen's path was generated under a stale root.
+        let liveRoot: Hex;
+        try {
+            liveRoot = (await clients.publicClient.readContract({
+                address: config.enrollmentRegistry,
+                abi: enrollmentRegistryAbi,
+                functionName: "enrollmentRoot",
+                args: [],
+            })) as Hex;
+        } catch (err) {
+            req.log.error({ err }, "enrollmentRoot read failed");
+            return reply.code(502).send({
+                error: "EnrollmentRegistryUnreachable",
+                detail: (err as Error).message,
+            });
+        }
+        if (
+            body.publicInputs[1]?.toLowerCase() !== liveRoot.toLowerCase()
+        ) {
+            return reply.code(409).send({
+                error: "StaleEnrollmentRoot",
+                detail:
+                    "publicInputs[1] does not match the live EnrollmentRegistry root — " +
+                    "fetch a fresh Merkle path from /enrollment/:commitment/path on the OPRF service",
+                expectedRoot: liveRoot,
+                receivedRoot: body.publicInputs[1],
+            });
+        }
+
+        // 3. Compose calldata.
+        const args = [
+            BigInt(body.petitionId),
+            body.vote,
+            body.nullifier as Hex,
+            body.proof as Hex,
+            body.publicInputs as Hex[],
+        ] as const;
+
+        // 4. Simulate first so reverts surface as 4xx not a sent tx.
+        try {
+            await clients.publicClient.simulateContract({
+                address: config.petitionRegistry,
+                abi: petitionRegistryV2Abi,
+                functionName: "signPetition",
+                args: args as unknown as readonly [
+                    bigint,
+                    number,
+                    Hex,
+                    Hex,
+                    readonly Hex[],
+                ],
+                account: clients.account,
+            });
+        } catch (err) {
+            const mapped = mapContractError(err);
+            req.log.warn({ err: mapped.body }, "simulate revert");
+            return reply.code(mapped.status).send(mapped.body);
+        }
+
+        let txHash: Hex;
+        try {
+            txHash = await clients.walletClient.writeContract({
+                address: config.petitionRegistry,
+                abi: petitionRegistryV2Abi,
+                functionName: "signPetition",
+                args: args as unknown as readonly [
+                    bigint,
+                    number,
+                    Hex,
+                    Hex,
+                    readonly Hex[],
+                ],
+                account: clients.account,
+                chain: clients.chain,
+            });
+        } catch (err) {
+            const mapped = mapContractError(err);
+            req.log.error({ err: mapped.body }, "write revert");
+            return reply.code(mapped.status).send(mapped.body);
+        }
+
+        return reply.code(200).send({
+            txHash,
+            blockExplorerUrl: config.blockExplorerBase
+                ? `${config.blockExplorerBase}${txHash}`
+                : null,
+        });
+    });
+
+    app.get("/tx/:hash", async (req, reply) => {
+        const parsed = TxParams.safeParse(req.params);
+        if (!parsed.success) return reply.code(400).send({ error: "BadRequest" });
+        const hash = parsed.data.hash as Hex;
+
+        let receipt: Awaited<
+            ReturnType<typeof clients.publicClient.getTransactionReceipt>
+        > | null = null;
+        try {
+            receipt = await clients.publicClient.getTransactionReceipt({ hash });
+        } catch {
+            try {
+                const tx = await clients.publicClient.getTransaction({ hash });
+                if (tx && tx.blockNumber === null) {
+                    return reply.code(202).send({ status: "pending" });
+                }
+            } catch {
+                return reply.code(404).send({ error: "TxNotFound" });
+            }
+            return reply.code(404).send({ error: "TxNotFound" });
+        }
+
+        if (!receipt) return reply.code(404).send({ error: "TxNotFound" });
+
+        const wasOurTarget =
+            receipt.to !== null &&
+            receipt.to !== undefined &&
+            getAddress(receipt.to) === getAddress(config.petitionRegistry);
+
+        let petitionId: string | undefined;
+        let signatureCount: number | undefined;
+        let voteValue: number | undefined;
+
+        if (wasOurTarget) {
+            for (const log of receipt.logs) {
+                try {
+                    const decoded = decodeEventLog({
+                        abi: petitionRegistryV2Abi,
+                        data: log.data,
+                        topics: log.topics,
+                    });
+                    if (decoded.eventName === "PetitionSigned") {
+                        const a = decoded.args as unknown as {
+                            id: bigint;
+                            nullifier: Hex;
+                            newCount: number;
+                        };
+                        petitionId = a.id.toString();
+                        signatureCount = Number(a.newCount);
+                        break;
+                    }
+                    if (decoded.eventName === "PetitionVoted") {
+                        const a = decoded.args as unknown as {
+                            id: bigint;
+                            vote: number;
+                            nullifier: Hex;
+                            newCount: number;
+                        };
+                        petitionId = a.id.toString();
+                        signatureCount = Number(a.newCount);
+                        voteValue = Number(a.vote);
+                        break;
+                    }
+                } catch {
+                    // not one of our events — keep looking.
+                }
+            }
+        }
+
+        return reply.code(200).send({
+            status: receipt.status,
+            blockNumber: receipt.blockNumber.toString(),
+            gasUsed: receipt.gasUsed.toString(),
+            petitionId: petitionId ?? null,
+            signatureCount: signatureCount ?? null,
+            vote: voteValue ?? null,
+        });
+    });
+
+    return app;
+}
