@@ -1,0 +1,26 @@
+app = "crisp-qes-relayer"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8787"
+  CHAIN_ID = "84532"
+  RPC_URL = "https://sepolia.base.org"
+  PETITION_REGISTRY = "0x86c986f361ddb447949bf010a3f01e0b5a97fbc0"
+  BLOCK_EXPLORER_BASE = "https://sepolia.basescan.org/tx/"
+  RATE_LIMIT_WINDOW_MS = "10000"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256

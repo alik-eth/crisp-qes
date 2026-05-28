@@ -1,0 +1,29 @@
+# Caddy config for the CRISP-QES SPA.
+#
+# COOP/COEP are required so the browser enables SharedArrayBuffer, which
+# `@aztec/bb.js`'s threaded WASM prover needs. Without these headers the
+# prover degrades to single-thread and proof generation is much slower
+# (or fails outright on some browsers).
+:{$PORT:80} {
+	root * /srv
+
+	encode gzip zstd
+
+	header {
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Embedder-Policy "require-corp"
+		Cross-Origin-Resource-Policy "same-origin"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# Long-cache hashed assets, short-cache the entry HTML.
+	@hashed path_regexp ^/assets/.*-[A-Za-z0-9]{8,}\.(js|css|wasm|map)$
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+
+	@html path /index.html /
+	header @html Cache-Control "no-cache"
+
+	try_files {path} /index.html
+	file_server
+}
