@@ -2,17 +2,19 @@ import { useState } from "react";
 import { Masthead } from "./components/Masthead";
 import { Footer } from "./components/Footer";
 import { Landing } from "./pages/Landing";
-import { PetitionList } from "./pages/PetitionList";
+import { Petitions } from "./pages/Petitions";
+import { Enroll } from "./pages/Enroll";
 import { Sign } from "./pages/Sign";
 import { Done } from "./pages/Done";
-import { Create } from "./pages/Create";
+import { Recover } from "./pages/Recover";
 
 type View =
     | { kind: "landing" }
     | { kind: "list"; nonce?: number }
-    | { kind: "create" }
+    | { kind: "enroll" }
+    | { kind: "recover" }
     | { kind: "sign"; petitionId: bigint }
-    | { kind: "done"; petitionId: bigint; txHash: `0x${string}`; newCount: number };
+    | { kind: "done"; petitionId: bigint; txHash: `0x${string}`; vote: number };
 
 export function App() {
     const [view, setView] = useState<View>({ kind: "landing" });
@@ -21,30 +23,33 @@ export function App() {
         <div className="shell">
             <Masthead
                 onTogglePetitions={() => setView({ kind: "list" })}
-                onCreate={() => setView({ kind: "create" })}
+                onEnroll={() => setView({ kind: "enroll" })}
+                onRecover={() => setView({ kind: "recover" })}
             />
             {view.kind === "landing" ? (
                 <Landing onBrowse={() => setView({ kind: "list" })} />
             ) : view.kind === "list" ? (
-                <PetitionList
+                <Petitions
                     key={view.nonce ?? 0}
                     onSign={(id) => setView({ kind: "sign", petitionId: id })}
                 />
-            ) : view.kind === "create" ? (
-                <Create
+            ) : view.kind === "enroll" ? (
+                <Enroll
                     onBack={() => setView({ kind: "list" })}
-                    onCreated={() => setView({ kind: "list", nonce: Date.now() })}
+                    onDone={() => setView({ kind: "list", nonce: Date.now() })}
                 />
+            ) : view.kind === "recover" ? (
+                <Recover onBack={() => setView({ kind: "list" })} />
             ) : view.kind === "sign" ? (
                 <Sign
                     petitionId={view.petitionId}
                     onBack={() => setView({ kind: "list" })}
-                    onDone={(txHash, newCount) =>
+                    onDone={(txHash, vote) =>
                         setView({
                             kind: "done",
                             petitionId: view.petitionId,
                             txHash,
-                            newCount,
+                            vote,
                         })
                     }
                 />
@@ -52,7 +57,7 @@ export function App() {
                 <Done
                     petitionId={view.petitionId}
                     txHash={view.txHash}
-                    newCount={view.newCount}
+                    vote={view.vote}
                     onReturn={() => setView({ kind: "list" })}
                 />
             )}

@@ -8,16 +8,15 @@ import {
     toFunctionSelector,
 } from "viem";
 
-import { petitionRegistryAbi } from "./abi.js";
+import { petitionRegistryV2Abi } from "./abi.js";
 
 const SIGNER_ERROR_NAMES = [
     "UnknownPetition",
     "PetitionClosed",
     "NullifierAlreadyUsed",
     "InvalidProof",
-    "InvalidTrustRoot",
-    "InvalidSignature",
-    "InvalidCertChain",
+    "InvalidEnrollmentRoot",
+    "InvalidVote",
 ] as const;
 
 type SignerErrorName = (typeof SIGNER_ERROR_NAMES)[number];
@@ -43,10 +42,9 @@ const STATUS_BY_NAME: Record<SignerErrorName, number> = {
     NullifierAlreadyUsed: 409,
     PetitionClosed: 410,
     UnknownPetition: 404,
-    InvalidSignature: 422,
     InvalidProof: 422,
-    InvalidTrustRoot: 422,
-    InvalidCertChain: 422,
+    InvalidEnrollmentRoot: 422,
+    InvalidVote: 422,
 };
 
 function findRevertSelector(err: unknown): Hex | undefined {
@@ -105,4 +103,4 @@ export function mapContractError(err: unknown): RelayerErrorResponse {
 
 export { SIGNER_ERROR_NAMES, SELECTOR_TO_NAME };
 // Re-export the ABI so `app.ts` can wire it without a second import path.
-export { petitionRegistryAbi };
+export { petitionRegistryV2Abi };

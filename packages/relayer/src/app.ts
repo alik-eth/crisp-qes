@@ -1,3 +1,25 @@
+// v2 relayer Fastify app.
+//
+// Two-route surface:
+//   POST /v2/submit  — relay a v2 UltraHonk signature proof to
+//                      PetitionRegistryV2.signPetition.
+//   GET  /tx/:hash   — same shape as MVP relayer; decodes the new
+//                      PetitionSigned / PetitionVoted events.
+//   GET  /healthz    — config snapshot + chain probe.
+//
+// Differences from the MVP relayer's `/submit`:
+//
+//   * Public-input shape is now length-3 `[petitionId, enrollmentRoot,
+//     nullifier]` — no CAdES limbs, no SPKI limbs, no leaf-cert sig.
+//     v2 circuit moved that work to enrollment time.
+//   * We additionally read `EnrollmentRegistry.enrollmentRoot()` and
+//     reject the submit pre-flight if `publicInputs[1]` doesn't match.
+//     This save a doomed simulate round-trip when the citizen's path
+//     was generated under an old root.
+//   * `vote` is now a uint8 (Signature: 0, YesNo: 0|1, YesNoAbstain:
+//     0|1|2). Wire-validated against the mode the petition was
+//     created with by the contract; here we only bound-check.
+
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyCors from "@fastify/cors";
 import {
@@ -8,7 +30,7 @@ import {
 } from "viem";
 import { z } from "zod";
 
-import { petitionRegistryAbi } from "./abi.js";
+import { enrollmentRegistryAbi, petitionRegistryV2Abi } from "./abi.js";
 import { makeClients, type Clients } from "./chain.js";
 import type { RelayerConfig } from "./config.js";
 import { mapContractError } from "./errors.js";
@@ -18,18 +40,14 @@ const hex32 = z.string().regex(/^0x[0-9a-fA-F]{64}$/, "expected 32-byte hex");
 const hex = z.string().regex(/^0x[0-9a-fA-F]+$/, "expected hex string");
 const decimalUint = z.string().regex(/^\d+$/, "expected decimal integer");
 
+// Body shape pinned by v2-web's submit() — see N4 wire contract:
+//   { petitionId, vote, nullifier, proof, publicInputs[] }
 const SubmitBody = z.object({
     petitionId: decimalUint,
+    vote: z.number().int().min(0).max(2),
     nullifier: hex32,
-    leafSigR: hex32,
-    leafSigS: hex32,
-    intermediateSigR: hex32,
-    intermediateSigS: hex32,
     proof: hex,
-    // Pubkey coordinates ride in the limb pairs at slots 3-10 of the
-    // public inputs array (D-v2-fix); the contract reconstructs them
-    // there. We no longer ship them as standalone body fields.
-    publicInputs: z.array(hex32).length(15),
+    publicInputs: z.array(hex32).length(3),
 });
 
 const TxParams = z.object({
@@ -38,7 +56,7 @@ const TxParams = z.object({
 
 export interface BuildAppOptions {
     config: RelayerConfig;
-    // Override for tests; defaults to live viem clients.
+    /** Override for tests; defaults to live viem clients. */
     clientsFactory?: (cfg: RelayerConfig) => Clients;
     rateLimiter?: RateLimiter;
 }
@@ -52,14 +70,10 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
 
     const app = Fastify({ logger: { level: config.isProd ? "info" : "warn" } });
 
-    // CORS: the browser blocks cross-origin POSTs from the web app unless we
-    // explicitly allow its origin. `*` (used in dev) accepts any origin but
-    // disables credentials; in prod we list the deployed web origin.
     const allowAll = config.corsAllowedOrigins.includes("*");
     void app.register(fastifyCors, {
         origin: allowAll ? true : config.corsAllowedOrigins,
         methods: ["GET", "POST", "OPTIONS"],
-        // We don't use cookies/Authorization, so no credentials.
         credentials: false,
         maxAge: 86400,
     });
@@ -67,16 +81,18 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
     app.get("/healthz", async () => ({
         ok: true,
         chainId: config.chainId,
-        registry: config.registry,
+        petitionRegistry: config.petitionRegistry,
+        enrollmentRegistry: config.enrollmentRegistry,
         relayerAddr: clients.account.address,
     }));
 
-    app.post("/submit", async (req, reply) => {
+    app.post("/v2/submit", async (req, reply) => {
         const ip = req.ip ?? "unknown";
         if (!rateLimiter.take(ip)) {
-            return reply
-                .code(429)
-                .send({ error: "RateLimited", retryAfterMs: config.rateLimitWindowMs });
+            return reply.code(429).send({
+                error: "RateLimited",
+                retryAfterMs: config.rateLimitWindowMs,
+            });
         }
 
         const parsed = SubmitBody.safeParse(req.body);
@@ -87,72 +103,70 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
         }
         const body = parsed.data;
 
-        // Cross-field sanity: publicInputs entries must equal the dedicated
-        // fields (the contract checks this too, but bouncing here saves gas).
-        //
-        // Public-input layout (D-v2-fix, length 15):
-        //   [0]  petitionId
-        //   [1]  nullifier
-        //   [2]  trustRoot                       (not in body; checked on-chain only)
-        //   [3]  leafPubkeyXHi                   (limb, not in body)
-        //   [4]  leafPubkeyXLo                   (limb, not in body)
-        //   [5]  leafPubkeyYHi                   (limb, not in body)
-        //   [6]  leafPubkeyYLo                   (limb, not in body)
-        //   [7]  intermediatePubkeyXHi           (limb, not in body)
-        //   [8]  intermediatePubkeyXLo           (limb, not in body)
-        //   [9]  intermediatePubkeyYHi           (limb, not in body)
-        //   [10] intermediatePubkeyYLo           (limb, not in body)
-        //   [11] leafTbsSha256Hi                 (limb, not in body)
-        //   [12] leafTbsSha256Lo                 (limb, not in body)
-        //   [13] signedAttrsSha256Hi             (limb, not in body)
-        //   [14] signedAttrsSha256Lo             (limb, not in body)
+        // 1. Cross-field sanity vs the (small) public input array.
+        //    [0] petitionId   [1] enrollmentRoot   [2] nullifier
         const piPetition = hexToBigInt(body.publicInputs[0] as Hex);
         if (piPetition.toString() !== body.petitionId) {
-            return reply.code(400).send({
-                error: "BadRequest",
-                detail: "publicInputs[0] != petitionId",
-            });
+            return reply
+                .code(400)
+                .send({ error: "BadRequest", detail: "publicInputs[0] != petitionId" });
         }
-        if (body.publicInputs[1] !== body.nullifier) {
-            return reply.code(400).send({
-                error: "BadRequest",
-                detail: "publicInputs[1] != nullifier",
-            });
-        }
-        // Pubkey + hash limbs (slots 3..14) must all fit in 128 bits, mirroring
-        // the contract's `>> 128 == 0` gate. Reject before paying for simulate.
-        for (let i = 3; i < 15; i++) {
-            const limb = hexToBigInt(body.publicInputs[i] as Hex);
-            if (limb >> 128n !== 0n) {
-                return reply.code(400).send({
-                    error: "BadRequest",
-                    detail: `publicInputs[${i}] is not a 128-bit limb`,
-                });
-            }
+        if (body.publicInputs[2] !== body.nullifier) {
+            return reply
+                .code(400)
+                .send({ error: "BadRequest", detail: "publicInputs[2] != nullifier" });
         }
 
-        const signCalldata = {
-            petitionId: BigInt(body.petitionId),
-            nullifier: body.nullifier as Hex,
-            leafSigR: hexToBigInt(body.leafSigR as Hex),
-            leafSigS: hexToBigInt(body.leafSigS as Hex),
-            intermediateSigR: hexToBigInt(body.intermediateSigR as Hex),
-            intermediateSigS: hexToBigInt(body.intermediateSigS as Hex),
-        };
+        // 2. Live-root pre-flight. Reads `enrollmentRoot()` from the
+        //    deployed EnrollmentRegistry; bails before simulate if the
+        //    citizen's path was generated under a stale root.
+        let liveRoot: Hex;
+        try {
+            liveRoot = (await clients.publicClient.readContract({
+                address: config.enrollmentRegistry,
+                abi: enrollmentRegistryAbi,
+                functionName: "enrollmentRoot",
+                args: [],
+            })) as Hex;
+        } catch (err) {
+            req.log.error({ err }, "enrollmentRoot read failed");
+            return reply.code(502).send({
+                error: "EnrollmentRegistryUnreachable",
+                detail: (err as Error).message,
+            });
+        }
+        if (
+            body.publicInputs[1]?.toLowerCase() !== liveRoot.toLowerCase()
+        ) {
+            return reply.code(409).send({
+                error: "StaleEnrollmentRoot",
+                detail:
+                    "publicInputs[1] does not match the live EnrollmentRegistry root — " +
+                    "fetch a fresh Merkle path from /enrollment/:commitment/path on the OPRF service",
+                expectedRoot: liveRoot,
+                receivedRoot: body.publicInputs[1],
+            });
+        }
+
+        // 3. Compose calldata.
         const args = [
-            signCalldata,
+            BigInt(body.petitionId),
+            body.vote,
+            body.nullifier as Hex,
             body.proof as Hex,
             body.publicInputs as Hex[],
         ] as const;
 
+        // 4. Simulate first so reverts surface as 4xx not a sent tx.
         try {
-            // Simulate first so reverts surface as 4xx instead of a sent tx.
             await clients.publicClient.simulateContract({
-                address: config.registry,
-                abi: petitionRegistryAbi,
+                address: config.petitionRegistry,
+                abi: petitionRegistryV2Abi,
                 functionName: "signPetition",
                 args: args as unknown as readonly [
-                    typeof signCalldata,
+                    bigint,
+                    number,
+                    Hex,
                     Hex,
                     readonly Hex[],
                 ],
@@ -167,11 +181,13 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
         let txHash: Hex;
         try {
             txHash = await clients.walletClient.writeContract({
-                address: config.registry,
-                abi: petitionRegistryAbi,
+                address: config.petitionRegistry,
+                abi: petitionRegistryV2Abi,
                 functionName: "signPetition",
                 args: args as unknown as readonly [
-                    typeof signCalldata,
+                    bigint,
+                    number,
+                    Hex,
                     Hex,
                     readonly Hex[],
                 ],
@@ -194,9 +210,7 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
 
     app.get("/tx/:hash", async (req, reply) => {
         const parsed = TxParams.safeParse(req.params);
-        if (!parsed.success) {
-            return reply.code(400).send({ error: "BadRequest" });
-        }
+        if (!parsed.success) return reply.code(400).send({ error: "BadRequest" });
         const hash = parsed.data.hash as Hex;
 
         let receipt: Awaited<
@@ -205,8 +219,6 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
         try {
             receipt = await clients.publicClient.getTransactionReceipt({ hash });
         } catch {
-            // viem throws on "not found" / pending — try the tx itself to
-            // distinguish pending from genuinely unknown.
             try {
                 const tx = await clients.publicClient.getTransaction({ hash });
                 if (tx && tx.blockNumber === null) {
@@ -223,27 +235,40 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
         const wasOurTarget =
             receipt.to !== null &&
             receipt.to !== undefined &&
-            getAddress(receipt.to) === getAddress(config.registry);
+            getAddress(receipt.to) === getAddress(config.petitionRegistry);
 
-        let nullifierUsedFor: string | undefined;
+        let petitionId: string | undefined;
         let signatureCount: number | undefined;
+        let voteValue: number | undefined;
 
         if (wasOurTarget) {
             for (const log of receipt.logs) {
                 try {
                     const decoded = decodeEventLog({
-                        abi: petitionRegistryAbi,
+                        abi: petitionRegistryV2Abi,
                         data: log.data,
                         topics: log.topics,
                     });
                     if (decoded.eventName === "PetitionSigned") {
-                        const a = decoded.args as {
+                        const a = decoded.args as unknown as {
                             id: bigint;
                             nullifier: Hex;
                             newCount: number;
                         };
-                        nullifierUsedFor = a.id.toString();
+                        petitionId = a.id.toString();
                         signatureCount = Number(a.newCount);
+                        break;
+                    }
+                    if (decoded.eventName === "PetitionVoted") {
+                        const a = decoded.args as unknown as {
+                            id: bigint;
+                            vote: number;
+                            nullifier: Hex;
+                            newCount: number;
+                        };
+                        petitionId = a.id.toString();
+                        signatureCount = Number(a.newCount);
+                        voteValue = Number(a.vote);
                         break;
                     }
                 } catch {
@@ -256,8 +281,9 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
             status: receipt.status,
             blockNumber: receipt.blockNumber.toString(),
             gasUsed: receipt.gasUsed.toString(),
-            nullifierUsedFor: nullifierUsedFor ?? null,
+            petitionId: petitionId ?? null,
             signatureCount: signatureCount ?? null,
+            vote: voteValue ?? null,
         });
     });
 

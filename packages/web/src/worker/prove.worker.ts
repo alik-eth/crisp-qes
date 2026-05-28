@@ -1,27 +1,45 @@
-// Long-running ZK proof generation, off the main thread.
+// Off-main-thread proof generation for the v2 circuit.
+//
+// Witness shape (mirrors v2 circuit `main(...)` in #30):
+//   enrollment_secret: 0x-hex32         (private)
+//   merkle_path: 0x-hex32 [TREE_DEPTH]  (private)
+//   merkle_path_indices: 0|1 [TREE_DEPTH]
+//   petition_id: 0x-hex32                (public)
+//   enrollment_root: 0x-hex32            (public)
+//   nullifier: 0x-hex32                  (public)
 //
 // Protocol:
 //   Main → Worker: { type: "prove", witness, circuitUrl }
-//   Worker → Main: { type: "stage", stage: <string> }
+//   Worker → Main: { type: "stage", stage: "..." }
 //   Worker → Main: { type: "done", proofBytes: number[], publicInputs: string[] }
 //   Worker → Main: { type: "error", detail: string }
-//
-// We import the SDK's `prove` directly; that pulls in `@aztec/bb.js` and
-// `@noir-lang/noir_js` which both work in workers as long as COOP/COEP
-// are configured on the host (see vite.config.ts).
 
 /// <reference lib="webworker" />
 
-import { prove, type WitnessInputs } from "@crisp-qes/sdk";
+import type { CompiledCircuit, InputMap } from "@noir-lang/noir_js";
+import { Noir } from "@noir-lang/noir_js";
+import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
+
+export interface V2WitnessInputs {
+    enrollment_secret: string;
+    merkle_path: string[];
+    merkle_path_indices: number[]; // 0 | 1 per slot
+    petition_id: string;
+    enrollment_root: string;
+    nullifier: string;
+}
 
 type InMsg = {
     type: "prove";
-    witness: WitnessInputs;
+    witness: V2WitnessInputs;
     circuitUrl: string;
 };
 
 type OutMsg =
-    | { type: "stage"; stage: "loadingCircuit" | "buildWitness" | "proving" | "done" }
+    | {
+          type: "stage";
+          stage: "loadingCircuit" | "buildWitness" | "proving" | "done";
+      }
     | { type: "done"; proofBytes: number[]; publicInputs: string[] }
     | { type: "error"; detail: string };
 
@@ -37,20 +55,34 @@ self.addEventListener("message", (ev: MessageEvent<InMsg>) => {
             post({ type: "stage", stage: "loadingCircuit" });
             const res = await fetch(msg.circuitUrl, { credentials: "omit" });
             if (!res.ok) {
-                throw new Error(`circuit fetch ${msg.circuitUrl}: HTTP ${res.status}`);
+                throw new Error(
+                    `circuit fetch ${msg.circuitUrl}: HTTP ${res.status}`,
+                );
             }
-            const circuit = await res.json();
+            const circuit = (await res.json()) as CompiledCircuit;
+
+            post({ type: "stage", stage: "buildWitness" });
+            const noir = new Noir(circuit);
+            const { witness: compressedWitness } = await noir.execute(
+                msg.witness as unknown as InputMap,
+            );
 
             post({ type: "stage", stage: "proving" });
-            const { proofBytes, publicInputs } = await prove({
-                witness: msg.witness,
-                circuit,
-            });
-            post({
-                type: "done",
-                proofBytes: Array.from(proofBytes),
-                publicInputs,
-            });
+            const api = await Barretenberg.new();
+            try {
+                const backend = new UltraHonkBackend(circuit.bytecode, api);
+                const { proof, publicInputs } = await backend.generateProof(
+                    compressedWitness,
+                    { verifierTarget: "evm" },
+                );
+                post({
+                    type: "done",
+                    proofBytes: Array.from(proof),
+                    publicInputs,
+                });
+            } finally {
+                await api.destroy();
+            }
         } catch (err) {
             post({
                 type: "error",

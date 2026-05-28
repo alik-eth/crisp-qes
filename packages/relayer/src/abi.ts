@@ -1,26 +1,19 @@
-// Hand-rolled minimal ABI for PetitionRegistry.
-// Pinned against packages/contracts/src/PetitionRegistry.sol.
-// Only includes what the relayer needs: signPetition, the errors it can
-// surface, and the PetitionSigned event (so we can decode receipts).
+// v2 PetitionRegistryV2 + EnrollmentRegistry ABI surface.
+//
+// Hand-rolled subset of `packages/v2-contracts/src/PetitionRegistryV2.sol`
+// and `EnrollmentRegistry.sol`. Mirrors only what the relayer touches:
+// `signPetition` + the view reads + decoded events + custom-error decoder.
+// Full ABIs live in `packages/v2-contracts/out/*.json` (foundry).
 
-export const petitionRegistryAbi = [
+export const petitionRegistryV2Abi = [
     {
         type: "function",
         name: "signPetition",
         stateMutability: "nonpayable",
         inputs: [
-            {
-                name: "p",
-                type: "tuple",
-                components: [
-                    { name: "petitionId", type: "uint256" },
-                    { name: "nullifier", type: "bytes32" },
-                    { name: "leafSigR", type: "uint256" },
-                    { name: "leafSigS", type: "uint256" },
-                    { name: "intermediateSigR", type: "uint256" },
-                    { name: "intermediateSigS", type: "uint256" },
-                ],
-            },
+            { name: "petitionId", type: "uint256" },
+            { name: "vote", type: "uint8" },
+            { name: "nullifier", type: "bytes32" },
             { name: "proof", type: "bytes" },
             { name: "publicInputs", type: "bytes32[]" },
         ],
@@ -31,12 +24,32 @@ export const petitionRegistryAbi = [
         name: "signatureCount",
         stateMutability: "view",
         inputs: [{ name: "id", type: "uint256" }],
-        outputs: [{ name: "", type: "uint32" }],
+        outputs: [{ type: "uint32" }],
+    },
+    {
+        type: "function",
+        name: "voteCounts",
+        stateMutability: "view",
+        inputs: [{ name: "id", type: "uint256" }],
+        outputs: [
+            { name: "yesCount", type: "uint32" },
+            { name: "noCount", type: "uint32" },
+            { name: "abstainCount", type: "uint32" },
+        ],
+    },
+    {
+        type: "function",
+        name: "hasNullifier",
+        stateMutability: "view",
+        inputs: [
+            { name: "", type: "uint256" },
+            { name: "", type: "bytes32" },
+        ],
+        outputs: [{ type: "bool" }],
     },
     {
         type: "event",
         name: "PetitionSigned",
-        anonymous: false,
         inputs: [
             { name: "id", type: "uint256", indexed: true },
             { name: "nullifier", type: "bytes32", indexed: true },
@@ -45,34 +58,45 @@ export const petitionRegistryAbi = [
     },
     {
         type: "event",
+        name: "PetitionVoted",
+        inputs: [
+            { name: "id", type: "uint256", indexed: true },
+            { name: "vote", type: "uint8", indexed: false },
+            { name: "nullifier", type: "bytes32", indexed: true },
+            { name: "newCount", type: "uint32", indexed: false },
+        ],
+    },
+    {
+        type: "event",
         name: "ThresholdReached",
-        anonymous: false,
         inputs: [
             { name: "id", type: "uint256", indexed: true },
             { name: "threshold", type: "uint32", indexed: false },
             { name: "reachedAt", type: "uint64", indexed: false },
         ],
     },
-    // --- errors the signer path can revert with ---
+    // Custom errors — match by selector in `mapContractError`.
     { type: "error", name: "UnknownPetition", inputs: [] },
     { type: "error", name: "PetitionClosed", inputs: [] },
     { type: "error", name: "NullifierAlreadyUsed", inputs: [] },
     { type: "error", name: "InvalidProof", inputs: [] },
-    { type: "error", name: "InvalidTrustRoot", inputs: [] },
-    { type: "error", name: "InvalidSignature", inputs: [] },
-    { type: "error", name: "InvalidCertChain", inputs: [] },
+    { type: "error", name: "InvalidEnrollmentRoot", inputs: [] },
+    { type: "error", name: "InvalidVote", inputs: [] },
 ] as const;
 
-// Pre-computed 4-byte selectors of every custom error above, so we can map
-// raw revert data even when viem fails to decode (e.g. simulate errors that
-// only ship raw bytes).
-//
-// keccak256("UnknownPetition()")[0..4]      = 0x0bbb0fd7
-// keccak256("PetitionClosed()")[0..4]       = 0x09b25b3a
-// keccak256("NullifierAlreadyUsed()")[0..4] = 0xed10b14a
-// keccak256("InvalidProof()")[0..4]         = 0x09bde339
-// keccak256("InvalidTrustRoot()")[0..4]     = 0x2f6940f4
-// keccak256("InvalidSignature()")[0..4]     = 0x8baa579f
-//
-// These constants are derived at runtime via viem's `toFunctionSelector`
-// helper so we never rely on hand-typed hex — see errors.ts.
+export const enrollmentRegistryAbi = [
+    {
+        type: "function",
+        name: "enrollmentRoot",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [{ type: "bytes32" }],
+    },
+    {
+        type: "function",
+        name: "leafCount",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [{ type: "uint256" }],
+    },
+] as const;

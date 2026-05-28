@@ -1,7 +1,22 @@
-// Read paths against PetitionRegistry.
+// Read paths against PetitionRegistryV2 + EnrollmentRegistry.
+//
+// Tuple shape of `getPetition` mirrors the deployed contract (#31):
+//   { creator, createdAt, deadline, threshold, signatureCount,
+//     thresholdReached, depositRefunded, mode,
+//     yesCount, noCount, abstainCount, textHash, fullText }
+//
+// `signatureCount` is the Signature-mode tally; for YesNo / YesNoAbstain
+// modes the totals come from yes+no(+abstain).
 
 import { type Hex, hexToBytes } from "viem";
-import { petitionRegistryAbi, PetitionStatusLabel, type PetitionStatusCode } from "./abi";
+import {
+    petitionRegistryV2Abi,
+    enrollmentRegistryAbi,
+    PetitionStatusLabel,
+    type PetitionStatusCode,
+    BallotModeLabel,
+    type BallotMode,
+} from "./abi";
 import { publicClient } from "./chain";
 import { config } from "../config";
 
@@ -12,8 +27,13 @@ export interface PetitionView {
     deadline: bigint;
     threshold: number;
     signatureCount: number;
+    yesCount: number;
+    noCount: number;
+    abstainCount: number;
     thresholdReached: boolean;
     depositRefunded: boolean;
+    mode: BallotMode;
+    modeLabel: "Signature" | "YesNo" | "YesNoAbstain";
     textHash: Hex;
     fullText: string;
     status: "Open" | "Closed" | "ThresholdReached" | "Unknown";
@@ -27,19 +47,27 @@ function decodeText(bytes: Hex): string {
     }
 }
 
-export async function readNextPetitionId(): Promise<bigint> {
+export async function readEnrollmentRoot(): Promise<Hex> {
     return publicClient.readContract({
-        address: config.registry,
-        abi: petitionRegistryAbi,
-        functionName: "nextPetitionId",
+        address: config.enrollmentRegistry,
+        abi: enrollmentRegistryAbi,
+        functionName: "enrollmentRoot",
     });
 }
 
-export async function readTrustRoot(): Promise<Hex> {
+export async function readOprfAttester(): Promise<`0x${string}`> {
     return publicClient.readContract({
-        address: config.registry,
-        abi: petitionRegistryAbi,
-        functionName: "trustRoot",
+        address: config.enrollmentRegistry,
+        abi: enrollmentRegistryAbi,
+        functionName: "oprfAttester",
+    });
+}
+
+export async function readNextPetitionId(): Promise<bigint> {
+    return publicClient.readContract({
+        address: config.petitionRegistryV2,
+        abi: petitionRegistryV2Abi,
+        functionName: "nextPetitionId",
     });
 }
 
@@ -47,18 +75,19 @@ export async function readPetition(id: bigint): Promise<PetitionView | null> {
     try {
         const [pet, status] = await Promise.all([
             publicClient.readContract({
-                address: config.registry,
-                abi: petitionRegistryAbi,
+                address: config.petitionRegistryV2,
+                abi: petitionRegistryV2Abi,
                 functionName: "getPetition",
                 args: [id],
             }),
             publicClient.readContract({
-                address: config.registry,
-                abi: petitionRegistryAbi,
+                address: config.petitionRegistryV2,
+                abi: petitionRegistryV2Abi,
                 functionName: "petitionStatus",
                 args: [id],
             }),
         ]);
+        const mode = pet.mode as BallotMode;
         return {
             id,
             creator: pet.creator,
@@ -66,11 +95,18 @@ export async function readPetition(id: bigint): Promise<PetitionView | null> {
             deadline: pet.deadline,
             threshold: Number(pet.threshold),
             signatureCount: Number(pet.signatureCount),
+            yesCount: Number(pet.yesCount),
+            noCount: Number(pet.noCount),
+            abstainCount: Number(pet.abstainCount),
             thresholdReached: pet.thresholdReached,
             depositRefunded: pet.depositRefunded,
+            mode,
+            modeLabel: BallotModeLabel[mode],
             textHash: pet.textHash,
             fullText: decodeText(pet.fullText),
-            status: PetitionStatusLabel[Number(status) as PetitionStatusCode] ?? "Unknown",
+            status:
+                PetitionStatusLabel[Number(status) as PetitionStatusCode] ??
+                "Unknown",
         };
     } catch {
         return null;

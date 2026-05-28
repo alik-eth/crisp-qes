@@ -300,36 +300,67 @@ Primary: **WebAuthn PRF extension** (Passkey).
   the credential across devices via OS-level encrypted backup.
   Citizens don't see the seed.
 
-Disaster-recovery backup: **BIP-39 mnemonic**, shown once at
-enrollment.
+Disaster-recovery backup: **none — mnemonic deleted.** Earlier v2
+drafts shipped a non-functional BIP-39 mnemonic backup placeholder.
+It has been removed from the UI and the codebase. The structural
+reason: `s = pedersen([N_hi, N_lo], 0)` where `N = k ·
+Hash_to_curve(RNOKPP)` is the OPRF output, and any mnemonic-based
+representation of `N` either fails structurally (HKDF is one-way) or
+fails as a UX recovery primitive for civic-tech users (sub-30%
+write-down/recall rate, becomes a non-rotatable bearer credential).
+See `/tmp/recovery-design.md` for the full analysis.
 
-- **v2 status (honest disclosure):** the mnemonic UI is wired and
-  citizens can save the 24 words, but **mnemonic-only recovery is not
-  active in v2**. The reason is structural: `s = pedersen([N_hi,
-  N_lo], 0)` where `N = k · Hash_to_curve(RNOKPP)` is the OPRF output,
-  and the mnemonic only round-trips `HKDF(N)` — an irreversible
-  derivation. The v2 demo path therefore stores the wrapped OPRF
-  output in IndexedDB under the Passkey PRF and uses platform
-  credential sync (iCloud Keychain / Google Password Manager) as the
-  cross-device recovery path. Mnemonic-only re-derivation lights up in
-  **v3** via one of two paths:
-  - *(a)* **Mnemonic as second factor for OPRF re-derivation:**
-    citizen presents mnemonic + re-runs OPRF protocol with their Diia
-    QES; the mnemonic authorises the ciphernode quorum to release the
-    original `s` (or its Merkle index) without a full re-enrollment.
-    Engineering: ~1 week, fits inside the threshold-OPRF productionisation
-    increment.
-  - *(b)* **Encode raw `N` in the mnemonic directly:** drop the HKDF
-    step so the mnemonic carries 256 bits of `N` (24 BIP-39 words ≈
-    264 bits, fits cleanly). Cleaner cryptographically, but requires
-    a one-time re-enrollment for citizens enrolled under v2.
+**v2 recovery: three tiers, all client-side, zero protocol change.**
 
-  Either path is in v3 grant scope. v2 recovery without cloud sync
-  requires re-enrollment under a new commitment (see §3.5 row 3).
-- The mnemonic UI is retained in v2 so that future-compatible backups
-  are captured at the right moment in the user flow; a disclosure
-  paragraph in the UI tells the citizen "your mnemonic activates a
-  cross-device recovery path that ships in v3."
+#### Tier 1 — Cloud-synced Passkey (primary)
+
+Apple iCloud Keychain / Google Password Manager / Mozilla Sync
+back up the discoverable credential (including its PRF capability)
+across devices signed into the same account. Covers the ~80% case
+where a citizen loses one device but is signed in elsewhere. Already
+shipping; not changed.
+
+#### Tier 2 — Multi-Passkey enrollment ceremony (secondary)
+
+At enrollment, after the first Passkey is created and the on-chain
+commitment lands, the UI prompts the citizen to register a second
+device (laptop biometric, USB security key, or another phone). The
+same `N` is wrapped under the second Passkey's PRF output and stored
+as an additional `EnrollmentRecord` row in IndexedDB. The store
+schema in `packages/web/src/lib/encryptedStore.ts` already supports
+multiple rows per citizen. Optional skip with disclosure.
+
+#### Tier 3 — QES-anchored recovery (tertiary)
+
+If a citizen lands on a fresh device with no Passkey and no cloud
+sync, but still has Diia QES, they enter the recovery flow:
+
+1. Citizen completes the QES verification (download binding → Diia
+   sign → upload `.p7s`), same shape as enrollment.
+2. Client runs `/oprf/blind-eval` with fresh blinding `r'` over
+   RNOKPP. *(Critical: blind-eval only — never `/oprf/register`,
+   which has a uniqueness check.)*
+3. Client unblinds the response to `N`. By OPRF determinism, this
+   is the **same** `N` as the original enrollment: same `RNOKPP` +
+   same `k` → same `N`, regardless of fresh blinding.
+4. Client computes `s = pedersen([N_hi, N_lo], 0)`.
+5. Client queries `EnrollmentRegistry` events for the matching `s`
+   to find the leaf index.
+6. Client rebuilds the Merkle path from on-chain leaves.
+7. Client creates a new Passkey on the new device, wraps the
+   recovered `N` + Merkle path under it, stores in IndexedDB.
+
+The OPRF service operator sees a `blind-eval` call indistinguishable
+from any other. No service change, no contract change.
+
+#### Recovery floor
+
+Triple-loss (no Passkey, no cloud sync, no Diia QES) in v2 has no
+recovery path within the v2 epoch. The citizen waits for the v3
+epoch transition to re-enroll with a fresh / re-issued Diia QES
+(v3 spec §6 epoch-rotated enrollment). This is the same floor as
+any QES-anchored civic-identity system — the system inherits the
+state's ID-recovery process as its ultimate floor.
 
 Browser support (target Q3 2026):
 
@@ -350,16 +381,14 @@ no syncable backup. Unacceptable for a civic-grade tool.
 
 ### 3.5 Recovery flows
 
-Two rows below split by version. v2 ships with Passkey cloud-sync as
-the only zero-friction recovery; v3 lights up the mnemonic path
-(see §3.4 for why).
-
-| Scenario                                  | v2 path (shipped)                         | v3 path (grant scope)                     |
-| ----------------------------------------- | ------------------------------------------- | ------------------------------------------- |
-| Lost phone, signed into Google/iCloud     | New device → Passkey syncs in               | Same                                        |
-| Lost phone, no cloud sync, has mnemonic   | **Re-enroll under new commitment** (epoch transition required; see row 3) | BIP-39 mnemonic → re-derive `s` via OPRF-quorum-released re-derivation OR direct N-from-mnemonic, per §3.4 (a)/(b) |
-| Lost phone, no mnemonic, no cloud sync    | Re-enroll under new commitment (the old commitment becomes inactive after K epochs; epoch transition is on-chain) | Same                                        |
-| Compromised device (key stolen)           | Citizen revokes enrollment via signed revocation transaction; re-enrolls in next epoch | Same                                        |
+| Loss scenario                                       | v2 recovery path                                                 |
+| --------------------------------------------------- | ---------------------------------------------------------------- |
+| Lost phone, signed into iCloud / Google             | Passkey syncs in on next device (Tier 1)                         |
+| Lost phone, has a secondary registered Passkey      | Secondary Passkey unwraps `N` from IndexedDB (Tier 2)            |
+| Lost all Passkeys, has Diia QES                     | QES-anchored recovery: fresh `/oprf/blind-eval` → re-derive `N` (Tier 3) |
+| Lost all Passkeys, lost Diia, can re-issue Diia     | Re-issue Diia via state recovery channels → Tier 3 recovery       |
+| Triple-loss with no Diia recourse                   | Wait for v3 epoch rotation (§v3 spec §6) — re-enroll under fresh QES next epoch |
+| Compromised device (key stolen)                     | Citizen revokes enrollment via signed revocation; re-enrolls in next epoch |
 
 The "re-enroll under new commitment" path **does not** reintroduce
 the cert-renewal Sybil hole, because the OPRF is deterministic on

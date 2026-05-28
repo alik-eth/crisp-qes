@@ -4,20 +4,18 @@ export interface RelayerConfig {
     port: number;
     chainId: number;
     rpcUrl: string;
-    registry: `0x${string}`;
+    /** `PetitionRegistryV2` deployment. */
+    petitionRegistry: `0x${string}`;
+    /** `EnrollmentRegistry` deployment — for reading `enrollmentRoot()`. */
+    enrollmentRegistry: `0x${string}`;
     privateKey: Hex;
     blockExplorerBase: string;
     rateLimitWindowMs: number;
     isProd: boolean;
     /**
-     * CORS allow-list for the public submit endpoint.
-     *
-     * The web client (https://crisp-qes-web.fly.dev) is on a different
-     * origin, so without explicit CORS the browser blocks the POST to
-     * /submit before it even leaves the tab.
-     *
-     * Parsed from `CORS_ALLOWED_ORIGINS` (comma-separated). Defaults to
-     * the production web origin in prod, or `*` in dev.
+     * CORS allow-list for the public /v2/submit endpoint. Defaults to the
+     * v2-web origin in prod or `*` in dev. Comma-separated, parsed from
+     * the `CORS_ALLOWED_ORIGINS` env var.
      */
     corsAllowedOrigins: string[];
 }
@@ -52,9 +50,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RelayerConfig 
     const rpcUrl =
         env.RPC_URL ?? (isProd ? "" : "http://127.0.0.1:8545");
 
-    const registry = (env.PETITION_REGISTRY ?? (isProd ? "" : ZERO_ADDR)) as
-        | `0x${string}`
-        | "";
+    const petitionRegistry = (env.PETITION_REGISTRY_V2 ??
+        (isProd ? "" : ZERO_ADDR)) as `0x${string}` | "";
+    const enrollmentRegistry = (env.ENROLLMENT_REGISTRY ??
+        (isProd ? "" : ZERO_ADDR)) as `0x${string}` | "";
     const privateKey = (env.RELAYER_PRIVATE_KEY ?? (isProd ? "" : ANVIL_DEFAULT_KEY)) as
         | Hex
         | "";
@@ -62,43 +61,54 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RelayerConfig 
     if (isProd) {
         if (!privateKey) {
             throw new Error(
-                "[relayer] RELAYER_PRIVATE_KEY is required in production",
+                "[v2-relayer] RELAYER_PRIVATE_KEY is required in production",
             );
         }
-        if (!registry) {
+        if (!petitionRegistry) {
             throw new Error(
-                "[relayer] PETITION_REGISTRY is required in production",
+                "[v2-relayer] PETITION_REGISTRY_V2 is required in production",
+            );
+        }
+        if (!enrollmentRegistry) {
+            throw new Error(
+                "[v2-relayer] ENROLLMENT_REGISTRY is required in production",
             );
         }
         if (!rpcUrl) {
-            throw new Error("[relayer] RPC_URL is required in production");
+            throw new Error("[v2-relayer] RPC_URL is required in production");
         }
     }
 
-    if (!/^0x[0-9a-fA-F]{40}$/.test(registry)) {
-        throw new Error(
-            `[relayer] PETITION_REGISTRY must be a 20-byte hex address, got ${registry}`,
-        );
+    for (const [name, addr] of [
+        ["PETITION_REGISTRY_V2", petitionRegistry],
+        ["ENROLLMENT_REGISTRY", enrollmentRegistry],
+    ] as const) {
+        if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
+            throw new Error(
+                `[v2-relayer] ${name} must be a 20-byte hex address, got ${addr}`,
+            );
+        }
     }
     if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
         throw new Error(
-            "[relayer] RELAYER_PRIVATE_KEY must be a 32-byte hex string",
+            "[v2-relayer] RELAYER_PRIVATE_KEY must be a 32-byte hex string",
         );
     }
 
     const corsRaw =
         env.CORS_ALLOWED_ORIGINS ??
-        (isProd ? "https://crisp-qes-web.fly.dev" : "*");
+        (isProd ? "https://crisp-qes-v2-web.fly.dev" : "*");
     const corsAllowedOrigins = corsRaw
         .split(",")
         .map((s) => s.trim())
         .filter((s) => s.length > 0);
 
     return {
-        port: Number(env.PORT ?? 8787),
+        port: Number(env.PORT ?? 8789),
         chainId,
         rpcUrl,
-        registry: registry as `0x${string}`,
+        petitionRegistry: petitionRegistry as `0x${string}`,
+        enrollmentRegistry: enrollmentRegistry as `0x${string}`,
         privateKey: privateKey as Hex,
         blockExplorerBase: env.BLOCK_EXPLORER_BASE ?? pickExplorer(chainId),
         rateLimitWindowMs: Number(env.RATE_LIMIT_WINDOW_MS ?? 10_000),

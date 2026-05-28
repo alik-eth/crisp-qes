@@ -1,9 +1,8 @@
 // Browser shim for the small surface of `node:crypto` the SDK touches.
 //
-// The SDK was originally Node-targeted and uses `createHash("sha256")` for
-// the in-browser p7s parser. We map that to @noble/hashes/sha256 which is
-// already in viem's transitive closure and works in workers without any
-// global Buffer requirement.
+// Identical to the MVP web shim — the SDK was originally Node-targeted
+// and uses `createHash("sha256")`. We map that to @noble/hashes/sha256
+// which works in workers without a global Buffer.
 
 import { sha256 } from "@noble/hashes/sha256";
 
@@ -31,8 +30,6 @@ class HashAdapter {
             all.set(c, off);
             off += c.byteLength;
         }
-        // Node's `Buffer` extends Uint8Array; the SDK only ever wraps the
-        // digest in `new Uint8Array(...)` so a plain Uint8Array satisfies it.
         return sha256(all);
     }
 }

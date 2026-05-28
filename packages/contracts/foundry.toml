@@ -1,7 +1,7 @@
 [profile.default]
 src = "src"
 out = "out"
-libs = ["lib"]
+libs = ["../contracts/lib"]
 test = "test"
 script = "script"
 solc_version = "0.8.28"
@@ -9,6 +9,9 @@ optimizer = true
 optimizer_runs = 1
 via_ir = false
 evm_version = "cancun"
+# Read access for the bench harness — UltraVerifierV2Gas.t.sol loads a
+# proof blob from `bench/` produced by `node bench/v2-emit-proof.mjs`.
+fs_permissions = [{ access = "read", path = "../../bench" }]
 
 [fmt]
 line_length = 100

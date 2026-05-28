@@ -1,5 +1,4 @@
-// Shared viem public client.
-
+// Shared viem public client for v2 contracts.
 import { createPublicClient, http } from "viem";
 import { config } from "../config";
 

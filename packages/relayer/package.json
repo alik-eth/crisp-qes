@@ -1,5 +1,5 @@
 {
-  "name": "@crisp-qes/relayer",
+  "name": "@crisp-qes/v2-relayer",
   "private": true,
   "version": "0.0.0",
   "type": "module",

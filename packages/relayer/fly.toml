@@ -1,4 +1,4 @@
-app = "crisp-qes-relayer"
+app = "crisp-qes-v2-relayer"
 primary_region = "fra"
 
 [build]
@@ -6,15 +6,16 @@ primary_region = "fra"
 
 [env]
   NODE_ENV = "production"
-  PORT = "8787"
+  PORT = "8789"
   CHAIN_ID = "84532"
   RPC_URL = "https://sepolia.base.org"
-  PETITION_REGISTRY = "0x86c986f361ddb447949bf010a3f01e0b5a97fbc0"
+  PETITION_REGISTRY_V2 = "0x11561749D669791117592332B8E5373Ff60406EF"
+  ENROLLMENT_REGISTRY = "0x4A17285f2f3035AD8bB6da86d9aB189cC33c4106"
   BLOCK_EXPLORER_BASE = "https://sepolia.basescan.org/tx/"
   RATE_LIMIT_WINDOW_MS = "10000"
 
 [http_service]
-  internal_port = 8787
+  internal_port = 8789
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true

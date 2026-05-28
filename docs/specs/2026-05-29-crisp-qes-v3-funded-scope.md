@@ -114,65 +114,89 @@ the scalar field of the prime-order group):
   jurisdiction + reputation + on-chain slashing if misbehaviour
   is provable.
 
-## 3. Mnemonic recovery activation
+## 3. Recovery design (v3)
 
 ### 3.1 Goal
 
-Citizen can re-derive their `s` from the 24-word mnemonic alone,
-without re-enrollment, even on a fresh device with no
-cloud-synced Passkey.
+Zero-friction recovery for a fresh device, no mnemonic, no
+auxiliary secret material. Citizen with a valid Diia QES can always
+recover their identity; multi-device redundancy is offered at
+enrollment as a proactive option.
 
-### 3.2 The structural problem (recap)
+### 3.2 The structural insight
 
-`s = pedersen([N_hi, N_lo], 0)` where `N = k · Hash_to_curve(RNOKPP)`.
-Mnemonic in v2 encodes `HKDF(N)` — one-way, so `N` can't be
-recovered from mnemonic alone. v2 §3.4 disclosed this.
+The system has exactly one durable secret per citizen:
+`N = k · Hash_to_curve(RNOKPP)`. By OPRF determinism, the same
+`RNOKPP` (asserted via fresh Diia QES) and the same `k` (held by
+the ciphernode quorum) always produce the same `N` — regardless of
+fresh blinding `r'`. So recovery doesn't need a separate
+secret-material layer; it leans on the QES anchor + OPRF
+determinism that the protocol already provides.
 
-### 3.3 Path A — mnemonic as 2FA for OPRF-quorum re-derivation
+Earlier drafts of this section proposed a BIP-39 mnemonic recovery
+path (Path A "mnemonic 2FA" + Path B "raw N encoded in mnemonic").
+Both were dropped after design review. The mnemonic was solving a
+problem the QES already solves, and Path B specifically introduced
+a non-rotatable bearer credential with sub-30% civic-tech recall
+rates. See [[recovery-design-memo]] at `/tmp/recovery-design.md`
+for the full analysis, or v3 spec §11 for the postmortem.
 
-Citizen presents: mnemonic + fresh Diia QES + an attestation
-binding the new device. Quorum verifies, re-runs OPRF
-deterministically over RNOKPP (same `k`, same input → same `N`),
-returns the recovered `N` encrypted to the new device's pubkey.
+### 3.3 QES-anchored quorum re-derivation (tertiary recovery)
 
-Citizen's `s` is unchanged, so all prior enrollment + signature
-history persists. Quorum gates this on the mnemonic match
-(citizen-side proof of knowledge of mnemonic, against a public
-commitment recorded at enrollment time).
+The v3 version of v2 spec §3.4 Tier 3, with the threshold quorum
+in place of the single-node:
 
-**Cost to v3 protocol:** new `RecoveryRegistry` contract
-storing `pedersen(mnemonic_entropy)` per `s`; recovery endpoint
-on ciphernode that checks the mnemonic commitment before
-serving the re-derivation.
+1. Citizen completes Diia QES verification on a fresh device.
+2. Client runs `/oprf/blind-eval` against ≥ `t` of `n` ciphernodes
+   with fresh blinding `r'`.
+3. Each ciphernode returns `Y_i` + DLEQ proof `π_i`.
+4. Client Lagrange-combines + unblinds to `N` — same `N` as the
+   citizen's original enrollment.
+5. Client computes `s = pedersen([N_hi, N_lo], 0)`, queries
+   `EnrollmentRegistry` events for the leaf index, rebuilds the
+   Merkle path.
+6. Client creates a new Passkey on the new device, wraps `N` +
+   Merkle path under it, stores in IndexedDB.
 
-**Tradeoff:** keeps `s` stable across devices but requires the
-quorum to be online for recovery. Acceptable given the
-ciphernode committee is already always-on for enrollment.
+**Protocol change vs v3 §2:** none beyond what the threshold-OPRF
+spec already provides. Recovery uses the same `/oprf/blind-eval`
+endpoint as enrollment; ciphernodes can't distinguish.
 
-### 3.4 Path B — encode raw `N` in mnemonic, drop HKDF
+### 3.4 Multi-Passkey ceremony (secondary recovery)
 
-Cleaner cryptographically: 24 BIP-39 words = 264 bits, plenty for
-256-bit `N`. Mnemonic recovery becomes:
-`N ← BIP39_decode(words); s ← pedersen([N_hi, N_lo], 0)`. No
-ciphernode interaction at all.
+Carry forward from v2 spec §3.4 Tier 2: at enrollment, after the
+first Passkey is created and the on-chain commitment lands, prompt
+the citizen to register a second device. The same `N` is wrapped
+under the second Passkey's PRF output as an additional
+`EnrollmentRecord` row.
 
-**Cost:** requires re-enrollment for citizens enrolled under v2
-(their mnemonic encodes `HKDF(N)`, not `N`). Migration:
-v3 deployment runs in parallel for an epoch transition (§6),
-v2-enrolled citizens re-enroll under the new format, old `s`
-becomes inactive after the transition window.
-
-**Recommendation:** ship **A** first (no forced re-enrollment),
-spec **B** for the v4 hypothetical-clean-slate case.
+Already supported by the v2 `encryptedStore` schema; no v3 protocol
+change required.
 
 ### 3.5 Engineering scope
 
-- New `RecoveryRegistry` contract (Path A).
-- Citizen-side recovery flow in `packages/v3-web/` — mnemonic
-  input → new-device-binding → quorum recovery RPC → re-encrypt
-  to new Passkey.
-- UI: replaces the v2 mnemonic-disclosure paragraph with active
-  recovery flow.
+- **Citizen-side recovery flow** in `packages/web/` (post v2 → v3
+  evolution): repurpose the v2 `Recover.tsx` flow to use the
+  threshold quorum instead of single-node OPRF. Existing client-side
+  components (binding, upload, blind-eval) are reusable.
+- **No new contract.** The `RecoveryRegistry` proposed in earlier
+  drafts is dropped — there is no on-chain mnemonic commitment to
+  store.
+- **No new ciphernode endpoint.** `/oprf/blind-eval` already supports
+  recovery (any citizen with a valid QES can call it; the share
+  it returns is determined by the citizen's RNOKPP).
+
+### 3.6 Recovery floor: §6 epoch rotation
+
+If a citizen loses **everything** — all Passkeys, all cloud accounts,
+and the underlying Diia identity (rare: permanent state-credential
+loss with re-issuance under a new RNOKPP) — the recovery path is
+the next epoch transition: re-enroll under fresh Diia QES, new
+`s_year` issued, old leaf orphaned. See §6 for the epoch rotation
+mechanism.
+
+This is the natural recovery floor of any QES-anchored civic-identity
+system and needs no extra protocol mechanism.
 
 ## 4. On-chain `K_pub` registry
 
@@ -517,7 +541,7 @@ funding (Web3 Resilience Lab, ~$25k) supports:
 | M1     | DKG tooling + ciphernode binary (§2.4)          | Threshold OPRF ready, single committee |
 | M2     | On-chain `K_pub` registry (§4)                  | Trust anchor moved on-chain     |
 | M3     | Threshold-OPRF mainnet pilot (UA, 5-of-7)       | v3 OPRF in production           |
-| M4     | Mnemonic Path A activation (§3.3) + Recovery contract | Recovery flow live          |
+| M4     | QES-anchored recovery + multi-Passkey ceremony (§3)   | Recovery flow live (client-only, no contract work) |
 | M5     | Multi-QTSP UA expansion (§7)                    | UA QTSP universe covered        |
 | M6     | Epoch rotation infrastructure (§6)              | Epoch_2026 → Epoch_2027 cutover ready |
 
@@ -545,6 +569,42 @@ the full v3 protocol shape is documented.
   petition layer needs a design pass for petitions that
   legitimately span borders (EU-citizen petitions, OECD-citizen
   petitions, etc.).
+
+### 11.1 Postmortem — why mnemonic recovery was dropped
+
+Earlier drafts of v2 spec §3.4 and v3 spec §3 proposed BIP-39
+mnemonic recovery paths. Both were rejected after design review on
+2026-05-29.
+
+**v2 §3.4 mnemonic disclosure** shipped as a non-functional
+placeholder — the mnemonic encoded `HKDF(N)`, an irreversible
+derivation that could not regenerate `N`. The disclosure was
+deleted from the v2 codebase and UI.
+
+**v3 §3 Path A "mnemonic 2FA"** failed analysis: the mnemonic gated
+an OPRF re-derivation that the fresh Diia QES already authorizes.
+A citizen with valid QES can re-run `/oprf/blind-eval` with fresh
+blinding and recover `N` by OPRF determinism. The mnemonic added a
+gate that the QES already provided, while introducing a recall-rate
+failure mode for civic-tech users.
+
+**v3 §3 Path B "raw N in mnemonic"** failed analysis: mechanically
+correct (264 bits BIP-39 ≥ 256 bits `N`) but introduced a
+non-rotatable bearer credential with sub-30% civic-tech write-down
+recall rates. Net security regression vs the Passkey-wrapped
+IndexedDB v2 already ships.
+
+**Replacement design** (v3 §3 above + v2 spec §3.4 / §3.5 in the
+v2 spec): three-tier recovery anchored on Diia QES + OPRF
+determinism — cloud-synced Passkey (primary), multi-Passkey
+enrollment ceremony (secondary), QES-anchored `/oprf/blind-eval`
+re-derivation (tertiary), with §6 epoch rotation as the natural
+floor.
+
+Full design memo: `/tmp/recovery-design.md` (researcher,
+2026-05-29). For future readers: don't bring mnemonic back. The
+state-issued QES is the right anchor for civic-identity recovery;
+self-sovereign-crypto recovery patterns do not transfer.
 
 ## 12. References
 
