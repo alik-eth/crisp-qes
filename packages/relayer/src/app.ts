@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import fastifyCors from "@fastify/cors";
 import {
     type Hex,
     decodeEventLog,
@@ -50,6 +51,18 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
         opts.rateLimiter ?? makeRateLimiter(config.rateLimitWindowMs);
 
     const app = Fastify({ logger: { level: config.isProd ? "info" : "warn" } });
+
+    // CORS: the browser blocks cross-origin POSTs from the web app unless we
+    // explicitly allow its origin. `*` (used in dev) accepts any origin but
+    // disables credentials; in prod we list the deployed web origin.
+    const allowAll = config.corsAllowedOrigins.includes("*");
+    void app.register(fastifyCors, {
+        origin: allowAll ? true : config.corsAllowedOrigins,
+        methods: ["GET", "POST", "OPTIONS"],
+        // We don't use cookies/Authorization, so no credentials.
+        credentials: false,
+        maxAge: 86400,
+    });
 
     app.get("/healthz", async () => ({
         ok: true,

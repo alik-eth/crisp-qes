@@ -9,6 +9,17 @@ export interface RelayerConfig {
     blockExplorerBase: string;
     rateLimitWindowMs: number;
     isProd: boolean;
+    /**
+     * CORS allow-list for the public submit endpoint.
+     *
+     * The web client (https://crisp-qes-web.fly.dev) is on a different
+     * origin, so without explicit CORS the browser blocks the POST to
+     * /submit before it even leaves the tab.
+     *
+     * Parsed from `CORS_ALLOWED_ORIGINS` (comma-separated). Defaults to
+     * the production web origin in prod, or `*` in dev.
+     */
+    corsAllowedOrigins: string[];
 }
 
 // Dev defaults: anvil chain id, localhost RPC, the well-known anvil
@@ -75,6 +86,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RelayerConfig 
         );
     }
 
+    const corsRaw =
+        env.CORS_ALLOWED_ORIGINS ??
+        (isProd ? "https://crisp-qes-web.fly.dev" : "*");
+    const corsAllowedOrigins = corsRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
     return {
         port: Number(env.PORT ?? 8787),
         chainId,
@@ -84,5 +103,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RelayerConfig 
         blockExplorerBase: env.BLOCK_EXPLORER_BASE ?? pickExplorer(chainId),
         rateLimitWindowMs: Number(env.RATE_LIMIT_WINDOW_MS ?? 10_000),
         isProd,
+        corsAllowedOrigins,
     };
 }

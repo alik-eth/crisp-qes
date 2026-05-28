@@ -24,6 +24,7 @@ function cfg(overrides: Partial<RelayerConfig> = {}): RelayerConfig {
         blockExplorerBase: "https://example.test/tx/",
         rateLimitWindowMs: 10_000,
         isProd: false,
+        corsAllowedOrigins: ["*"],
         ...overrides,
     };
 }
