@@ -302,12 +302,33 @@ Primary: **WebAuthn PRF extension** (Passkey).
 Disaster-recovery backup: **BIP-39 mnemonic**, shown once at
 enrollment.
 
-- Mnemonic deterministically re-derives the same enrollment secret
-  (HKDF over the seed). Citizen writes it down or saves to a password
-  manager. Without this, a lost device + lost iCloud/Google account =
-  lost identity.
-- The mnemonic and the Passkey share the same downstream secret, so
-  using either path produces the same on-chain commitment.
+- **v2.1 status (honest disclosure):** the mnemonic UI is wired and
+  citizens can save the 24 words, but **mnemonic-only recovery is not
+  active in v2.1**. The reason is structural: `s = pedersen([N_hi,
+  N_lo], 0)` where `N = k · Hash_to_curve(RNOKPP)` is the OPRF output,
+  and the mnemonic only round-trips `HKDF(N)` — an irreversible
+  derivation. The v2.1 demo path therefore stores the wrapped OPRF
+  output in IndexedDB under the Passkey PRF and uses platform
+  credential sync (iCloud Keychain / Google Password Manager) as the
+  cross-device recovery path. Mnemonic-only re-derivation lights up in
+  **v2.2** via one of two paths:
+  - *(a)* **Mnemonic as second factor for OPRF re-derivation:**
+    citizen presents mnemonic + re-runs OPRF protocol with their Diia
+    QES; the mnemonic authorises the ciphernode quorum to release the
+    original `s` (or its Merkle index) without a full re-enrollment.
+    Engineering: ~1 week, fits inside the threshold-OPRF productionisation
+    increment.
+  - *(b)* **Encode raw `N` in the mnemonic directly:** drop the HKDF
+    step so the mnemonic carries 256 bits of `N` (24 BIP-39 words ≈
+    264 bits, fits cleanly). Cleaner cryptographically, but requires
+    a one-time re-enrollment for citizens enrolled under v2.1.
+
+  Either path is in v2.2 grant scope. v2.1 recovery without cloud sync
+  requires re-enrollment under a new commitment (see §3.5 row 3).
+- The mnemonic UI is retained in v2.1 so that future-compatible backups
+  are captured at the right moment in the user flow; a disclosure
+  paragraph in the UI tells the citizen "your mnemonic activates a
+  cross-device recovery path that ships in v2.2."
 
 Browser support (target Q3 2026):
 
@@ -328,12 +349,16 @@ no syncable backup. Unacceptable for a civic-grade tool.
 
 ### 3.5 Recovery flows
 
-| Scenario                                  | Recovery path                              |
-| ----------------------------------------- | ------------------------------------------ |
-| Lost phone, signed into Google/iCloud     | New device → Passkey syncs in              |
-| Lost phone, no cloud sync                 | BIP-39 mnemonic → import to new device     |
-| Lost phone, no mnemonic                   | Re-enroll under new commitment (the old commitment becomes inactive after K epochs; epoch transition is on-chain) |
-| Compromised device (key stolen)           | Citizen revokes enrollment via signed revocation transaction; re-enrolls in next epoch |
+Two rows below split by version. v2.1 ships with Passkey cloud-sync as
+the only zero-friction recovery; v2.2 lights up the mnemonic path
+(see §3.4 for why).
+
+| Scenario                                  | v2.1 path (shipped)                         | v2.2 path (grant scope)                     |
+| ----------------------------------------- | ------------------------------------------- | ------------------------------------------- |
+| Lost phone, signed into Google/iCloud     | New device → Passkey syncs in               | Same                                        |
+| Lost phone, no cloud sync, has mnemonic   | **Re-enroll under new commitment** (epoch transition required; see row 3) | BIP-39 mnemonic → re-derive `s` via OPRF-quorum-released re-derivation OR direct N-from-mnemonic, per §3.4 (a)/(b) |
+| Lost phone, no mnemonic, no cloud sync    | Re-enroll under new commitment (the old commitment becomes inactive after K epochs; epoch transition is on-chain) | Same                                        |
+| Compromised device (key stolen)           | Citizen revokes enrollment via signed revocation transaction; re-enrolls in next epoch | Same                                        |
 
 The "re-enroll under new commitment" path **does not** reintroduce
 the cert-renewal Sybil hole, because the OPRF is deterministic on
