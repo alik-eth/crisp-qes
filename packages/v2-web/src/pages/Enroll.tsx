@@ -1,12 +1,24 @@
-// 5-step enrollment flow.
+// 6-step enrollment flow (re-sequenced from the original 5-step in #48 UX
+// review). The Passkey now sits AFTER the on-chain confirmation so a
+// half-completed enrollment can't leave a dangling credential on the
+// authenticator, and a "binding file to sign in Diia" precedes the
+// upload to mirror the MVP-side Sign-page pattern.
 //
-// 1. Upload .p7s, extract RNOKPP (subjectSerial after `TINUA-`).
-// 2. Create a Passkey + read PRF output.
-// 3. Blind RNOKPP, call OPRF /blind-eval, verify DLEQ, unblind to obtain `N`.
-//    Pedersen-commit `N` to obtain `commitment`. Pedersen-derive `s`.
-// 4. Call OPRF /register with the commitment to get Merkle path + attesterSig.
-//    Submit `EnrollmentRegistry.updateRoot(newRoot, attesterSig)` via wallet.
-// 5. Store the encrypted payload in IndexedDB, show the BIP-39 mnemonic.
+// 0. Download a small binding file containing
+//    `"CRISP_QES_V2_ENROLL::" || epoch_day_be8` and sign it in Diia.
+// 1. Upload the .p7s, extract RNOKPP from subjectSerial (after `TINUA-`).
+// 2. Blind RNOKPP, call OPRF /blind-eval, verify DLEQ, unblind to obtain
+//    `N`. Pedersen-derive `s = pedersen([N_hi, N_lo], 0)` — both the
+//    enrollment secret AND the on-chain leaf AND the OPRF commitment.
+// 3. Call OPRF /register with the commitment to get Merkle path,
+//    newCommitments, and attesterSig.
+// 4. Submit `EnrollmentRegistry.updateRoot(newRoot, newCommitments[],
+//    attesterSig)` via the user's wallet (WalletConnect or injected).
+// 5. Create a Passkey + read PRF output, AES-GCM-wrap the local payload
+//    using HKDF(PRF), persist to IndexedDB.
+// 6. Offer the BIP-39 mnemonic as future-compat (v3) backup — gated
+//    behind an explicit toggle since it can NOT recover an account in
+//    v2.1 (HKDF(N) is one-way relative to `s`).
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -26,6 +38,7 @@ import {
     type EnrollmentPayload,
 } from "../lib/encryptedStore";
 import { mnemonicFromN } from "../lib/bip39Recovery";
+import { buildEnrollmentBindingBytes } from "../lib/enrollmentBinding";
 import { BaseError, ContractFunctionRevertedError } from "viem";
 import {
     connectInjected,
@@ -45,10 +58,12 @@ interface Props {
 }
 
 type Stage =
+    | "binding"
     | "upload"
-    | "passkey"
     | "oprf"
     | "register"
+    | "chain"
+    | "passkey"
     | "backup"
     | "done";
 
@@ -71,10 +86,22 @@ export function Enroll({ onBack, onDone }: Props) {
     const { t } = useTranslation();
     const probe = useMemo(() => probeWebauthn(), []);
 
+    // Step 0 — Diia binding file. Same UX as the MVP Sign page: download,
+    // sign in Diia, upload. The bytes are NOT yet checked against
+    // `signedAttrs.messageDigest` by the v2 OPRF (see v2-oprf/attestation.ts
+    // TODO), so this step is currently UX-only but forward-compatible with
+    // the v2.1-prod attestation pin.
+    const [bindingDownloaded, setBindingDownloaded] = useState(false);
+    const [bindingExpanded, setBindingExpanded] = useState(false);
+
     const [p7sBytes, setP7sBytes] = useState<Uint8Array | null>(null);
     const [parsed, setParsed] = useState<ParsedP7s | null>(null);
     const [parseErr, setParseErr] = useState<string | null>(null);
 
+    // Passkey now sits AFTER the on-chain step (#48 UX review). A failed
+    // OPRF / commitment / chain submit no longer leaves a dangling
+    // credential on the authenticator: the citizen only ever sees the
+    // create-passkey prompt once enrollment is irrevocably committed.
     const [passkey, setPasskey] = useState<{
         credentialId: Uint8Array;
         prfOutput: Uint8Array;
@@ -115,16 +142,26 @@ export function Enroll({ onBack, onDone }: Props) {
 
     const [stage, setStage] = useState<Stage>("upload");
 
-    // Auto-advance the visible "current step" based on which artifacts exist.
+    // Auto-advance the visible "current step" based on which artifacts
+    // exist. New 6-step sequence (see file header):
+    //   binding → upload → oprf → register → chain → passkey → backup.
     useEffect(() => {
-        if (mnemonic) setStage("backup");
-        else if (chainTx) setStage("backup");
-        else if (registerResult) setStage("register");
+        if (mnemonic || passkey) setStage("backup");
+        else if (chainTx) setStage("passkey");
+        else if (registerResult) setStage("chain");
         else if (oprfResult) setStage("register");
-        else if (passkey) setStage("oprf");
-        else if (parsed) setStage("passkey");
-        else setStage("upload");
-    }, [parsed, passkey, oprfResult, registerResult, chainTx, mnemonic]);
+        else if (parsed) setStage("oprf");
+        else if (bindingDownloaded) setStage("upload");
+        else setStage("binding");
+    }, [
+        bindingDownloaded,
+        parsed,
+        oprfResult,
+        registerResult,
+        chainTx,
+        passkey,
+        mnemonic,
+    ]);
 
     useEffect(() => {
         startInjectedDiscovery();
@@ -132,6 +169,26 @@ export function Enroll({ onBack, onDone }: Props) {
         const id = setTimeout(() => setInjected(listInjectedProviders()), 400);
         return () => clearTimeout(id);
     }, []);
+
+    /** Step 0: write the binding file to disk for Diia. */
+    function handleDownloadBinding() {
+        const bytes = buildEnrollmentBindingBytes();
+        // Copy into a fresh ArrayBuffer (not SharedArrayBuffer) so the
+        // Blob constructor type-checks under our strict DOM lib. Mirrors
+        // the pattern from `packages/web/src/pages/Sign.tsx`.
+        const ab = new ArrayBuffer(bytes.byteLength);
+        new Uint8Array(ab).set(bytes);
+        const blob = new Blob([ab], { type: "application/octet-stream" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "crisp-qes-v2-enrollment-binding.bin";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+        setBindingDownloaded(true);
+    }
 
     async function handleConnectInjected(detail: InjectedDetail) {
         setChainBusy("connecting");
@@ -182,7 +239,7 @@ export function Enroll({ onBack, onDone }: Props) {
      * through verbatim.
      */
     async function handleChainSubmit() {
-        if (!session || !registerResult || !oprfResult || !passkey) return;
+        if (!session || !registerResult || !oprfResult) return;
         setChainBusy("submitting");
         setChainErr(null);
         try {
@@ -244,27 +301,58 @@ export function Enroll({ onBack, onDone }: Props) {
                 return;
             }
             setChainTx(txHash);
+            setChainBusy("idle");
+            // Note: passkey creation + local persist + mnemonic-derivation
+            // intentionally moved to `handleCreatePasskey` (step 5). If
+            // we fail here, no credential was minted; the citizen can
+            // retry the wallet step or recover via mnemonic in a future
+            // version.
+        } catch (e) {
+            setChainErr(friendlyChainError(e, t));
+            setChainBusy("idle");
+        }
+    }
 
-            // Now persist the enrollment locally and reveal the mnemonic.
+    /**
+     * Step 5: now that the enrollment root is on-chain, mint the Passkey,
+     * wrap the payload, persist to IndexedDB, and compute the v3 future-
+     * compat mnemonic. If this step fails, the enrollment is still good
+     * on-chain — the citizen can re-enter the app, recognise the existing
+     * `commitment`, and retry the local-binding step.
+     */
+    async function handleCreatePasskey() {
+        if (!oprfResult || !registerResult || !chainTx) return;
+        setPasskeyBusy(true);
+        setPasskeyErr(null);
+        try {
+            const userId = crypto.getRandomValues(new Uint8Array(16));
+            const userName = `crisp-qes-v2-${Date.now()}`;
+            const pk = await registerPasskey(
+                "CRISP-QES v2",
+                userId,
+                userName,
+                userName,
+            );
             const payload: EnrollmentPayload = {
                 enrollmentSecret: oprfResult.s,
                 oprfOutputN: hexEncode(oprfResult.N),
                 merklePath: registerResult.merklePath,
                 merklePathIndices: registerResult.merklePathIndices,
             };
-            const ciphertext = await wrapPayload(payload, passkey.prfOutput);
+            const ciphertext = await wrapPayload(payload, pk.prfOutput);
             await putEnrollment({
                 version: 1,
                 commitment: oprfResult.s,
                 leafIndex: registerResult.leafIndex,
-                credentialId: hexEncode(passkey.credentialId),
+                credentialId: hexEncode(pk.credentialId),
                 ciphertext,
             });
+            setPasskey(pk);
             setMnemonic(mnemonicFromN(oprfResult.N));
-            setChainBusy("idle");
         } catch (e) {
-            setChainErr(friendlyChainError(e, t));
-            setChainBusy("idle");
+            setPasskeyErr(e instanceof Error ? e.message : String(e));
+        } finally {
+            setPasskeyBusy(false);
         }
     }
 
@@ -294,29 +382,8 @@ export function Enroll({ onBack, onDone }: Props) {
         }
     }
 
-    async function createPasskey() {
-        if (!parsed) return;
-        setPasskeyBusy(true);
-        setPasskeyErr(null);
-        try {
-            const userId = crypto.getRandomValues(new Uint8Array(16));
-            const userName = `crisp-qes-v2-${Date.now()}`;
-            const result = await registerPasskey(
-                "CRISP-QES v2",
-                userId,
-                userName,
-                userName,
-            );
-            setPasskey(result);
-        } catch (e) {
-            setPasskeyErr(e instanceof Error ? e.message : String(e));
-        } finally {
-            setPasskeyBusy(false);
-        }
-    }
-
     async function runOprf() {
-        if (!parsed || !p7sBytes || !passkey) return;
+        if (!parsed || !p7sBytes) return;
         setOprfBusy(true);
         setOprfErr(null);
         try {
@@ -345,7 +412,7 @@ export function Enroll({ onBack, onDone }: Props) {
     }
 
     async function runRegister() {
-        if (!oprfResult || !passkey) return;
+        if (!oprfResult) return;
         setRegisterBusy(true);
         setRegisterErr(null);
         try {
@@ -390,25 +457,69 @@ export function Enroll({ onBack, onDone }: Props) {
             </p>
 
             <ol className="steps">
-                {(["upload", "passkey", "oprf", "register", "backup"] as const).map(
-                    (k) => {
-                        const isActive = stage === k;
-                        return (
-                            <li
-                                key={k}
-                                className={
-                                    "steps__item " +
-                                    (isActive ? "steps__item--active" : "")
-                                }
-                            >
-                                {t(`enroll.steps.${k}`)}
-                            </li>
-                        );
-                    },
-                )}
+                {(
+                    [
+                        "binding",
+                        "upload",
+                        "oprf",
+                        "register",
+                        "passkey",
+                        "backup",
+                    ] as const
+                ).map((k) => {
+                    const isActive = stage === k;
+                    return (
+                        <li
+                            key={k}
+                            className={
+                                "steps__item " +
+                                (isActive ? "steps__item--active" : "")
+                            }
+                        >
+                            {t(`enroll.steps.${k}`)}
+                        </li>
+                    );
+                })}
             </ol>
 
-            {/* 1. Upload */}
+            {/* 0. Binding file — what the citizen signs in Diia. */}
+            <div className="panel">
+                <p className="panel__title">{t("enroll.binding.title")}</p>
+                <p className="note">{t("enroll.binding.intro")}</p>
+                <div className="actions">
+                    <button
+                        className="btn btn--accent"
+                        type="button"
+                        onClick={handleDownloadBinding}
+                    >
+                        {t("enroll.binding.download")}
+                    </button>
+                </div>
+                {bindingDownloaded ? (
+                    <p className="note" style={{ marginTop: 12 }}>
+                        <span className="tag-ok">✓</span>{" "}
+                        {t("enroll.binding.afterDownload")}
+                    </p>
+                ) : null}
+                <p style={{ marginTop: 14 }}>
+                    <button
+                        className="btn--link"
+                        type="button"
+                        onClick={() => setBindingExpanded((v) => !v)}
+                        aria-expanded={bindingExpanded}
+                    >
+                        {bindingExpanded
+                            ? t("enroll.binding.whatIsThisHide")
+                            : t("enroll.binding.whatIsThis")}
+                    </button>
+                </p>
+                {bindingExpanded ? (
+                    <p className="note">{t("enroll.binding.details")}</p>
+                ) : null}
+            </div>
+
+            {/* 1. Upload — open as soon as the binding is downloaded, but
+                the user is free to upload a .p7s prepared elsewhere. */}
             <div className="panel">
                 <p className="panel__title">{t("enroll.upload.title")}</p>
                 <p className="note">{t("enroll.upload.intro")}</p>
@@ -419,42 +530,8 @@ export function Enroll({ onBack, onDone }: Props) {
                 ) : null}
             </div>
 
-            {/* 2. Passkey */}
+            {/* 2. OPRF — no longer gated on Passkey (#48 reorder). */}
             {parsed ? (
-                <div className="panel">
-                    <p className="panel__title">{t("enroll.passkey.title")}</p>
-                    <p className="note">{t("enroll.passkey.intro")}</p>
-                    {!probe.available ? (
-                        <p className="error-line">
-                            {t("enroll.passkey.unsupported")}
-                            {probe.reason ? ` — ${probe.reason}` : ""}
-                        </p>
-                    ) : passkey ? (
-                        <p className="tag-ok">✓ {t("enroll.passkey.created")}</p>
-                    ) : (
-                        <div className="actions">
-                            <button
-                                className="btn btn--accent"
-                                type="button"
-                                onClick={createPasskey}
-                                disabled={passkeyBusy}
-                            >
-                                {passkeyBusy
-                                    ? t("enroll.passkey.creating")
-                                    : t("enroll.passkey.create")}
-                            </button>
-                        </div>
-                    )}
-                    {passkeyErr ? (
-                        <p className="error-line">
-                            {t("enroll.passkey.error", { detail: passkeyErr })}
-                        </p>
-                    ) : null}
-                </div>
-            ) : null}
-
-            {/* 3. OPRF */}
-            {parsed && passkey ? (
                 <div className="panel">
                     <p className="panel__title">{t("enroll.oprf.title")}</p>
                     <p className="note">{t("enroll.oprf.intro")}</p>
@@ -491,8 +568,8 @@ export function Enroll({ onBack, onDone }: Props) {
                 </div>
             ) : null}
 
-            {/* 4. Register */}
-            {oprfResult && passkey ? (
+            {/* 3. Register with committee — no Passkey dependency yet. */}
+            {oprfResult ? (
                 <div className="panel">
                     <p className="panel__title">{t("enroll.register.title")}</p>
                     <p className="note">{t("enroll.register.intro")}</p>
@@ -662,14 +739,52 @@ export function Enroll({ onBack, onDone }: Props) {
                 </div>
             ) : null}
 
-            {/* 5. Backup — only after the chain step lands. */}
-            {mnemonic ? (
+            {/* 5. Passkey — minted AFTER the chain step lands so a
+                failed enrollment can't leave a dangling credential. The
+                same handler wraps + persists the local payload and
+                derives the v3 future-compat mnemonic. */}
+            {chainTx && !passkey ? (
                 <div className="panel">
-                    {chainTx ? (
-                        <p className="note mono">
-                            {t("enroll.chain.tx")}: {chainTx}
+                    <p className="note mono">
+                        {t("enroll.chain.tx")}: {chainTx}
+                    </p>
+                    <p className="panel__title">{t("enroll.passkey.title")}</p>
+                    <p className="note">{t("enroll.passkey.intro")}</p>
+                    {!probe.available ? (
+                        <p className="error-line">
+                            {t("enroll.passkey.unsupported")}
+                            {probe.reason ? ` — ${probe.reason}` : ""}
+                        </p>
+                    ) : (
+                        <div className="actions">
+                            <button
+                                className="btn btn--accent"
+                                type="button"
+                                onClick={handleCreatePasskey}
+                                disabled={passkeyBusy}
+                            >
+                                {passkeyBusy
+                                    ? t("enroll.passkey.creating")
+                                    : t("enroll.passkey.create")}
+                            </button>
+                        </div>
+                    )}
+                    {passkeyErr ? (
+                        <p className="error-line">
+                            {t("enroll.passkey.error", { detail: passkeyErr })}
                         </p>
                     ) : null}
+                </div>
+            ) : null}
+
+            {/* 6. Backup — reframed as future-compat (v3) capture, gated
+                behind an explicit reveal toggle (#48 / codex audit). In
+                v2.1 the mnemonic is HKDF(N), which is one-way relative to
+                `s = pedersen([N_hi, N_lo], 0)`, so it CANNOT recover an
+                account. Citizens can finish enrollment without revealing.
+                See `lib/bip39Recovery.ts` for the v3 anchor.  */}
+            {passkey && mnemonic ? (
+                <div className="panel">
                     <p className="panel__title">{t("enroll.backup.title")}</p>
                     <p className="note">{t("enroll.backup.intro")}</p>
                     <p className="note text-warn">{t("enroll.backup.warning")}</p>
@@ -678,39 +793,29 @@ export function Enroll({ onBack, onDone }: Props) {
                             <p className="mono" style={{ fontSize: 15, lineHeight: 1.7 }}>
                                 {mnemonic}
                             </p>
-                            {/*
-                              v2.1 disclosure (spec §3.4 / codex audit): the
-                              mnemonic is HKDF(N), so it can't actually
-                              re-derive `s = pedersen([N_hi, N_lo], 0)` for
-                              cross-device recovery in v2.1. Citizens still
-                              capture it now so the v2.2 path is seamless;
-                              see `lib/bip39Recovery.ts` for the marker.
-                            */}
                             <p className="note">{t("enroll.backup.disclosure")}</p>
                         </>
-                    ) : null}
+                    ) : (
+                        <p className="note">{t("enroll.backup.gateExplain")}</p>
+                    )}
                     <div className="actions">
-                        <button
-                            className="btn btn--ghost"
-                            type="button"
-                            onClick={() => setMnemonicRevealed((v) => !v)}
-                        >
-                            {mnemonicRevealed
-                                ? t("enroll.backup.hide")
-                                : t("enroll.backup.show")}
-                        </button>
+                        {!mnemonicRevealed ? (
+                            <button
+                                className="btn btn--ghost"
+                                type="button"
+                                onClick={() => setMnemonicRevealed(true)}
+                            >
+                                {t("enroll.backup.reveal")}
+                            </button>
+                        ) : null}
                         <button
                             className="btn btn--accent"
                             type="button"
                             onClick={onDone}
-                            disabled={!mnemonicRevealed}
-                            title={
-                                mnemonicRevealed
-                                    ? undefined
-                                    : t("enroll.backup.show")
-                            }
                         >
-                            {t("enroll.backup.saved")}
+                            {mnemonicRevealed
+                                ? t("enroll.backup.saved")
+                                : t("enroll.backup.finishSkip")}
                         </button>
                     </div>
                 </div>

@@ -63,11 +63,21 @@
         "intro": "Done once. You prove your identity with a Diia QES, bind it to a Passkey on this device, and from then on every signature is a sub-second tap — no fresh KEP.",
         "back": "Back to petitions",
         "steps": {
-            "upload": "1. Upload Diia QES",
-            "passkey": "2. Create Passkey",
-            "oprf": "3. OPRF + commitment",
-            "register": "4. Register with committee",
-            "backup": "5. Recovery mnemonic"
+            "binding": "0. File to sign in Diia",
+            "upload": "1. Upload signed Diia QES",
+            "oprf": "2. OPRF + commitment",
+            "register": "3. Register on-chain",
+            "passkey": "4. Create Passkey",
+            "backup": "5. Future-compat backup (v3)"
+        },
+        "binding": {
+            "title": "File to sign in Diia",
+            "intro": "Before uploading anything, download this small file and sign it inside the Diia app via «Накласти КЕП». Diia produces a .p7s — the file you upload in the next step. The binding scopes your signature to a v2 enrollment intent for today's epoch so the same .p7s cannot be reused as a generic Diia signature elsewhere.",
+            "download": "Download file to sign",
+            "afterDownload": "File saved. Open it in Diia: «Документи» → «Накласти КЕП» → select this file → save the resulting .p7s and drag it into step 1.",
+            "whatIsThis": "What is this file?",
+            "whatIsThisHide": "Hide explanation",
+            "details": "The file is 28 bytes: 20 bytes of the ASCII label `CRISP_QES_V2_ENROLL::`, then an 8-byte big-endian Unix-day index. Diia computes sha256 over those bytes and writes the result as `messageDigest` inside `signedAttrs` in your .p7s. In v2.1 the OPRF service verifies the Diia cert chain but does not yet pin `messageDigest` to this exact binding (v2.1-prod work); the binding still gives you a recognisable artifact to sign rather than an opaque blob."
         },
         "upload": {
             "title": "Diia QES (.p7s)",
@@ -134,13 +144,14 @@
             }
         },
         "backup": {
-            "title": "Recovery mnemonic (BIP-39)",
-            "intro": "These 24 words let you recover your identity on a different device — even without your Passkey. Write them down and store them safely. We do NOT store this mnemonic: lose it and lose your Passkey, and you'll have to wait for the next epoch to re-enroll.",
-            "show": "Reveal mnemonic",
-            "hide": "Hide",
-            "saved": "I've written it down — finish enrollment",
+            "title": "Future-compat backup (v3)",
+            "intro": "In v2.1, the only working recovery path is your Passkey's cloud sync (iCloud, Google Password Manager, or Microsoft). The 24-word mnemonic below is a forward-compat artifact: writing it down NOW lets the v3 release recover your account seamlessly on a new device, but on v2.1 these words alone cannot restore an account — they're HKDF-derived from your OPRF output and cannot re-produce the on-chain commitment by themselves.",
+            "gateExplain": "You can finish enrollment now without ever seeing these words. Reveal them only if you want to capture a v3 backup on paper today.",
+            "reveal": "Reveal v3 backup words",
+            "saved": "I've written them down — finish enrollment",
+            "finishSkip": "Skip backup — finish enrollment",
             "warning": "Never share these words. No representative of Diia, the ciphernode, or this app will ever ask for them.",
-            "disclosure": "Save these 24 words. In v2.1, recovery without Passkey cloud sync requires re-enrollment — the mnemonic activates seamless cross-device recovery in v2.2."
+            "disclosure": "Reminder: in v2.1 these words alone CANNOT recover your account — that path goes live in v3. Today's working recovery is your Passkey cloud sync."
         },
         "done": {
             "title": "Enrollment complete",
