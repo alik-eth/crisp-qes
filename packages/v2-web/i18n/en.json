@@ -107,6 +107,31 @@
             "leafIndex": "Position in the tree",
             "error": "Registration error: {{detail}}"
         },
+        "chain": {
+            "title": "Confirm the on-chain root update",
+            "intro": "Last step: sign `EnrollmentRegistry.updateRoot(newRoot, leafIndex, attesterSig)` with your own wallet. This updates the tree root in the contract — a one-time action per enrollment. You pay the gas yourself: enrollment is the one moment in the protocol where the audit story is cleaner if the citizen is the on-chain sender (not the relayer).",
+            "injectedHint": "Browser extension",
+            "walletConnect": "WalletConnect",
+            "walletConnectHint": "QR code for a mobile wallet",
+            "wallet": "Wallet",
+            "chain": "Network",
+            "disconnect": "Disconnect",
+            "wrongChain": "Switch your wallet to Base Sepolia.",
+            "submit": "Sign updateRoot in wallet",
+            "signing": "Signing in wallet…",
+            "mining": "Waiting for confirmation…",
+            "reverted": "Transaction reverted by the contract.",
+            "tx": "Transaction",
+            "error": "On-chain step error: {{detail}}",
+            "errors": {
+                "badSignature": "Attester signature does not match the current root.",
+                "indexMismatch": "leafIndex does not match current tree state — someone else likely enrolled in parallel. Try again.",
+                "notAdmin": "Only the admin can perform this action.",
+                "zeroAddress": "Parameter has a zero address.",
+                "userRejected": "Transaction cancelled in the wallet.",
+                "unknown": "Unknown contract error."
+            }
+        },
         "backup": {
             "title": "Recovery mnemonic (BIP-39)",
             "intro": "These 24 words let you recover your identity on a different device — even without your Passkey. Write them down and store them safely. We do NOT store this mnemonic: lose it and lose your Passkey, and you'll have to wait for the next epoch to re-enroll.",

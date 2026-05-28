@@ -26,6 +26,18 @@ import {
     type EnrollmentPayload,
 } from "../lib/encryptedStore";
 import { mnemonicFromN } from "../lib/bip39Recovery";
+import { BaseError, ContractFunctionRevertedError } from "viem";
+import {
+    connectInjected,
+    connectWalletConnect,
+    ensureChain,
+    listInjectedProviders,
+    startInjectedDiscovery,
+    type InjectedDetail,
+} from "../lib/wallet";
+import { useWallet } from "../lib/walletContext";
+import { enrollmentRegistryAbi } from "../lib/abi";
+import { config } from "../config";
 
 interface Props {
     onBack: () => void;
@@ -88,6 +100,15 @@ export function Enroll({ onBack, onDone }: Props) {
     const [registerBusy, setRegisterBusy] = useState(false);
     const [registerErr, setRegisterErr] = useState<string | null>(null);
 
+    // On-chain step (user-signed via WalletConnect).
+    const { session, setSession, clearSession } = useWallet();
+    const [injected, setInjected] = useState<InjectedDetail[]>([]);
+    const [chainBusy, setChainBusy] = useState<
+        "idle" | "connecting" | "switching" | "submitting" | "mining"
+    >("idle");
+    const [chainErr, setChainErr] = useState<string | null>(null);
+    const [chainTx, setChainTx] = useState<`0x${string}` | null>(null);
+
     const [mnemonic, setMnemonic] = useState<string | null>(null);
     const [mnemonicRevealed, setMnemonicRevealed] = useState(false);
 
@@ -96,12 +117,154 @@ export function Enroll({ onBack, onDone }: Props) {
     // Auto-advance the visible "current step" based on which artifacts exist.
     useEffect(() => {
         if (mnemonic) setStage("backup");
-        else if (registerResult) setStage("backup");
+        else if (chainTx) setStage("backup");
+        else if (registerResult) setStage("register");
         else if (oprfResult) setStage("register");
         else if (passkey) setStage("oprf");
         else if (parsed) setStage("passkey");
         else setStage("upload");
-    }, [parsed, passkey, oprfResult, registerResult, mnemonic]);
+    }, [parsed, passkey, oprfResult, registerResult, chainTx, mnemonic]);
+
+    useEffect(() => {
+        startInjectedDiscovery();
+        setInjected(listInjectedProviders());
+        const id = setTimeout(() => setInjected(listInjectedProviders()), 400);
+        return () => clearTimeout(id);
+    }, []);
+
+    async function handleConnectInjected(detail: InjectedDetail) {
+        setChainBusy("connecting");
+        setChainErr(null);
+        try {
+            const s = await connectInjected(detail);
+            setSession(s);
+            if (s.chainId !== config.chainId) {
+                setChainBusy("switching");
+                const post = await ensureChain(s);
+                setSession({ ...s, chainId: post });
+            }
+            setChainBusy("idle");
+        } catch (e) {
+            setChainErr(e instanceof Error ? e.message : String(e));
+            setChainBusy("idle");
+        }
+    }
+
+    async function handleConnectWalletConnect() {
+        setChainBusy("connecting");
+        setChainErr(null);
+        try {
+            const s = await connectWalletConnect();
+            setSession(s);
+            if (s.chainId !== config.chainId) {
+                setChainBusy("switching");
+                const post = await ensureChain(s);
+                setSession({ ...s, chainId: post });
+            }
+            setChainBusy("idle");
+        } catch (e) {
+            setChainErr(e instanceof Error ? e.message : String(e));
+            setChainBusy("idle");
+        }
+    }
+
+    /**
+     * Submit `EnrollmentRegistry.updateRoot(newRoot, leafIndex, attesterSig)`
+     * via the user's wallet. The relayer is intentionally not on this path —
+     * enrollment is a one-time, audit-cleaner action signed by the citizen.
+     */
+    async function handleChainSubmit() {
+        if (!session || !registerResult || !oprfResult || !passkey) return;
+        setChainBusy("submitting");
+        setChainErr(null);
+        try {
+            if (session.chainId !== config.chainId) {
+                setChainBusy("switching");
+                const post = await ensureChain(session);
+                setSession({ ...session, chainId: post });
+                if (post !== config.chainId) {
+                    setChainErr(t("enroll.chain.wrongChain"));
+                    setChainBusy("idle");
+                    return;
+                }
+            }
+
+            // Simulate against our own RPC for proper gas estimation +
+            // named-revert decoding.
+            const { publicClient } = await import("../lib/chain");
+            const { request } = await publicClient.simulateContract({
+                account: session.address,
+                address: config.enrollmentRegistry,
+                abi: enrollmentRegistryAbi,
+                functionName: "updateRoot",
+                args: [
+                    registerResult.newRoot,
+                    BigInt(registerResult.leafIndex),
+                    registerResult.attesterSig,
+                ],
+            });
+            let gas = request.gas;
+            if (!gas) {
+                gas = await publicClient.estimateContractGas({
+                    account: session.address,
+                    address: config.enrollmentRegistry,
+                    abi: enrollmentRegistryAbi,
+                    functionName: "updateRoot",
+                    args: [
+                        registerResult.newRoot,
+                        BigInt(registerResult.leafIndex),
+                        registerResult.attesterSig,
+                    ],
+                });
+            }
+            const gasBuf = (gas * 125n) / 100n;
+
+            setChainBusy("submitting");
+            const txHash = await session.client.writeContract({
+                ...request,
+                gas: gasBuf,
+                account: session.address,
+                chain: config.chain,
+            });
+            setChainBusy("mining");
+            const receipt = await publicClient.waitForTransactionReceipt({
+                hash: txHash,
+            });
+            if (receipt.status !== "success") {
+                setChainErr(t("enroll.chain.reverted"));
+                setChainBusy("idle");
+                return;
+            }
+            setChainTx(txHash);
+
+            // Now persist the enrollment locally and reveal the mnemonic.
+            const payload: EnrollmentPayload = {
+                enrollmentSecret: oprfResult.s,
+                oprfOutputN: hexEncode(oprfResult.N),
+                merklePath: registerResult.merklePath,
+                merklePathIndices: registerResult.merklePathIndices,
+            };
+            const ciphertext = await wrapPayload(payload, passkey.prfOutput);
+            await putEnrollment({
+                version: 1,
+                commitment: oprfResult.s,
+                leafIndex: registerResult.leafIndex,
+                credentialId: hexEncode(passkey.credentialId),
+                ciphertext,
+            });
+            setMnemonic(mnemonicFromN(oprfResult.N));
+            setChainBusy("idle");
+        } catch (e) {
+            setChainErr(friendlyChainError(e, t));
+            setChainBusy("idle");
+        }
+    }
+
+    async function handleDisconnect() {
+        const { disconnectWallet } = await import("../lib/wallet");
+        await disconnectWallet(session);
+        clearSession();
+    }
 
     async function onFile(file: File) {
         setParseErr(null);
@@ -186,13 +349,11 @@ export function Enroll({ onBack, onDone }: Props) {
                 unblindedOutput: oprfResult.N,
             });
 
-            // TODO(N5): in the relayer-sponsored flow, the relayer takes
-            // `(newRoot, attesterSig)` and posts EnrollmentRegistry.updateRoot
-            // on the citizen's behalf. We have the attesterSig in hand and
-            // would otherwise drive this through WalletConnect; for the demo
-            // path we surface the values and store them locally so Sign can
-            // proceed against whatever root is currently pinned on-chain.
-
+            // Per team-lead: enrollment-time root update is user-signed
+            // via WalletConnect (NOT relayer-sponsored). We surface the
+            // OPRF response here; the on-chain step (handleChainSubmit)
+            // performs the EnrollmentRegistry.updateRoot call and only
+            // then persists the local enrollment + reveals the mnemonic.
             setRegisterResult({
                 merklePath: r.merklePath,
                 merklePathIndices: r.merklePathIndices,
@@ -200,24 +361,6 @@ export function Enroll({ onBack, onDone }: Props) {
                 newRoot: r.newRoot,
                 attesterSig: r.attesterSig,
             });
-
-            // Persist the enrollment encrypted under the PRF key.
-            const payload: EnrollmentPayload = {
-                enrollmentSecret: oprfResult.s,
-                oprfOutputN: hexEncode(oprfResult.N),
-                merklePath: r.merklePath,
-                merklePathIndices: r.merklePathIndices,
-            };
-            const ciphertext = await wrapPayload(payload, passkey.prfOutput);
-            await putEnrollment({
-                version: 1,
-                commitment: oprfResult.s,
-                leafIndex: r.leafIndex,
-                credentialId: hexEncode(passkey.credentialId),
-                ciphertext,
-            });
-
-            setMnemonic(mnemonicFromN(oprfResult.N));
         } catch (e) {
             setRegisterErr(e instanceof Error ? e.message : String(e));
         } finally {
@@ -381,9 +524,143 @@ export function Enroll({ onBack, onDone }: Props) {
                 </div>
             ) : null}
 
-            {/* 5. Backup */}
+            {/* 4b. On-chain — user-signed via WalletConnect */}
+            {registerResult && !chainTx ? (
+                <div className="panel">
+                    <p className="panel__title">{t("enroll.chain.title")}</p>
+                    <p className="note">{t("enroll.chain.intro")}</p>
+
+                    {!session ? (
+                        <>
+                            <ul className="wallet-picker">
+                                {injected.map((d) => (
+                                    <li key={d.info.uuid}>
+                                        <button
+                                            className="wallet-pick"
+                                            type="button"
+                                            onClick={() => handleConnectInjected(d)}
+                                            disabled={chainBusy === "connecting"}
+                                        >
+                                            {d.info.icon ? (
+                                                <img
+                                                    className="wallet-pick__icon"
+                                                    src={d.info.icon}
+                                                    alt=""
+                                                    width={28}
+                                                    height={28}
+                                                />
+                                            ) : (
+                                                <span className="wallet-pick__icon wallet-pick__icon--blank" />
+                                            )}
+                                            <span className="wallet-pick__body">
+                                                <span className="wallet-pick__name">
+                                                    {d.info.name}
+                                                </span>
+                                                <span className="wallet-pick__hint">
+                                                    {t("enroll.chain.injectedHint")}
+                                                </span>
+                                            </span>
+                                        </button>
+                                    </li>
+                                ))}
+                                <li>
+                                    <button
+                                        className="wallet-pick"
+                                        type="button"
+                                        onClick={handleConnectWalletConnect}
+                                        disabled={chainBusy === "connecting"}
+                                    >
+                                        <span
+                                            className="wallet-pick__icon wallet-pick__icon--wc"
+                                            aria-hidden
+                                        >
+                                            WC
+                                        </span>
+                                        <span className="wallet-pick__body">
+                                            <span className="wallet-pick__name">
+                                                {t("enroll.chain.walletConnect")}
+                                            </span>
+                                            <span className="wallet-pick__hint">
+                                                {t("enroll.chain.walletConnectHint")}
+                                            </span>
+                                        </span>
+                                    </button>
+                                </li>
+                            </ul>
+                        </>
+                    ) : (
+                        <>
+                            <dl>
+                                <div className="field-row">
+                                    <dt>{t("enroll.chain.wallet")}</dt>
+                                    <dd className="mono">
+                                        {session.label} · {session.address.slice(0, 6)}
+                                        …{session.address.slice(-4)}{" "}
+                                        <button
+                                            className="btn--link"
+                                            type="button"
+                                            onClick={handleDisconnect}
+                                            disabled={
+                                                chainBusy === "submitting" ||
+                                                chainBusy === "mining"
+                                            }
+                                        >
+                                            {t("enroll.chain.disconnect")}
+                                        </button>
+                                    </dd>
+                                </div>
+                                <div className="field-row">
+                                    <dt>{t("enroll.chain.chain")}</dt>
+                                    <dd className="mono">
+                                        {session.chainId === config.chainId ? (
+                                            <span className="tag-ok">
+                                                {config.chain.name} ({config.chainId})
+                                            </span>
+                                        ) : (
+                                            <span className="tag-bad">
+                                                {t("enroll.chain.wrongChain")}
+                                            </span>
+                                        )}
+                                    </dd>
+                                </div>
+                            </dl>
+                            <div className="actions">
+                                <button
+                                    className="btn btn--accent"
+                                    type="button"
+                                    onClick={handleChainSubmit}
+                                    disabled={
+                                        chainBusy === "submitting" ||
+                                        chainBusy === "mining" ||
+                                        chainBusy === "switching"
+                                    }
+                                >
+                                    {chainBusy === "submitting"
+                                        ? t("enroll.chain.signing")
+                                        : chainBusy === "mining"
+                                          ? t("enroll.chain.mining")
+                                          : t("enroll.chain.submit")}
+                                </button>
+                            </div>
+                        </>
+                    )}
+
+                    {chainErr ? (
+                        <p className="error-line">
+                            {t("enroll.chain.error", { detail: chainErr })}
+                        </p>
+                    ) : null}
+                </div>
+            ) : null}
+
+            {/* 5. Backup — only after the chain step lands. */}
             {mnemonic ? (
                 <div className="panel">
+                    {chainTx ? (
+                        <p className="note mono">
+                            {t("enroll.chain.tx")}: {chainTx}
+                        </p>
+                    ) : null}
                     <p className="panel__title">{t("enroll.backup.title")}</p>
                     <p className="note">{t("enroll.backup.intro")}</p>
                     <p className="note text-warn">{t("enroll.backup.warning")}</p>
@@ -420,4 +697,38 @@ export function Enroll({ onBack, onDone }: Props) {
             ) : null}
         </section>
     );
+}
+
+// Map EnrollmentRegistry custom reverts + common provider errors to
+// translated copy.
+function friendlyChainError(err: unknown, t: (k: string) => string): string {
+    if (err instanceof BaseError) {
+        const reverted = err.walk(
+            (e) => e instanceof ContractFunctionRevertedError,
+        );
+        if (reverted instanceof ContractFunctionRevertedError) {
+            const name = reverted.data?.errorName;
+            switch (name) {
+                case "BadSignature":
+                    return t("enroll.chain.errors.badSignature");
+                case "IndexMismatch":
+                    return t("enroll.chain.errors.indexMismatch");
+                case "NotAdmin":
+                    return t("enroll.chain.errors.notAdmin");
+                case "ZeroAddress":
+                    return t("enroll.chain.errors.zeroAddress");
+                default:
+                    return (
+                        reverted.shortMessage ??
+                        t("enroll.chain.errors.unknown")
+                    );
+            }
+        }
+        return err.shortMessage ?? err.message;
+    }
+    if (err && typeof err === "object" && "code" in err) {
+        const code = (err as { code?: number }).code;
+        if (code === 4001) return t("enroll.chain.errors.userRejected");
+    }
+    return err instanceof Error ? err.message : String(err);
 }

@@ -25,17 +25,15 @@ export const enrollmentRegistryAbi = [
         stateMutability: "nonpayable",
         inputs: [
             { name: "newRoot", type: "bytes32" },
+            { name: "leafIndex", type: "uint256" },
             { name: "signature", type: "bytes" },
         ],
         outputs: [],
     },
-    {
-        type: "function",
-        name: "isCommitmentUsed",
-        stateMutability: "view",
-        inputs: [{ name: "commitment", type: "bytes32" }],
-        outputs: [{ name: "", type: "bool" }],
-    },
+    { type: "error", name: "BadSignature", inputs: [] },
+    { type: "error", name: "IndexMismatch", inputs: [] },
+    { type: "error", name: "NotAdmin", inputs: [] },
+    { type: "error", name: "ZeroAddress", inputs: [] },
 ] as const;
 
 /** Mirrors `enum BallotMode { Signature, YesNo, YesNoAbstain }` in PetitionRegistryV2. */
