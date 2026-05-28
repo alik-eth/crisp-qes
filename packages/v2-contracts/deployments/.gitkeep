@@ -1,0 +1,18 @@
+Deployment address records land here as JSON files keyed by network:
+
+- base-sepolia.json   ← written after `forge script DeployV2.s.sol --broadcast`
+- base.json           ← reserved for mainnet (post-grant)
+
+Schema:
+  {
+    "network": "base-sepolia",
+    "chainId": 84532,
+    "deployedAt": "ISO-8601 timestamp",
+    "deployer": "0x...",
+    "enrollmentRegistry": "0x...",
+    "ultraVerifierV2": "0x...",
+    "petitionRegistryV2": "0x...",
+    "oprfAttester": "0x...",
+    "creationDeposit": "1000000000000000",
+    "genesisRoot": "0x000...000"
+  }

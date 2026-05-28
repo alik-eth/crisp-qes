@@ -1,0 +1,11 @@
+{
+  "name": "@crisp-qes/v2-contracts",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "build": "forge build",
+    "test": "forge test -vv",
+    "fmt": "forge fmt",
+    "deploy:base-sepolia": "forge script script/DeployV2.s.sol --rpc-url base_sepolia --broadcast --verify"
+  }
+}
