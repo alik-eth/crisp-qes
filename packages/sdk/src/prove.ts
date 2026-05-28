@@ -19,6 +19,7 @@ import { Noir } from "@noir-lang/noir_js";
 import { BarretenbergSync, Fr, UltraHonkBackend } from "@aztec/bb.js";
 
 import type { FieldHex, WitnessInputs } from "./witness.js";
+import { splitPubkey } from "./witness.js";
 
 /**
  * 128-bit random tag pinning the nullifier domain for v1 of the protocol.
@@ -76,11 +77,15 @@ export interface ComputeNullifierArgs {
 /**
  * Off-chain nullifier preview.
  *
- *   nullifier = std::hash::pedersen_hash(
- *       [pubkey.x, pubkey.y, petition_id, DOMAIN_PETITION_V1]
- *   )
+ *   nullifier = std::hash::pedersen_hash([
+ *       pubkey.x_hi, pubkey.x_lo, pubkey.y_hi, pubkey.y_lo,
+ *       petition_id, DOMAIN_PETITION_V1,
+ *   ])
  *
- * The circuit publishes the same value as public input slot [1]. Uses the
+ * Each pubkey coordinate is split into two 128-bit limbs to mirror the
+ * D-v2-fix public-input layout (the BN254 prime is below 2^254, so a
+ * single Field cannot losslessly carry a 256-bit P-256 coordinate). The
+ * circuit publishes this same value as public input slot [1]. Uses the
  * synchronous bb.js Pedersen API (hashIndex = 0, matching the circuit's
  * plain `pedersen_hash`, no separator).
  *
@@ -90,9 +95,12 @@ export async function computeNullifier(
     args: ComputeNullifierArgs,
 ): Promise<FieldHex> {
     const api = await BarretenbergSync.initSingleton();
+    const { xHi, xLo, yHi, yLo } = splitPubkey(args.pubkey);
     const inputs = [
-        new Fr(args.pubkey.x),
-        new Fr(args.pubkey.y),
+        new Fr(xHi),
+        new Fr(xLo),
+        new Fr(yHi),
+        new Fr(yLo),
         new Fr(args.petitionId),
         new Fr(DOMAIN_PETITION_V1),
     ];

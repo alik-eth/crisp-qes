@@ -59,30 +59,36 @@ function fakeClients(impls: {
     };
 }
 
+// Public-input slots [3..14] are 128-bit limbs (top 16 bytes zero, low 16
+// bytes the actual value), so the relayer's `>> 128 == 0` gate accepts
+// them. Slots [0..2] carry petitionId, nullifier, and trustRoot as full
+// bytes32.
+const LIMB = (lo16: string) => "0x" + "00".repeat(16) + lo16.repeat(16);
+
 const VALID_BODY = {
     petitionId: "1",
     nullifier: "0x" + "11".repeat(32),
-    leafPubkeyX: "0x" + "22".repeat(32),
-    leafPubkeyY: "0x" + "33".repeat(32),
     leafSigR: "0x" + "44".repeat(32),
     leafSigS: "0x" + "55".repeat(32),
-    intermediatePubkeyX: "0x" + "66".repeat(32),
-    intermediatePubkeyY: "0x" + "77".repeat(32),
     intermediateSigR: "0x" + "88".repeat(32),
     intermediateSigS: "0x" + "99".repeat(32),
     proof: "0xdead",
     publicInputs: [
         "0x" + "00".repeat(31) + "01", // [0]  petitionId == 1
-        "0x" + "11".repeat(32),         // [1]  nullifier
-        "0x" + "aa".repeat(32),         // [2]  trustRoot
-        "0x" + "22".repeat(32),         // [3]  leafPubkeyX
-        "0x" + "33".repeat(32),         // [4]  leafPubkeyY
-        "0x" + "66".repeat(32),         // [5]  intermediatePubkeyX
-        "0x" + "77".repeat(32),         // [6]  intermediatePubkeyY
-        "0x" + "00".repeat(16) + "bb".repeat(16), // [7]  leafTbsSha256_hi
-        "0x" + "00".repeat(16) + "cc".repeat(16), // [8]  leafTbsSha256_lo
-        "0x" + "00".repeat(16) + "dd".repeat(16), // [9]  signedAttrsSha256_hi
-        "0x" + "00".repeat(16) + "ee".repeat(16), // [10] signedAttrsSha256_lo
+        "0x" + "11".repeat(32),        // [1]  nullifier
+        "0x" + "aa".repeat(32),        // [2]  trustRoot
+        LIMB("22"),                     // [3]  leafPubkeyXHi
+        LIMB("23"),                     // [4]  leafPubkeyXLo
+        LIMB("33"),                     // [5]  leafPubkeyYHi
+        LIMB("34"),                     // [6]  leafPubkeyYLo
+        LIMB("66"),                     // [7]  intermediatePubkeyXHi
+        LIMB("67"),                     // [8]  intermediatePubkeyXLo
+        LIMB("77"),                     // [9]  intermediatePubkeyYHi
+        LIMB("78"),                     // [10] intermediatePubkeyYLo
+        LIMB("bb"),                     // [11] leafTbsSha256Hi
+        LIMB("cc"),                     // [12] leafTbsSha256Lo
+        LIMB("dd"),                     // [13] signedAttrsSha256Hi
+        LIMB("ee"),                     // [14] signedAttrsSha256Lo
     ],
 };
 

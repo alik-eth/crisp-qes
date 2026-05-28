@@ -1,14 +1,21 @@
-// Noir witness assembly for the CRISP-QES eligibility circuit (D-v2).
+// Noir witness assembly for the CRISP-QES eligibility circuit (D-v2-fix).
 //
 // Mirrors the `fn main(...)` parameter declaration in
 // `packages/circuit/src/main.nr`:
 //
 //   public:
 //     petition_id, nullifier, trust_root,
-//     leaf_pubkey_x, leaf_pubkey_y,
-//     intermediate_pubkey_x, intermediate_pubkey_y,
+//     leaf_pubkey_x_hi, leaf_pubkey_x_lo,
+//     leaf_pubkey_y_hi, leaf_pubkey_y_lo,
+//     intermediate_pubkey_x_hi, intermediate_pubkey_x_lo,
+//     intermediate_pubkey_y_hi, intermediate_pubkey_y_lo,
 //     leaf_tbs_sha256_hi, leaf_tbs_sha256_lo,
 //     signed_attrs_sha256_hi, signed_attrs_sha256_lo
+//
+// The pubkey limb split (D-v2-fix) protects against P-256 coordinates
+// that exceed the BN254 prime: a single Field public input would
+// silently mod-reduce ~25% of pubkeys, breaking the contract-side
+// ECDSA call. Each 128-bit limb is well inside the field range.
 //
 //   private:
 //     subject_serial: [u8; 32]
@@ -47,10 +54,14 @@ export interface WitnessInputs {
     petition_id: FieldHex;
     nullifier: FieldHex;
     trust_root: FieldHex;
-    leaf_pubkey_x: FieldHex;
-    leaf_pubkey_y: FieldHex;
-    intermediate_pubkey_x: FieldHex;
-    intermediate_pubkey_y: FieldHex;
+    leaf_pubkey_x_hi: FieldHex;
+    leaf_pubkey_x_lo: FieldHex;
+    leaf_pubkey_y_hi: FieldHex;
+    leaf_pubkey_y_lo: FieldHex;
+    intermediate_pubkey_x_hi: FieldHex;
+    intermediate_pubkey_x_lo: FieldHex;
+    intermediate_pubkey_y_hi: FieldHex;
+    intermediate_pubkey_y_lo: FieldHex;
     leaf_tbs_sha256_hi: FieldHex;
     leaf_tbs_sha256_lo: FieldHex;
     signed_attrs_sha256_hi: FieldHex;
@@ -110,10 +121,14 @@ export interface WitnessPublicInputs {
     petitionId: bigint;
     nullifier: bigint;
     trustRoot: bigint;
-    leafPubkeyX: bigint;
-    leafPubkeyY: bigint;
-    intermediatePubkeyX: bigint;
-    intermediatePubkeyY: bigint;
+    leafPubkeyXHi: bigint;
+    leafPubkeyXLo: bigint;
+    leafPubkeyYHi: bigint;
+    leafPubkeyYLo: bigint;
+    intermediatePubkeyXHi: bigint;
+    intermediatePubkeyXLo: bigint;
+    intermediatePubkeyYHi: bigint;
+    intermediatePubkeyYLo: bigint;
     leafTbsSha256Hi: bigint;
     leafTbsSha256Lo: bigint;
     signedAttrsSha256Hi: bigint;
@@ -164,10 +179,14 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
 
     requireFitsBn254("petitionId", petitionId);
     requireFitsBn254("trustRoot", trustRoot);
-    requireFitsBn254("pubkey.x", parsed.pubkey.x);
-    requireFitsBn254("pubkey.y", parsed.pubkey.y);
-    requireFitsBn254("intermediate.x", intermediatePubkey.x);
-    requireFitsBn254("intermediate.y", intermediatePubkey.y);
+    // P-256 coordinates are 256-bit; the BN254 prime sits just below 2^254,
+    // so we split each coordinate into 128-bit hi/lo limbs and range-check
+    // both. `requireFitsU256` catches obviously bogus inputs early; the
+    // limb split itself happens inside `splitU256`.
+    requireFitsU256("pubkey.x", parsed.pubkey.x);
+    requireFitsU256("pubkey.y", parsed.pubkey.y);
+    requireFitsU256("intermediate.x", intermediatePubkey.x);
+    requireFitsU256("intermediate.y", intermediatePubkey.y);
     requireByteLen("petitionTextHash", petitionTextHash, PETITION_TEXT_HASH_LEN);
     requireLen("merklePath", merklePath, MERKLE_DEPTH);
     requireLen("merklePathIndices", merklePathIndices, MERKLE_DEPTH);
@@ -214,6 +233,9 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
         );
     }
 
+    const leafLimbs = splitPubkey(parsed.pubkey);
+    const intermediateLimbs = splitPubkey(intermediatePubkey);
+
     const nullifier = await computeNullifier({
         pubkey: parsed.pubkey,
         petitionId,
@@ -235,10 +257,14 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
         petition_id: toFieldHex(petitionId),
         nullifier,
         trust_root: toFieldHex(trustRoot),
-        leaf_pubkey_x: toFieldHex(parsed.pubkey.x),
-        leaf_pubkey_y: toFieldHex(parsed.pubkey.y),
-        intermediate_pubkey_x: toFieldHex(intermediatePubkey.x),
-        intermediate_pubkey_y: toFieldHex(intermediatePubkey.y),
+        leaf_pubkey_x_hi: toFieldHex(leafLimbs.xHi),
+        leaf_pubkey_x_lo: toFieldHex(leafLimbs.xLo),
+        leaf_pubkey_y_hi: toFieldHex(leafLimbs.yHi),
+        leaf_pubkey_y_lo: toFieldHex(leafLimbs.yLo),
+        intermediate_pubkey_x_hi: toFieldHex(intermediateLimbs.xHi),
+        intermediate_pubkey_x_lo: toFieldHex(intermediateLimbs.xLo),
+        intermediate_pubkey_y_hi: toFieldHex(intermediateLimbs.yHi),
+        intermediate_pubkey_y_lo: toFieldHex(intermediateLimbs.yLo),
         leaf_tbs_sha256_hi: toFieldHex(tbsHi),
         leaf_tbs_sha256_lo: toFieldHex(tbsLo),
         signed_attrs_sha256_hi: toFieldHex(saHi),
@@ -264,10 +290,14 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
             petitionId,
             nullifier: nullifierBig,
             trustRoot,
-            leafPubkeyX: parsed.pubkey.x,
-            leafPubkeyY: parsed.pubkey.y,
-            intermediatePubkeyX: intermediatePubkey.x,
-            intermediatePubkeyY: intermediatePubkey.y,
+            leafPubkeyXHi: leafLimbs.xHi,
+            leafPubkeyXLo: leafLimbs.xLo,
+            leafPubkeyYHi: leafLimbs.yHi,
+            leafPubkeyYLo: leafLimbs.yLo,
+            intermediatePubkeyXHi: intermediateLimbs.xHi,
+            intermediatePubkeyXLo: intermediateLimbs.xLo,
+            intermediatePubkeyYHi: intermediateLimbs.yHi,
+            intermediatePubkeyYLo: intermediateLimbs.yLo,
             leafTbsSha256Hi: tbsHi,
             leafTbsSha256Lo: tbsLo,
             signedAttrsSha256Hi: saHi,
@@ -297,12 +327,50 @@ export function splitSha256(digest: Uint8Array): { hi: bigint; lo: bigint } {
     return { hi, lo };
 }
 
+const U128_LIMIT = 1n << 128n;
+const U256_LIMIT = 1n << 256n;
+
+/**
+ * Split an unsigned 256-bit integer into 128-bit (hi, lo) limbs. The
+ * pubkey coordinate split mirrors what the circuit does on the SPKI
+ * byte buffer (BE-pack the high 16 bytes -> hi, low 16 bytes -> lo).
+ */
+export function splitU256(v: bigint): { hi: bigint; lo: bigint } {
+    if (v < 0n || v >= U256_LIMIT) {
+        throw new Error(`splitU256: ${v} not in [0, 2^256)`);
+    }
+    return { hi: v >> 128n, lo: v & (U128_LIMIT - 1n) };
+}
+
+/**
+ * Split a P-256 affine pubkey into the four 128-bit limbs the circuit
+ * publishes as slots [hi(x), lo(x), hi(y), lo(y)]. Used by both the
+ * witness assembler (for the InputMap) and `computeNullifier` (for the
+ * 6-element pedersen input tuple).
+ */
+export function splitPubkey(pubkey: { x: bigint; y: bigint }): {
+    xHi: bigint;
+    xLo: bigint;
+    yHi: bigint;
+    yLo: bigint;
+} {
+    const x = splitU256(pubkey.x);
+    const y = splitU256(pubkey.y);
+    return { xHi: x.hi, xLo: x.lo, yHi: y.hi, yLo: y.lo };
+}
+
 // BN254 scalar field modulus (the Grumpkin / BN254 base used by std::hash::pedersen_hash).
 const BN254_R = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001n;
 
 function requireFitsBn254(label: string, v: bigint): void {
     if (v < 0n || v >= BN254_R) {
         throw new Error(`buildWitness: ${label} = ${v} not in [0, BN254_R)`);
+    }
+}
+
+function requireFitsU256(label: string, v: bigint): void {
+    if (v < 0n || v >= U256_LIMIT) {
+        throw new Error(`buildWitness: ${label} = ${v} not in [0, 2^256)`);
     }
 }
 

@@ -12,13 +12,20 @@
 //      `leaf_tbs_bytes[subject_serial_offset .. subject_serial_offset+32]`.
 //      Together: TINUA-prefixed serial is inside the very leaf TBS the
 //      intermediate signed.
-//   2. `leaf_pubkey_x, leaf_pubkey_y` (public inputs slots 3, 4) are the
-//      32+32 bytes following the canonical 27-byte P-256 SPKI prefix at
+//   2. The 4 limbs `(leaf_pubkey_x_hi, leaf_pubkey_x_lo,
+//      leaf_pubkey_y_hi, leaf_pubkey_y_lo)` (public input slots 3-6) are
+//      the 16+16+16+16 byte halves of the (X, Y) following the canonical
+//      27-byte P-256 SPKI prefix at
 //      `leaf_tbs_bytes[leaf_pubkey_offset - 27 .. leaf_pubkey_offset + 64]`.
+//      The 128-bit limb split is required so each Field public input
+//      stays strictly below the BN254 modulus (P-256 coordinates can
+//      exceed it; publishing them as single Fields would silently
+//      mod-reduce ~25% of pubkeys, breaking the on-chain ECDSA check).
 //      Together: the leaf pubkey the contract feeds to the precompile is
 //      bound to the TBS the intermediate signed.
-//   3. `intermediate_pubkey_x, intermediate_pubkey_y` (slots 5, 6) are
-//      similarly bound to `intermediate_spki_bytes` via the canonical
+//   3. The 4 limbs `(intermediate_pubkey_x_hi, intermediate_pubkey_x_lo,
+//      intermediate_pubkey_y_hi, intermediate_pubkey_y_lo)` (slots 7-10)
+//      are similarly bound to `intermediate_spki_bytes` via the canonical
 //      prefix at `intermediate_pubkey_offset`.
 //   4. The Pedersen commit of the fixed-size, zero-padded
 //      `intermediate_spki_bytes` (`SPKI_COMMIT_DOMAIN = 1`) is the leaf of
@@ -50,14 +57,18 @@
 //   [0]  petition_id
 //   [1]  nullifier
 //   [2]  trust_root
-//   [3]  leaf_pubkey_x
-//   [4]  leaf_pubkey_y
-//   [5]  intermediate_pubkey_x
-//   [6]  intermediate_pubkey_y
-//   [7]  leaf_tbs_sha256_hi          (high 16 bytes BE-packed)
-//   [8]  leaf_tbs_sha256_lo          (low  16 bytes BE-packed)
-//   [9]  signed_attrs_sha256_hi      (high 16 bytes BE-packed)
-//   [10] signed_attrs_sha256_lo      (low  16 bytes BE-packed)
+//   [3]  leaf_pubkey_x_hi             (high 16 bytes of leaf X, BE-packed)
+//   [4]  leaf_pubkey_x_lo             (low  16 bytes of leaf X, BE-packed)
+//   [5]  leaf_pubkey_y_hi             (high 16 bytes of leaf Y, BE-packed)
+//   [6]  leaf_pubkey_y_lo             (low  16 bytes of leaf Y, BE-packed)
+//   [7]  intermediate_pubkey_x_hi     (high 16 bytes of intermediate X, BE-packed)
+//   [8]  intermediate_pubkey_x_lo     (low  16 bytes of intermediate X, BE-packed)
+//   [9]  intermediate_pubkey_y_hi     (high 16 bytes of intermediate Y, BE-packed)
+//   [10] intermediate_pubkey_y_lo     (low  16 bytes of intermediate Y, BE-packed)
+//   [11] leaf_tbs_sha256_hi           (high 16 bytes BE-packed)
+//   [12] leaf_tbs_sha256_lo           (low  16 bytes BE-packed)
+//   [13] signed_attrs_sha256_hi       (high 16 bytes BE-packed)
+//   [14] signed_attrs_sha256_lo       (low  16 bytes BE-packed)
 
 mod cades;
 mod merkle;
@@ -91,10 +102,14 @@ fn main(
     petition_id: pub Field,
     nullifier: pub Field,
     trust_root: pub Field,
-    leaf_pubkey_x: pub Field,
-    leaf_pubkey_y: pub Field,
-    intermediate_pubkey_x: pub Field,
-    intermediate_pubkey_y: pub Field,
+    leaf_pubkey_x_hi: pub Field,
+    leaf_pubkey_x_lo: pub Field,
+    leaf_pubkey_y_hi: pub Field,
+    leaf_pubkey_y_lo: pub Field,
+    intermediate_pubkey_x_hi: pub Field,
+    intermediate_pubkey_x_lo: pub Field,
+    intermediate_pubkey_y_hi: pub Field,
+    intermediate_pubkey_y_lo: pub Field,
     leaf_tbs_sha256_hi: pub Field,
     leaf_tbs_sha256_lo: pub Field,
     signed_attrs_sha256_hi: pub Field,
@@ -128,17 +143,22 @@ fn main(
     assert(leaf_pubkey_offset >= P256_SPKI_PREFIX_LEN);
     assert(leaf_pubkey_offset + 64 <= leaf_tbs_len);
     assert_p256_spki_prefix(leaf_tbs_bytes, leaf_pubkey_offset);
-    let (lx, ly) = extract_p256_xy(leaf_tbs_bytes, leaf_pubkey_offset);
-    assert(lx == leaf_pubkey_x);
-    assert(ly == leaf_pubkey_y);
+    let (lx_hi, lx_lo, ly_hi, ly_lo) = extract_p256_xy(leaf_tbs_bytes, leaf_pubkey_offset);
+    assert(lx_hi == leaf_pubkey_x_hi);
+    assert(lx_lo == leaf_pubkey_x_lo);
+    assert(ly_hi == leaf_pubkey_y_hi);
+    assert(ly_lo == leaf_pubkey_y_lo);
 
     // ---- 3. intermediate pubkey extracted from intermediate SPKI ----
     assert(intermediate_pubkey_offset >= P256_SPKI_PREFIX_LEN);
     assert(intermediate_pubkey_offset + 64 <= INTERMEDIATE_SPKI_MAX_BYTES);
     assert_p256_spki_prefix(intermediate_spki_bytes, intermediate_pubkey_offset);
-    let (ix, iy) = extract_p256_xy(intermediate_spki_bytes, intermediate_pubkey_offset);
-    assert(ix == intermediate_pubkey_x);
-    assert(iy == intermediate_pubkey_y);
+    let (ix_hi, ix_lo, iy_hi, iy_lo) =
+        extract_p256_xy(intermediate_spki_bytes, intermediate_pubkey_offset);
+    assert(ix_hi == intermediate_pubkey_x_hi);
+    assert(ix_lo == intermediate_pubkey_x_lo);
+    assert(iy_hi == intermediate_pubkey_y_hi);
+    assert(iy_lo == intermediate_pubkey_y_lo);
 
     // ---- 4. intermediate SPKI Pedersen commit (domain = SPKI_COMMIT_DOMAIN) ----
     let leaf = intermediate_spki_commit(intermediate_spki_bytes);
@@ -168,9 +188,16 @@ fn main(
         assert(embedded[i] == expected[i]);
     }
 
-    // ---- 9. nullifier = pedersen_hash([leaf_x, leaf_y, petition_id, DOMAIN]) ----
-    let expected_nullifier =
-        pedersen_hash([leaf_pubkey_x, leaf_pubkey_y, petition_id, DOMAIN_PETITION_V1]);
+    // ---- 9. nullifier = pedersen_hash([leaf_x_hi, leaf_x_lo, leaf_y_hi,
+    //                                    leaf_y_lo, petition_id, DOMAIN]) ----
+    let expected_nullifier = pedersen_hash([
+        leaf_pubkey_x_hi,
+        leaf_pubkey_x_lo,
+        leaf_pubkey_y_hi,
+        leaf_pubkey_y_lo,
+        petition_id,
+        DOMAIN_PETITION_V1,
+    ]);
     assert(nullifier == expected_nullifier);
 }
 
@@ -180,12 +207,15 @@ fn main(
 
 #[test]
 fn nullifier_matches_offchain_definition() {
-    // pedersen_hash on the canonical input tuple. The SDK preview reproduces
-    // this exact hash via @aztec/bb.js `pedersenHash`.
-    let px: Field = 1;
-    let py: Field = 2;
+    // pedersen_hash on the canonical 6-element input tuple. The SDK preview
+    // reproduces this exact hash via @aztec/bb.js `pedersenHash` over the
+    // four 128-bit pubkey limbs.
+    let x_hi: Field = 0x01;
+    let x_lo: Field = 0x02;
+    let y_hi: Field = 0x03;
+    let y_lo: Field = 0x04;
     let pid: Field = 42;
-    let n = pedersen_hash([px, py, pid, DOMAIN_PETITION_V1]);
+    let n = pedersen_hash([x_hi, x_lo, y_hi, y_lo, pid, DOMAIN_PETITION_V1]);
     assert(n != 0);
 }
 
@@ -251,8 +281,8 @@ fn message_digest_binding_synthetic() {
 fn p256_spki_prefix_and_pubkey_extract() {
     // Build a fake buffer that opens with garbage, then the canonical
     // 27-byte prefix, then 64 distinguishable pubkey bytes, then more
-    // garbage. Confirm the prefix check passes and (x, y) round-trip via
-    // BE-pack.
+    // garbage. Confirm the prefix check passes and the 4 limbs round-trip
+    // via BE-pack of their respective 16-byte halves.
     let mut buf: [u8; 256] = [0; 256];
     let prefix_offset: u32 = 30;
     for i in 0..27 {
@@ -266,17 +296,30 @@ fn p256_spki_prefix_and_pubkey_extract() {
         buf[pk_offset + 32 + i] = 0xFF - (i as u8);
     }
     pubkey::assert_p256_spki_prefix(buf, pk_offset);
-    let (x, y) = pubkey::extract_p256_xy(buf, pk_offset);
+    let (x_hi, x_lo, y_hi, y_lo) = pubkey::extract_p256_xy(buf, pk_offset);
 
-    // Hand-compute the BE-packed values to compare.
-    let mut expected_x: Field = 0;
-    let mut expected_y: Field = 0;
-    for i in 0..32 {
-        expected_x = expected_x * 256 + ((i as Field) + 1);
-        expected_y = expected_y * 256 + (255 - (i as Field));
+    // Hand-compute the BE-packed 16-byte halves to compare.
+    let mut expected_x_hi: Field = 0;
+    let mut expected_x_lo: Field = 0;
+    let mut expected_y_hi: Field = 0;
+    let mut expected_y_lo: Field = 0;
+    for i in 0..16 {
+        expected_x_hi = expected_x_hi * 256 + ((i as Field) + 1);
+        expected_x_lo = expected_x_lo * 256 + ((i as Field) + 1 + 16);
+        expected_y_hi = expected_y_hi * 256 + (255 - (i as Field));
+        expected_y_lo = expected_y_lo * 256 + (255 - 16 - (i as Field));
     }
-    assert(x == expected_x);
-    assert(y == expected_y);
+    assert(x_hi == expected_x_hi);
+    assert(x_lo == expected_x_lo);
+    assert(y_hi == expected_y_hi);
+    assert(y_lo == expected_y_lo);
+
+    // Sanity: each limb fits in 128 bits.
+    let two_pow_128: Field = 0x100000000000000000000000000000000;
+    assert(x_hi.lt(two_pow_128));
+    assert(x_lo.lt(two_pow_128));
+    assert(y_hi.lt(two_pow_128));
+    assert(y_lo.lt(two_pow_128));
 }
 
 #[test(should_fail)]

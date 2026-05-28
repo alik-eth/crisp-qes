@@ -261,18 +261,15 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
         setSubmitErr(null);
         setSubmitting(true);
         try {
-            // The intermediate pubkey may come from the .p7s or — when the
-            // .p7s omitted the issuer — from the bundle-resolved cert.
-            const interPubkey = foundCa.intermediatePubkey;
+            // Pubkey coordinates ride in the public-input array as 128-bit
+            // limb pairs (slots 3-10, D-v2-fix); the contract reassembles
+            // them before feeding the RIP-7212 precompile. We don't pass
+            // them as standalone body fields anymore.
             const res = await submitSignature({
                 petitionId,
                 nullifier,
-                leafPubkeyX: bigIntTo32Hex(parsed.pubkey.x),
-                leafPubkeyY: bigIntTo32Hex(parsed.pubkey.y),
                 leafSigR: bigIntTo32Hex(parsed.signature.r),
                 leafSigS: bigIntTo32Hex(parsed.signature.s),
-                intermediatePubkeyX: bigIntTo32Hex(interPubkey.x),
-                intermediatePubkeyY: bigIntTo32Hex(interPubkey.y),
                 intermediateSigR: bigIntTo32Hex(parsed.leafCertSignature.r),
                 intermediateSigS: bigIntTo32Hex(parsed.leafCertSignature.s),
                 proof: "0x" + bytesToHexRaw(proof.proofBytes),

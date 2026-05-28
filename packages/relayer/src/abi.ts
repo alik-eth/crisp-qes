@@ -15,12 +15,8 @@ export const petitionRegistryAbi = [
                 components: [
                     { name: "petitionId", type: "uint256" },
                     { name: "nullifier", type: "bytes32" },
-                    { name: "leafPubkeyX", type: "uint256" },
-                    { name: "leafPubkeyY", type: "uint256" },
                     { name: "leafSigR", type: "uint256" },
                     { name: "leafSigS", type: "uint256" },
-                    { name: "intermediatePubkeyX", type: "uint256" },
-                    { name: "intermediatePubkeyY", type: "uint256" },
                     { name: "intermediateSigR", type: "uint256" },
                     { name: "intermediateSigS", type: "uint256" },
                 ],

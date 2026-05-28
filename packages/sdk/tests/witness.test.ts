@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ParsedP7s } from "../src/p7s.js";
-import { buildWitness, splitSha256, toFieldHex } from "../src/witness.js";
+import { buildWitness, splitPubkey, splitSha256, splitU256, toFieldHex } from "../src/witness.js";
 import { computeNullifier } from "../src/prove.js";
 
 function makeParsedP7s(overrides: Partial<ParsedP7s> = {}): ParsedP7s {
@@ -108,6 +108,53 @@ describe("splitSha256 hi/lo", () => {
     });
 });
 
+describe("splitU256 / splitPubkey", () => {
+    it("encodes zero as (0, 0)", () => {
+        expect(splitU256(0n)).toEqual({ hi: 0n, lo: 0n });
+    });
+
+    it("reassembles a top-bit-set 256-bit value losslessly", () => {
+        // The exact value pattern that broke pre-fix: top byte 0x83, i.e.
+        // numerically > BN254_R, so a single-Field public input would
+        // silently reduce mod p.
+        const v =
+            0x83db112233445566778899aabbccddeeff00112233445566778899aabbccddeen;
+        const { hi, lo } = splitU256(v);
+        expect(hi >> 128n).toBe(0n);
+        expect(lo >> 128n).toBe(0n);
+        expect((hi << 128n) | lo).toBe(v);
+    });
+
+    it("matches the circuit's BE-pack semantics on a known vector", () => {
+        // hi = BE(bytes 0..15), lo = BE(bytes 16..31). For v with explicit
+        // bytes 0x010203...20 this gives well-known limb values.
+        let v = 0n;
+        for (let i = 1; i <= 32; i++) v = (v << 8n) | BigInt(i);
+        const { hi, lo } = splitU256(v);
+        expect(hi).toBe(0x0102030405060708090a0b0c0d0e0f10n);
+        expect(lo).toBe(0x1112131415161718191a1b1c1d1e1f20n);
+    });
+
+    it("rejects oversized input", () => {
+        expect(() => splitU256(-1n)).toThrow();
+        expect(() => splitU256(1n << 256n)).toThrow();
+    });
+
+    it("splitPubkey returns 4 separate limbs for X and Y", () => {
+        const x = 0x80000000000000000000000000000001n << 128n |
+            0x00000000000000000000000000000abcn;
+        const y =
+            0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdefn;
+        const { xHi, xLo, yHi, yLo } = splitPubkey({ x, y });
+        expect((xHi << 128n) | xLo).toBe(x);
+        expect((yHi << 128n) | yLo).toBe(y);
+        expect(xHi >> 128n).toBe(0n);
+        expect(xLo >> 128n).toBe(0n);
+        expect(yHi >> 128n).toBe(0n);
+        expect(yLo >> 128n).toBe(0n);
+    });
+});
+
 describe("computeNullifier", () => {
     it("matches the bb.js Pedersen on the canonical input tuple", async () => {
         const a = await computeNullifier({
@@ -155,18 +202,37 @@ describe("buildWitness — shape contract (D-v2)", () => {
             ...baseArgs,
         });
 
-        // Public slots (11)
+        // Public slots (15) — pubkey coords now ship as 128-bit limb pairs
+        // (D-v2-fix). Each limb is `< 2^128`, well inside the BN254 prime.
         expect(inputs.petition_id).toBe(toFieldHex(7n));
         expect(inputs.trust_root).toBe(toFieldHex(0xdeadbeefn));
-        expect(inputs.leaf_pubkey_x).toMatch(/^0x[0-9a-f]{64}$/);
-        expect(inputs.leaf_pubkey_y).toMatch(/^0x[0-9a-f]{64}$/);
-        expect(inputs.intermediate_pubkey_x).toMatch(/^0x[0-9a-f]{64}$/);
-        expect(inputs.intermediate_pubkey_y).toMatch(/^0x[0-9a-f]{64}$/);
+        expect(inputs.leaf_pubkey_x_hi).toMatch(/^0x[0-9a-f]{64}$/);
+        expect(inputs.leaf_pubkey_x_lo).toMatch(/^0x[0-9a-f]{64}$/);
+        expect(inputs.leaf_pubkey_y_hi).toMatch(/^0x[0-9a-f]{64}$/);
+        expect(inputs.leaf_pubkey_y_lo).toMatch(/^0x[0-9a-f]{64}$/);
+        expect(inputs.intermediate_pubkey_x_hi).toMatch(/^0x[0-9a-f]{64}$/);
+        expect(inputs.intermediate_pubkey_x_lo).toMatch(/^0x[0-9a-f]{64}$/);
+        expect(inputs.intermediate_pubkey_y_hi).toMatch(/^0x[0-9a-f]{64}$/);
+        expect(inputs.intermediate_pubkey_y_lo).toMatch(/^0x[0-9a-f]{64}$/);
         expect(inputs.nullifier).toMatch(/^0x[0-9a-f]{64}$/);
         expect(inputs.leaf_tbs_sha256_hi).toMatch(/^0x[0-9a-f]{64}$/);
         expect(inputs.leaf_tbs_sha256_lo).toMatch(/^0x[0-9a-f]{64}$/);
         expect(inputs.signed_attrs_sha256_hi).toMatch(/^0x[0-9a-f]{64}$/);
         expect(inputs.signed_attrs_sha256_lo).toMatch(/^0x[0-9a-f]{64}$/);
+
+        // Each limb fits in 128 bits.
+        for (const slot of [
+            inputs.leaf_pubkey_x_hi,
+            inputs.leaf_pubkey_x_lo,
+            inputs.leaf_pubkey_y_hi,
+            inputs.leaf_pubkey_y_lo,
+            inputs.intermediate_pubkey_x_hi,
+            inputs.intermediate_pubkey_x_lo,
+            inputs.intermediate_pubkey_y_hi,
+            inputs.intermediate_pubkey_y_lo,
+        ]) {
+            expect(BigInt(slot) >> 128n).toBe(0n);
+        }
 
         // Private slots — circuit-mandated lengths
         expect(inputs.subject_serial.length).toBe(32);
@@ -188,12 +254,18 @@ describe("buildWitness — shape contract (D-v2)", () => {
         // merkle_path_indices coerced to booleans
         for (const v of inputs.merkle_path_indices) expect(typeof v).toBe("boolean");
 
-        // publics carry the same numerical values we'll send on-chain
+        // publics carry the same numerical values we'll send on-chain.
+        // Each pubkey coordinate now lives in two limbs; reassembly must
+        // round-trip back to the original ParsedP7s value.
         expect(publics.petitionId).toBe(7n);
         expect(publics.nullifier).toBe(BigInt(inputs.nullifier));
         expect(publics.trustRoot).toBe(0xdeadbeefn);
-        expect(publics.intermediatePubkeyX).toBe(0xbeefn);
-        expect(publics.intermediatePubkeyY).toBe(0xcafen);
+        expect((publics.intermediatePubkeyXHi << 128n) | publics.intermediatePubkeyXLo).toBe(
+            0xbeefn,
+        );
+        expect((publics.intermediatePubkeyYHi << 128n) | publics.intermediatePubkeyYLo).toBe(
+            0xcafen,
+        );
     });
 
     it("pads bytes right with zeros up to the circuit max length", async () => {

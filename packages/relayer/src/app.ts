@@ -20,16 +20,15 @@ const decimalUint = z.string().regex(/^\d+$/, "expected decimal integer");
 const SubmitBody = z.object({
     petitionId: decimalUint,
     nullifier: hex32,
-    leafPubkeyX: hex32,
-    leafPubkeyY: hex32,
     leafSigR: hex32,
     leafSigS: hex32,
-    intermediatePubkeyX: hex32,
-    intermediatePubkeyY: hex32,
     intermediateSigR: hex32,
     intermediateSigS: hex32,
     proof: hex,
-    publicInputs: z.array(hex32).length(11),
+    // Pubkey coordinates ride in the limb pairs at slots 3-10 of the
+    // public inputs array (D-v2-fix); the contract reconstructs them
+    // there. We no longer ship them as standalone body fields.
+    publicInputs: z.array(hex32).length(15),
 });
 
 const TxParams = z.object({
@@ -78,18 +77,22 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
         // Cross-field sanity: publicInputs entries must equal the dedicated
         // fields (the contract checks this too, but bouncing here saves gas).
         //
-        // Public-input layout (D-v2, length 11):
+        // Public-input layout (D-v2-fix, length 15):
         //   [0]  petitionId
         //   [1]  nullifier
-        //   [2]  trustRoot           (not in body; checked on-chain only)
-        //   [3]  leafPubkeyX
-        //   [4]  leafPubkeyY
-        //   [5]  intermediatePubkeyX
-        //   [6]  intermediatePubkeyY
-        //   [7]  leafTbsSha256_hi    (limb, not in body)
-        //   [8]  leafTbsSha256_lo    (limb, not in body)
-        //   [9]  signedAttrsSha256_hi
-        //   [10] signedAttrsSha256_lo
+        //   [2]  trustRoot                       (not in body; checked on-chain only)
+        //   [3]  leafPubkeyXHi                   (limb, not in body)
+        //   [4]  leafPubkeyXLo                   (limb, not in body)
+        //   [5]  leafPubkeyYHi                   (limb, not in body)
+        //   [6]  leafPubkeyYLo                   (limb, not in body)
+        //   [7]  intermediatePubkeyXHi           (limb, not in body)
+        //   [8]  intermediatePubkeyXLo           (limb, not in body)
+        //   [9]  intermediatePubkeyYHi           (limb, not in body)
+        //   [10] intermediatePubkeyYLo           (limb, not in body)
+        //   [11] leafTbsSha256Hi                 (limb, not in body)
+        //   [12] leafTbsSha256Lo                 (limb, not in body)
+        //   [13] signedAttrsSha256Hi             (limb, not in body)
+        //   [14] signedAttrsSha256Lo             (limb, not in body)
         const piPetition = hexToBigInt(body.publicInputs[0] as Hex);
         if (piPetition.toString() !== body.petitionId) {
             return reply.code(400).send({
@@ -97,29 +100,29 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
                 detail: "publicInputs[0] != petitionId",
             });
         }
-        if (
-            body.publicInputs[1] !== body.nullifier ||
-            body.publicInputs[3] !== body.leafPubkeyX ||
-            body.publicInputs[4] !== body.leafPubkeyY ||
-            body.publicInputs[5] !== body.intermediatePubkeyX ||
-            body.publicInputs[6] !== body.intermediatePubkeyY
-        ) {
+        if (body.publicInputs[1] !== body.nullifier) {
             return reply.code(400).send({
                 error: "BadRequest",
-                detail:
-                    "publicInputs do not match (nullifier, leafPubkey*, intermediatePubkey*)",
+                detail: "publicInputs[1] != nullifier",
             });
+        }
+        // Pubkey + hash limbs (slots 3..14) must all fit in 128 bits, mirroring
+        // the contract's `>> 128 == 0` gate. Reject before paying for simulate.
+        for (let i = 3; i < 15; i++) {
+            const limb = hexToBigInt(body.publicInputs[i] as Hex);
+            if (limb >> 128n !== 0n) {
+                return reply.code(400).send({
+                    error: "BadRequest",
+                    detail: `publicInputs[${i}] is not a 128-bit limb`,
+                });
+            }
         }
 
         const signCalldata = {
             petitionId: BigInt(body.petitionId),
             nullifier: body.nullifier as Hex,
-            leafPubkeyX: hexToBigInt(body.leafPubkeyX as Hex),
-            leafPubkeyY: hexToBigInt(body.leafPubkeyY as Hex),
             leafSigR: hexToBigInt(body.leafSigR as Hex),
             leafSigS: hexToBigInt(body.leafSigS as Hex),
-            intermediatePubkeyX: hexToBigInt(body.intermediatePubkeyX as Hex),
-            intermediatePubkeyY: hexToBigInt(body.intermediatePubkeyY as Hex),
             intermediateSigR: hexToBigInt(body.intermediateSigR as Hex),
             intermediateSigS: hexToBigInt(body.intermediateSigS as Hex),
         };

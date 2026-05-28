@@ -5,15 +5,16 @@ import { config } from "../config";
 export interface SubmitArgs {
     petitionId: bigint;
     nullifier: string;
-    leafPubkeyX: string;
-    leafPubkeyY: string;
     leafSigR: string;
     leafSigS: string;
-    intermediatePubkeyX: string;
-    intermediatePubkeyY: string;
     intermediateSigR: string;
     intermediateSigS: string;
     proof: string;
+    /**
+     * Length 15 (D-v2-fix). Pubkey coordinates ride as 128-bit limb pairs
+     * in slots 3-10; the contract reassembles them before feeding the
+     * RIP-7212 precompile, so they don't appear as standalone body fields.
+     */
     publicInputs: string[];
 }
 
@@ -34,12 +35,8 @@ export async function submitSignature(args: SubmitArgs): Promise<SubmitOk | Subm
     const body = {
         petitionId: args.petitionId.toString(10),
         nullifier: args.nullifier,
-        leafPubkeyX: args.leafPubkeyX,
-        leafPubkeyY: args.leafPubkeyY,
         leafSigR: args.leafSigR,
         leafSigS: args.leafSigS,
-        intermediatePubkeyX: args.intermediatePubkeyX,
-        intermediatePubkeyY: args.intermediatePubkeyY,
         intermediateSigR: args.intermediateSigR,
         intermediateSigS: args.intermediateSigS,
         proof: args.proof,

@@ -35,29 +35,39 @@ pub fn assert_p256_spki_prefix<let N: u32>(bytes: [u8; N], offset: u32) {
     }
 }
 
-/// Big-endian-pack 32 bytes into a BN254 field element. NOTE: P-256
-/// coordinates can exceed the BN254 modulus, in which case the returned
-/// Field is the value reduced mod p. The contract is responsible for
-/// detecting that mismatch by comparing each public input against the
-/// caller-supplied uint256 in calldata.
-fn pack_be32(bytes: [u8; 32]) -> Field {
+/// Big-endian-pack 16 bytes into a BN254 field element. Output is strictly
+/// less than 2^128, well inside the BN254 prime, so the value is losslessly
+/// preserved (no implicit mod-p reduction).
+fn pack_be16<let N: u32>(bytes: [u8; N], offset: u32) -> Field {
     let mut acc: Field = 0;
-    for i in 0..32 {
-        acc = acc * 256 + (bytes[i] as Field);
+    for i in 0..16 {
+        acc = acc * 256 + (bytes[offset + i] as Field);
     }
     acc
 }
 
 /// Extract the affine (X, Y) coordinates following the canonical SPKI
-/// prefix at `bytes[offset .. offset + 64]`. Returns both as BN254 field
-/// elements (BE-packed). The caller is responsible for proving
-/// `offset + 64 <= N` (i.e. the 64 pubkey bytes lie inside the buffer).
-pub fn extract_p256_xy<let N: u32>(bytes: [u8; N], offset: u32) -> (Field, Field) {
-    let mut x_bytes: [u8; 32] = [0; 32];
-    let mut y_bytes: [u8; 32] = [0; 32];
-    for i in 0..32 {
-        x_bytes[i] = bytes[offset + i];
-        y_bytes[i] = bytes[offset + 32 + i];
-    }
-    (pack_be32(x_bytes), pack_be32(y_bytes))
+/// prefix at `bytes[offset .. offset + 64]` and split them into four
+/// 128-bit BN254 field-element limbs:
+///
+///   (x_hi, x_lo, y_hi, y_lo)
+///
+/// where `x_hi = BE(bytes[offset..offset+16])`,
+/// `x_lo = BE(bytes[offset+16..offset+32])`, and similarly for Y. The
+/// limb split is required because P-256 coordinates can exceed the BN254
+/// modulus; publishing them as single Field public inputs would silently
+/// mod-reduce ~25% of pubkeys, breaking the contract-side ECDSA call.
+/// Each limb is strictly < 2^128 << field modulus.
+///
+/// The caller is responsible for proving `offset + 64 <= N` (the 64 pubkey
+/// bytes lie inside the buffer).
+pub fn extract_p256_xy<let N: u32>(
+    bytes: [u8; N],
+    offset: u32,
+) -> (Field, Field, Field, Field) {
+    let x_hi = pack_be16(bytes, offset);
+    let x_lo = pack_be16(bytes, offset + 16);
+    let y_hi = pack_be16(bytes, offset + 32);
+    let y_lo = pack_be16(bytes, offset + 48);
+    (x_hi, x_lo, y_hi, y_lo)
 }
