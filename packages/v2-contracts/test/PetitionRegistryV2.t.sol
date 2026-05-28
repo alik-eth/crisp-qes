@@ -276,7 +276,6 @@ contract EnrollmentRegistryTest is Test {
     address internal attester;
     bytes32 internal constant GENESIS_ROOT = bytes32(uint256(0xCAFEBABE));
     uint256 internal constant GENESIS_LEAF_COUNT = 0;
-    bytes24 internal constant DOMAIN = "CRISP_QES_OPRF_ROOT_V2.1";
 
     function setUp() public {
         attester = vm.addr(attesterPk);
@@ -285,31 +284,32 @@ contract EnrollmentRegistryTest is Test {
         );
     }
 
-    /// @dev Reproduces the digest backend's OPRF signer is pinned to.
-    ///      Must match `EnrollmentRegistry.updateRoot` byte-for-byte.
-    function _digest(bytes32 oldRoot, bytes32 newRoot, uint256 leafIndex)
-        internal
-        pure
-        returns (bytes32)
-    {
-        return keccak256(abi.encodePacked(DOMAIN, oldRoot, newRoot, leafIndex));
+    /// @dev Reproduces backend's signed digest byte-for-byte.
+    function _signUpdate(
+        bytes32 oldRoot,
+        bytes32 newRoot,
+        bytes32[] memory newCommitments
+    ) internal view returns (bytes memory) {
+        bytes32 commitmentsHash = keccak256(abi.encodePacked(newCommitments));
+        bytes32 inner = keccak256(abi.encode(
+            oldRoot, newRoot, commitmentsHash, block.chainid, address(enrollment)
+        ));
+        bytes32 ethSigned = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", inner)
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(attesterPk, ethSigned);
+        return abi.encodePacked(r, s, v);
     }
 
-    function _signUpdate(bytes32 oldRoot, bytes32 newRoot, uint256 leafIndex)
-        internal
-        view
-        returns (bytes memory)
-    {
-        bytes32 d = _digest(oldRoot, newRoot, leafIndex);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(attesterPk, d);
-        return abi.encodePacked(r, s, v);
+    function _singletonBatch(bytes32 c) internal pure returns (bytes32[] memory arr) {
+        arr = new bytes32[](1);
+        arr[0] = c;
     }
 
     function test_genesis_state_set() public view {
         assertEq(enrollment.enrollmentRoot(), GENESIS_ROOT);
         assertEq(enrollment.oprfAttester(), attester);
         assertEq(enrollment.leafCount(), GENESIS_LEAF_COUNT);
-        assertEq(bytes24(enrollment.DOMAIN_OPRF_ROOT()), DOMAIN);
     }
 
     function test_previewDigest_matches_test_helper() public view {
@@ -318,94 +318,130 @@ contract EnrollmentRegistryTest is Test {
         // the digest format by calling the view, independent of any
         // off-chain re-implementation drift.
         bytes32 newRoot = bytes32(uint256(0xFACADE));
-        uint256 leafIndex = GENESIS_LEAF_COUNT;
-        assertEq(
-            enrollment.previewDigest(newRoot, leafIndex),
-            _digest(GENESIS_ROOT, newRoot, leafIndex)
+        bytes32[] memory commitments = _singletonBatch(bytes32(uint256(1)));
+        bytes32 expectedInner = keccak256(abi.encode(
+            GENESIS_ROOT,
+            newRoot,
+            keccak256(abi.encodePacked(commitments)),
+            block.chainid,
+            address(enrollment)
+        ));
+        bytes32 expectedEth = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", expectedInner)
         );
+        (bytes32 inner, bytes32 ethSigned) = enrollment.previewDigest(newRoot, commitments);
+        assertEq(inner, expectedInner);
+        assertEq(ethSigned, expectedEth);
     }
 
     function test_update_root_with_valid_signature() public {
         bytes32 newRoot = bytes32(uint256(0xBEEF));
-        bytes memory sig = _signUpdate(GENESIS_ROOT, newRoot, GENESIS_LEAF_COUNT);
+        bytes32[] memory commitments = new bytes32[](2);
+        commitments[0] = bytes32(uint256(1));
+        commitments[1] = bytes32(uint256(2));
+        bytes memory sig = _signUpdate(GENESIS_ROOT, newRoot, commitments);
 
-        vm.expectEmit(true, true, true, true);
-        emit EnrollmentRegistry.RootUpdated(
-            GENESIS_ROOT, newRoot, GENESIS_LEAF_COUNT, block.number
-        );
-        enrollment.updateRoot(newRoot, GENESIS_LEAF_COUNT, sig);
+        vm.expectEmit(true, true, false, true);
+        emit EnrollmentRegistry.RootUpdated(GENESIS_ROOT, newRoot, block.number);
+        enrollment.updateRoot(newRoot, commitments, sig);
 
         assertEq(enrollment.enrollmentRoot(), newRoot);
-        assertEq(enrollment.leafCount(), GENESIS_LEAF_COUNT + 1);
+        assertEq(enrollment.leafCount(), GENESIS_LEAF_COUNT + 2);
+        assertTrue(enrollment.isCommitmentUsed(bytes32(uint256(1))));
+        assertTrue(enrollment.isCommitmentUsed(bytes32(uint256(2))));
+        assertFalse(enrollment.isCommitmentUsed(bytes32(uint256(3))));
     }
 
-    function test_update_root_advances_through_multiple_inserts() public {
+    function test_update_root_emits_CommitmentInserted_with_indices() public {
+        bytes32 newRoot = bytes32(uint256(0xBEEF));
+        bytes32[] memory commitments = new bytes32[](3);
+        commitments[0] = bytes32(uint256(0xAA));
+        commitments[1] = bytes32(uint256(0xBB));
+        commitments[2] = bytes32(uint256(0xCC));
+        bytes memory sig = _signUpdate(GENESIS_ROOT, newRoot, commitments);
+
+        vm.expectEmit(true, true, false, false);
+        emit EnrollmentRegistry.CommitmentInserted(0, bytes32(uint256(0xAA)));
+        vm.expectEmit(true, true, false, false);
+        emit EnrollmentRegistry.CommitmentInserted(1, bytes32(uint256(0xBB)));
+        vm.expectEmit(true, true, false, false);
+        emit EnrollmentRegistry.CommitmentInserted(2, bytes32(uint256(0xCC)));
+        enrollment.updateRoot(newRoot, commitments, sig);
+        assertEq(enrollment.leafCount(), 3);
+    }
+
+    function test_update_root_advances_through_multiple_batches() public {
         bytes32 r0 = GENESIS_ROOT;
         bytes32 r1 = bytes32(uint256(0xA1));
         bytes32 r2 = bytes32(uint256(0xA2));
         bytes32 r3 = bytes32(uint256(0xA3));
+        bytes32[] memory b1 = _singletonBatch(bytes32(uint256(0x11)));
+        bytes32[] memory b2 = _singletonBatch(bytes32(uint256(0x22)));
+        bytes32[] memory b3 = _singletonBatch(bytes32(uint256(0x33)));
 
-        enrollment.updateRoot(r1, 0, _signUpdate(r0, r1, 0));
+        enrollment.updateRoot(r1, b1, _signUpdate(r0, r1, b1));
         assertEq(enrollment.leafCount(), 1);
-        enrollment.updateRoot(r2, 1, _signUpdate(r1, r2, 1));
+        enrollment.updateRoot(r2, b2, _signUpdate(r1, r2, b2));
         assertEq(enrollment.leafCount(), 2);
-        enrollment.updateRoot(r3, 2, _signUpdate(r2, r3, 2));
+        enrollment.updateRoot(r3, b3, _signUpdate(r2, r3, b3));
         assertEq(enrollment.leafCount(), 3);
         assertEq(enrollment.enrollmentRoot(), r3);
     }
 
     function test_update_root_rejects_bad_signature() public {
         bytes32 newRoot = bytes32(uint256(0xBEEF));
+        bytes32[] memory commitments = _singletonBatch(bytes32(uint256(1)));
         // Sign the right payload with the WRONG key.
-        bytes32 d = _digest(GENESIS_ROOT, newRoot, GENESIS_LEAF_COUNT);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(uint256(0xDEAD), d);
+        bytes32 inner = keccak256(abi.encode(
+            GENESIS_ROOT,
+            newRoot,
+            keccak256(abi.encodePacked(commitments)),
+            block.chainid,
+            address(enrollment)
+        ));
+        bytes32 ethSigned = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", inner)
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(uint256(0xDEAD), ethSigned);
         bytes memory sig = abi.encodePacked(r, s, v);
 
         vm.expectRevert(EnrollmentRegistry.BadSignature.selector);
-        enrollment.updateRoot(newRoot, GENESIS_LEAF_COUNT, sig);
-    }
-
-    function test_update_root_rejects_index_mismatch() public {
-        // Signature is correctly issued, but leafIndex skips ahead. The
-        // contract must reject — strict monotone, no holes.
-        bytes32 newRoot = bytes32(uint256(0xBEEF));
-        bytes memory sig = _signUpdate(GENESIS_ROOT, newRoot, 5);
-        vm.expectRevert(EnrollmentRegistry.IndexMismatch.selector);
-        enrollment.updateRoot(newRoot, 5, sig);
+        enrollment.updateRoot(newRoot, commitments, sig);
     }
 
     function test_update_root_rejects_replay() public {
         bytes32 root1 = bytes32(uint256(0xBEEF));
-        bytes memory sig1 = _signUpdate(GENESIS_ROOT, root1, 0);
-        enrollment.updateRoot(root1, 0, sig1);
+        bytes32[] memory commitments = _singletonBatch(bytes32(uint256(1)));
+        bytes memory sig1 = _signUpdate(GENESIS_ROOT, root1, commitments);
+        enrollment.updateRoot(root1, commitments, sig1);
 
-        // Replaying the same call must fail. After the first update the
-        // contract's leafCount is 1, so the IndexMismatch gate trips
-        // first (cheaper revert) — that's fine, replay is blocked.
-        vm.expectRevert(EnrollmentRegistry.IndexMismatch.selector);
-        enrollment.updateRoot(root1, 0, sig1);
+        // After the first update enrollmentRoot moved to root1, so the
+        // contract recomputes the digest with oldRoot=root1 — the signed
+        // signature recovers to a different address now → BadSignature.
+        vm.expectRevert(EnrollmentRegistry.BadSignature.selector);
+        enrollment.updateRoot(root1, commitments, sig1);
     }
 
-    function test_update_root_rejects_when_oldRoot_drifts() public {
-        // Sign against the GENESIS_ROOT, then sneak an updateRoot through
-        // after the root has already moved. The signature recovers fine
-        // off the old digest but the on-chain digest now uses a different
-        // oldRoot (the current enrollmentRoot), so ecrecover returns a
-        // different address → BadSignature.
-        bytes32 root1 = bytes32(uint256(0xBEEF));
-        bytes32 root2 = bytes32(uint256(0xCAFE));
-        bytes memory sig1 = _signUpdate(GENESIS_ROOT, root1, 0);
-        enrollment.updateRoot(root1, 0, sig1);
-
-        // Now try a stale signature signed against GENESIS_ROOT for the
-        // next leafIndex (1) — the contract recomputes the digest using
-        // the CURRENT enrollmentRoot (= root1), so the recovery diverges.
-        bytes32 staleDigest = _digest(GENESIS_ROOT, root2, 1);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(attesterPk, staleDigest);
-        bytes memory staleSig = abi.encodePacked(r, s, v);
-
+    function test_update_root_rejects_when_commitments_tampered() public {
+        // Signer signs over commitments={A}; relayer slips in
+        // commitments={A,B}. The on-chain digest now hashes a different
+        // commitmentsHash → BadSignature.
+        bytes32 newRoot = bytes32(uint256(0xBEEF));
+        bytes32[] memory honest = _singletonBatch(bytes32(uint256(0xAA)));
+        bytes memory sig = _signUpdate(GENESIS_ROOT, newRoot, honest);
+        bytes32[] memory tampered = new bytes32[](2);
+        tampered[0] = bytes32(uint256(0xAA));
+        tampered[1] = bytes32(uint256(0xBB));
         vm.expectRevert(EnrollmentRegistry.BadSignature.selector);
-        enrollment.updateRoot(root2, 1, staleSig);
+        enrollment.updateRoot(newRoot, tampered, sig);
+    }
+
+    function test_update_root_rejects_empty_batch() public {
+        bytes32 newRoot = bytes32(uint256(0xBEEF));
+        bytes32[] memory empty = new bytes32[](0);
+        bytes memory sig = _signUpdate(GENESIS_ROOT, newRoot, empty);
+        vm.expectRevert(EnrollmentRegistry.EmptyBatch.selector);
+        enrollment.updateRoot(newRoot, empty, sig);
     }
 
     // ---------- admin / attester rotation ----------
@@ -434,55 +470,68 @@ contract EnrollmentRegistryTest is Test {
         vm.expectEmit(true, true, false, true);
         emit EnrollmentRegistry.AdminTransferred(address(this), newAdmin);
         enrollment.transferAdmin(newAdmin);
-        // The old admin loses the lever immediately.
         vm.expectRevert(EnrollmentRegistry.NotAdmin.selector);
         enrollment.setOprfAttester(address(0xABCD));
-        // The new admin gains it.
         vm.prank(newAdmin);
         enrollment.setOprfAttester(address(0xABCD));
         assertEq(enrollment.oprfAttester(), address(0xABCD));
     }
 
     function test_deploy_with_placeholder_attester_blocks_updateRoot() public {
-        // Mirrors the DeployV2.s.sol "ship before backend is ready" flow:
-        // attester starts at address(0); admin rotates to real later. The
-        // attester==0 gate must trip before ecrecover gets to silently
-        // return address(0) on malformed input.
         EnrollmentRegistry placeholder = new EnrollmentRegistry(
             address(0), GENESIS_ROOT, GENESIS_LEAF_COUNT, address(this)
         );
         bytes32 newRoot = bytes32(uint256(0xFADE));
-        bytes32 d = _digest(GENESIS_ROOT, newRoot, GENESIS_LEAF_COUNT);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(attesterPk, d);
+        bytes32[] memory commitments = _singletonBatch(bytes32(uint256(1)));
+        // Build a sig that would otherwise pass against `placeholder`.
+        bytes32 inner = keccak256(abi.encode(
+            GENESIS_ROOT,
+            newRoot,
+            keccak256(abi.encodePacked(commitments)),
+            block.chainid,
+            address(placeholder)
+        ));
+        bytes32 ethSigned = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", inner)
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(attesterPk, ethSigned);
         bytes memory sig = abi.encodePacked(r, s, v);
 
         vm.expectRevert(EnrollmentRegistry.BadSignature.selector);
-        placeholder.updateRoot(newRoot, GENESIS_LEAF_COUNT, sig);
+        placeholder.updateRoot(newRoot, commitments, sig);
 
-        // Admin wires the real attester; the same signature now lands.
         placeholder.setOprfAttester(attester);
-        placeholder.updateRoot(newRoot, GENESIS_LEAF_COUNT, sig);
+        placeholder.updateRoot(newRoot, commitments, sig);
         assertEq(placeholder.enrollmentRoot(), newRoot);
         assertEq(placeholder.leafCount(), GENESIS_LEAF_COUNT + 1);
     }
 
     function test_genesis_leaf_count_offsets_first_index() public {
         // The contract supports launching against a backend tree that
-        // already has N leaves (the OPRF service runs ahead of the
-        // contract during scaffolding). The first valid leafIndex must
-        // equal genesisLeafCount.
+        // already has N leaves. The first inserted leaf logs at index N.
         uint256 N = 7;
         EnrollmentRegistry r = new EnrollmentRegistry(
             attester, GENESIS_ROOT, N, address(this)
         );
         bytes32 newRoot = bytes32(uint256(0xF00D));
-        // leafIndex=0 is no longer valid because leafCount starts at N.
-        bytes memory wrongSig = _signUpdate(GENESIS_ROOT, newRoot, 0);
-        vm.expectRevert(EnrollmentRegistry.IndexMismatch.selector);
-        r.updateRoot(newRoot, 0, wrongSig);
-        // leafIndex=N is the correct first index.
-        bytes memory rightSig = _signUpdate(GENESIS_ROOT, newRoot, N);
-        r.updateRoot(newRoot, N, rightSig);
+        bytes32[] memory commitments = _singletonBatch(bytes32(uint256(0xCC)));
+        // Have to sign against `r`, not `enrollment`, because address(this)
+        // differs in the digest.
+        bytes32 inner = keccak256(abi.encode(
+            GENESIS_ROOT,
+            newRoot,
+            keccak256(abi.encodePacked(commitments)),
+            block.chainid,
+            address(r)
+        ));
+        bytes32 ethSigned = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", inner)
+        );
+        (uint8 v, bytes32 sigR, bytes32 sigS) = vm.sign(attesterPk, ethSigned);
+        bytes memory sig = abi.encodePacked(sigR, sigS, v);
+        vm.expectEmit(true, true, false, false);
+        emit EnrollmentRegistry.CommitmentInserted(N, bytes32(uint256(0xCC)));
+        r.updateRoot(newRoot, commitments, sig);
         assertEq(r.leafCount(), N + 1);
     }
 }

@@ -11,33 +11,39 @@ pragma solidity ^0.8.28;
 ///         signature. Spec sec 2.3 calls out the threshold variant as
 ///         post-grant work.
 ///
-///         **Digest scheme** (pinned with backend / crisp-qes-v2-oprf):
+///         **Digest scheme** (pinned with team-lead 2026-05-29 and
+///         implemented byte-for-byte by backend at crisp-qes-v2-oprf):
 ///
-///             body  = abi.encodePacked(
-///                       bytes24("CRISP_QES_OPRF_ROOT_V2.1"),
-///                       oldRoot,                              // bytes32
-///                       newRoot,                              // bytes32
-///                       leafIndex                             // uint256
-///                     )
-///             h     = keccak256(body)
-///             sig   = secp256k1 over h, NO EIP-191 wrap
+///             commitmentsHash = keccak256(abi.encodePacked(newCommitments))
+///             inner           = keccak256(abi.encode(
+///                                 oldRoot,                  // bytes32
+///                                 newRoot,                  // bytes32
+///                                 commitmentsHash,          // bytes32
+///                                 block.chainid,            // uint256
+///                                 address(this)             // address
+///                               ))
+///             ethSigned       = keccak256(abi.encodePacked(
+///                                 "\x19Ethereum Signed Message:\n32",
+///                                 inner
+///                               ))
+///             sig             = secp256k1 (r, s, v) over ethSigned
 ///
-///         `leafIndex` must equal the registry's current `leafCount`,
-///         giving strict-monotone insertion order: replays, reorderings,
-///         and forks are all rejected because the next valid signature
-///         is always against the just-advanced state.
+///         This is the EIP-191 personal_sign envelope, so the OPRF
+///         service can use any off-the-shelf signer (viem's
+///         `signMessage({ message: { raw: inner } })`, ethers'
+///         `signMessage(arrayify(inner))`) and the contract gate matches
+///         what `MessageHashUtils.toEthSignedMessageHash` produces.
 ///
-///         **Replay-protection caveat (testnet/prototype only).** The
-///         digest does NOT include `block.chainid` or `address(this)`.
-///         The `bytes24("CRISP_QES_OPRF_ROOT_V2.1")` domain prefix
-///         pins the protocol version, but two registries on the same
-///         chain (or one on testnet + one on mainnet) sharing the
-///         attester key would both accept the same signed update. For
-///         v2.1's grant deliverable that's acceptable — the attester
-///         key is bound to a single Fly deployment + single chain.
-///         **v2.2 mainnet MUST add chainid + address(this) to the
-///         digest** (~2 lines either side, in this contract and in
-///         backend's signer).
+///         The chain id + contract address inside `inner` prevent
+///         cross-chain and cross-instance replay even when the same
+///         attester key is reused across deploys.
+///
+///         **Strict-monotone insertion.** `leafCount` advances by
+///         `newCommitments.length` per accepted call. The (oldRoot,
+///         newRoot) binding inside the digest already prevents replay
+///         within a single registry: once we move past `newRoot` the
+///         signed `oldRoot` no longer matches `enrollmentRoot`. The
+///         leafCount counter is for off-chain indexers + tests.
 contract EnrollmentRegistry {
     // ---------- storage ----------
 
@@ -46,7 +52,7 @@ contract EnrollmentRegistry {
     bytes32 public enrollmentRoot;
 
     /// @notice Number of leaves inserted into the enrollment tree so far.
-    ///         The next valid `updateRoot` must carry `leafIndex == leafCount`.
+    ///         Bumped by `newCommitments.length` per accepted `updateRoot`.
     ///         At deploy time set from `genesisLeafCount` so the registry
     ///         can launch in sync with backend's pre-existing tree state.
     uint256 public leafCount;
@@ -65,27 +71,23 @@ contract EnrollmentRegistry {
     ///         so a compromised attester key cannot rotate itself.
     address public admin;
 
-    /// @notice Domain tag baked into every `updateRoot` signature.
-    ///         Exactly 24 ASCII bytes. Pinned with backend in 2026-05-29
-    ///         coordination — DO NOT change without bumping the version
-    ///         suffix and re-keying the off-chain signer.
-    bytes24 public constant DOMAIN_OPRF_ROOT = "CRISP_QES_OPRF_ROOT_V2.1";
+    /// @notice Used-commitment map. Populated inside `updateRoot` for
+    ///         every leaf the attester publishes. Off-chain clients can
+    ///         use this to surface "already enrolled" errors before
+    ///         submitting a new attestation. Spec sec 2.3.
+    mapping(bytes32 commitment => bool) private _used;
 
     // ---------- events ----------
 
-    event RootUpdated(
-        bytes32 indexed oldRoot,
-        bytes32 indexed newRoot,
-        uint256 indexed leafIndex,
-        uint256 blockNumber
-    );
+    event RootUpdated(bytes32 indexed oldRoot, bytes32 indexed newRoot, uint256 blockNumber);
+    event CommitmentInserted(uint256 indexed leafIndex, bytes32 indexed commitment);
     event OprfAttesterChanged(address indexed oldAttester, address indexed newAttester);
     event AdminTransferred(address indexed oldAdmin, address indexed newAdmin);
 
     // ---------- errors ----------
 
     error BadSignature();
-    error IndexMismatch();
+    error EmptyBatch();
     error NotAdmin();
     error ZeroAddress();
 
@@ -96,13 +98,10 @@ contract EnrollmentRegistry {
     ///                         via `setOprfAttester` later.
     /// @param genesisRoot      Initial enrollment Merkle root. Must equal
     ///                         the root backend's tree is currently at.
-    ///                         For an empty depth-20 zero-tree pass that
-    ///                         tree's known root; for a backfilled tree
-    ///                         pass backend's `currentRoot`.
+    ///                         For an empty depth-20 zero-tree pass the
+    ///                         canonical zero-tree root.
     /// @param genesisLeafCount Number of leaves already inserted into
-    ///                         backend's tree at deploy time. The next
-    ///                         signed `updateRoot` must carry
-    ///                         `leafIndex == genesisLeafCount`. Typically
+    ///                         backend's tree at deploy time. Typically
     ///                         `0` for a fresh deploy.
     /// @param admin_           Address allowed to rotate the attester. The
     ///                         deploy script defaults this to `msg.sender`
@@ -115,16 +114,11 @@ contract EnrollmentRegistry {
         address admin_
     ) {
         if (admin_ == address(0)) revert ZeroAddress();
-        // oprfAttester_ may be zero at deploy time (the deploy script
-        // ships a placeholder when backend's real key is still pending).
-        // setOprfAttester wires up the real value before the first
-        // updateRoot is attempted; the updateRoot path hard-rejects
-        // attester==address(0) so this is safe.
         oprfAttester = oprfAttester_;
         admin = admin_;
         enrollmentRoot = genesisRoot;
         leafCount = genesisLeafCount;
-        emit RootUpdated(bytes32(0), genesisRoot, genesisLeafCount, block.number);
+        emit RootUpdated(bytes32(0), genesisRoot, block.number);
         emit OprfAttesterChanged(address(0), oprfAttester_);
         emit AdminTransferred(address(0), admin_);
     }
@@ -156,65 +150,89 @@ contract EnrollmentRegistry {
 
     // ---------- attester API ----------
 
-    /// @notice Advance the enrollment root by one leaf. Anyone may call
-    ///         this; the gate is the attester-signed digest. Each call
-    ///         inserts the leaf at position `leafIndex` and bumps
-    ///         `leafCount` to `leafIndex + 1`.
+    /// @notice Advance the enrollment root and bind the leaves inserted
+    ///         in this batch. Anyone may call this; the gate is the
+    ///         attester-signed digest. Each commitment is marked used
+    ///         and emitted as a `CommitmentInserted` event keyed by its
+    ///         leaf index.
     ///
-    /// @param  newRoot   New Pedersen-Merkle root after inserting the
-    ///                   leaf at `leafIndex`.
-    /// @param  leafIndex Insertion position. MUST equal the current
-    ///                   `leafCount` (strict monotone).
-    /// @param  signature 65-byte ECDSA `(r, s, v)` from `oprfAttester`
-    ///                   over the digest defined in the contract header.
+    /// @param  newRoot         New Pedersen-Merkle root after inserting
+    ///                         `newCommitments`.
+    /// @param  newCommitments  Leaves added in this batch. Length >= 1.
+    ///                         Each is `s = pedersen([N_hi, N_lo], 0)`
+    ///                         per the v2 formula pin.
+    /// @param  signature       65-byte ECDSA `(r, s, v)` from
+    ///                         `oprfAttester` over the EIP-191-wrapped
+    ///                         digest defined in the contract header.
     function updateRoot(
         bytes32 newRoot,
-        uint256 leafIndex,
+        bytes32[] calldata newCommitments,
         bytes calldata signature
     ) external {
-        // Strict-monotone insertion. Replays, reorderings, and forks all
-        // bounce here because the next valid leafIndex is always the
-        // just-advanced count.
-        if (leafIndex != leafCount) revert IndexMismatch();
+        if (newCommitments.length == 0) revert EmptyBatch();
         // Block updates until the real attester is wired up. Without this
         // guard a placeholder-deployed registry would accept any garbage
-        // signature whose recovery yields address(0) (which is what
-        // ecrecover returns for malformed inputs).
+        // signature whose recovery yields address(0).
         if (oprfAttester == address(0)) revert BadSignature();
 
         bytes32 oldRoot = enrollmentRoot;
-        bytes32 digest = keccak256(
-            abi.encodePacked(DOMAIN_OPRF_ROOT, oldRoot, newRoot, leafIndex)
+        bytes32 commitmentsHash = keccak256(abi.encodePacked(newCommitments));
+        bytes32 inner = keccak256(abi.encode(
+            oldRoot, newRoot, commitmentsHash, block.chainid, address(this)
+        ));
+        // EIP-191 personal_sign envelope. Matches viem
+        // `signMessage({ message: { raw: inner } })` and OZ
+        // `MessageHashUtils.toEthSignedMessageHash(inner)`.
+        bytes32 ethSigned = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", inner)
         );
-        // NO EIP-191 wrap — backend signs `h` directly. See contract
-        // header for the digest scheme rationale.
-        address recovered = _recover(digest, signature);
+        address recovered = _recover(ethSigned, signature);
         if (recovered != oprfAttester) revert BadSignature();
 
         enrollmentRoot = newRoot;
+        uint256 baseIndex = leafCount;
         unchecked {
             // Overflow is impossible in practice: TREE_DEPTH=20 caps the
-            // tree at 2^20 leaves and the gate above rejects any index
-            // outside `[0, leafCount]`. `unchecked` saves a few gas per
-            // update.
-            leafCount = leafIndex + 1;
+            // tree at 2^20 leaves.
+            leafCount = baseIndex + newCommitments.length;
         }
-        emit RootUpdated(oldRoot, newRoot, leafIndex, block.number);
+        emit RootUpdated(oldRoot, newRoot, block.number);
+
+        for (uint256 i = 0; i < newCommitments.length; i++) {
+            bytes32 c = newCommitments[i];
+            // Duplicates are tolerated silently (backend already enforces
+            // uniqueness at /oprf/register; a no-op here is safer than a
+            // partial-batch revert).
+            if (!_used[c]) {
+                _used[c] = true;
+                unchecked {
+                    emit CommitmentInserted(baseIndex + i, c);
+                }
+            }
+        }
     }
 
     // ---------- views ----------
 
-    /// @notice Reconstruct the exact 32-byte digest the off-chain signer
-    ///         must sign for a given `(newRoot, leafIndex)` against the
-    ///         current `enrollmentRoot`. Exposed so backend's signer can
+    function isCommitmentUsed(bytes32 commitment) external view returns (bool) {
+        return _used[commitment];
+    }
+
+    /// @notice Reconstruct the exact 32-byte digest backend must sign for
+    ///         a `(newRoot, newCommitments)` batch against the current
+    ///         `enrollmentRoot`. Exposed so backend's signer can
     ///         self-check without re-implementing the encoding.
-    function previewDigest(bytes32 newRoot, uint256 leafIndex)
+    function previewDigest(bytes32 newRoot, bytes32[] calldata newCommitments)
         external
         view
-        returns (bytes32)
+        returns (bytes32 inner, bytes32 ethSigned)
     {
-        return keccak256(
-            abi.encodePacked(DOMAIN_OPRF_ROOT, enrollmentRoot, newRoot, leafIndex)
+        bytes32 commitmentsHash = keccak256(abi.encodePacked(newCommitments));
+        inner = keccak256(abi.encode(
+            enrollmentRoot, newRoot, commitmentsHash, block.chainid, address(this)
+        ));
+        ethSigned = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", inner)
         );
     }
 
