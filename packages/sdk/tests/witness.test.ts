@@ -1,4 +1,4 @@
-// Witness assembly tests.
+// Witness assembly tests for the D-v2 chain-verify circuit.
 //
 // These exercise the pure-typescript witness builder against a synthetic
 // `ParsedP7s` so we don't depend on the Diia fixture (CI ships without it).
@@ -23,20 +23,48 @@ function makeParsedP7s(overrides: Partial<ParsedP7s> = {}): ParsedP7s {
         messageDigest[i] = (i * 7 + 3) & 0xff;
         signedAttrs[mdOffset + i] = messageDigest[i]!;
     }
+
+    // Synthetic leaf TBSCertificate: subject_serial bytes planted at offset
+    // 100, leaf pubkey would-be offset right after the canonical 27-byte
+    // SPKI prefix at offset 200 (so leaf_pubkey_offset = 227).
+    const subjectSerial = new TextEncoder().encode("TINUA-1234567890123456789012345");
+    const leafTbsBytes = new Uint8Array(400);
+    leafTbsBytes.set(subjectSerial, 100);
+    // Plant 64 pubkey bytes at offset 227 — values don't have to match X/Y
+    // since the shape test only inspects offsets/lengths.
+    for (let i = 0; i < 64; i++) leafTbsBytes[227 + i] = (i + 0x20) & 0xff;
+
+    const intermediateSpkiDer = new Uint8Array(200);
+    // The intermediate SPKI body just needs to be a sane length; we plant the
+    // canonical prefix at offset 0 so intermediate_pubkey_offset = 27.
+    for (let i = 0; i < 27; i++) intermediateSpkiDer[i] = 0xa0 + i;
+    for (let i = 27; i < 27 + 64; i++) intermediateSpkiDer[i] = i & 0xff;
+
     return {
         signedAttrs,
         signedAttrsSha256: new Uint8Array(32).fill(0xAA),
         messageDigest,
         messageDigestOffset: mdOffset,
-        subjectSerial: new TextEncoder().encode("TINUA-1234567890"),
-        leafCertDer: new Uint8Array(400),
-        leafSpkiDer: new Uint8Array(550), // typical RSA-free P-256 SPKI ~ 91 bytes; pad to 550 to exercise bounds
-        intermediateCertDer: null,
+        subjectSerial: subjectSerial.slice(0, 32),
+        leafCertDer: new Uint8Array(420),
+        leafTbsBytes,
+        leafTbsSha256: new Uint8Array(32).fill(0xBB),
+        subjectSerialOffset: 100,
+        leafPubkeyOffset: 227,
+        leafSpkiDer: new Uint8Array(550),
+        intermediateCertDer: new Uint8Array(800),
+        intermediateSpkiDer,
+        intermediatePubkey: {
+            x: 0xbeefn,
+            y: 0xcafen,
+        },
+        intermediatePubkeyOffset: 27,
         pubkey: {
             x: 0xa1ce_b0b_c0ffeen,
             y: 0xdeca_f_face_b00cn,
         },
         signature: { r: 1n, s: 2n },
+        leafCertSignature: { r: 3n, s: 4n },
         ...overrides,
     };
 }
@@ -49,16 +77,13 @@ describe("splitSha256 hi/lo", () => {
     });
 
     it("splits a top-bit-set digest into two 128-bit halves", () => {
-        // 0xFF...FF top bit set; hi = 0xFFEEDD...100, lo = 0xFFEEDD...100.
         const digest = new Uint8Array(32);
         for (let i = 0; i < 32; i++) {
             digest[i] = 0xff - (i & 0x0f);
         }
         const { hi, lo } = splitSha256(digest);
-        // Each limb fits in 128 bits.
         expect(hi < 1n << 128n).toBe(true);
         expect(lo < 1n << 128n).toBe(true);
-        // Reassembly round-trips.
         const reassembled = (hi << 128n) | lo;
         let direct = 0n;
         for (const b of digest) direct = (direct << 8n) | BigInt(b);
@@ -73,9 +98,7 @@ describe("splitSha256 hi/lo", () => {
         digest[16] = 0xab;
         digest[31] = 0xcd;
         const { hi, lo } = splitSha256(digest);
-        // hi = 0x010200000000000000000000000000FF
         expect(hi).toBe(0x010200000000000000000000000000ffn);
-        // lo = 0xAB00000000000000000000000000_00CD
         expect(lo).toBe(0xab000000000000000000000000000000n | 0xcdn);
     });
 
@@ -92,7 +115,6 @@ describe("computeNullifier", () => {
             petitionId: 42n,
         });
         expect(a).toMatch(/^0x[0-9a-f]{64}$/);
-        // Deterministic — calling twice yields the same value.
         const b = await computeNullifier({
             pubkey: { x: 1n, y: 2n },
             petitionId: 42n,
@@ -118,7 +140,7 @@ describe("computeNullifier", () => {
     });
 });
 
-describe("buildWitness — shape contract", () => {
+describe("buildWitness — shape contract (D-v2)", () => {
     const baseArgs = {
         petitionId: 7n,
         petitionTextHash: new Uint8Array(32).fill(0x42),
@@ -127,32 +149,41 @@ describe("buildWitness — shape contract", () => {
         merklePathIndices: Array.from({ length: 16 }, (_, i) => i & 1),
     };
 
-    it("produces an InputMap with the exact circuit field names + array sizes", async () => {
+    it("produces an InputMap with the exact v2 circuit field names + array sizes", async () => {
         const { inputs, publics } = await buildWitness({
             parsed: makeParsedP7s(),
             ...baseArgs,
         });
 
-        // Public slots
+        // Public slots (11)
         expect(inputs.petition_id).toBe(toFieldHex(7n));
         expect(inputs.trust_root).toBe(toFieldHex(0xdeadbeefn));
-        expect(inputs.pubkey_x).toMatch(/^0x[0-9a-f]{64}$/);
-        expect(inputs.pubkey_y).toMatch(/^0x[0-9a-f]{64}$/);
+        expect(inputs.leaf_pubkey_x).toMatch(/^0x[0-9a-f]{64}$/);
+        expect(inputs.leaf_pubkey_y).toMatch(/^0x[0-9a-f]{64}$/);
+        expect(inputs.intermediate_pubkey_x).toMatch(/^0x[0-9a-f]{64}$/);
+        expect(inputs.intermediate_pubkey_y).toMatch(/^0x[0-9a-f]{64}$/);
         expect(inputs.nullifier).toMatch(/^0x[0-9a-f]{64}$/);
+        expect(inputs.leaf_tbs_sha256_hi).toMatch(/^0x[0-9a-f]{64}$/);
+        expect(inputs.leaf_tbs_sha256_lo).toMatch(/^0x[0-9a-f]{64}$/);
         expect(inputs.signed_attrs_sha256_hi).toMatch(/^0x[0-9a-f]{64}$/);
         expect(inputs.signed_attrs_sha256_lo).toMatch(/^0x[0-9a-f]{64}$/);
 
         // Private slots — circuit-mandated lengths
         expect(inputs.subject_serial.length).toBe(32);
-        expect(inputs.spki_bytes.length).toBe(1024);
+        expect(inputs.leaf_tbs_bytes.length).toBe(2048);
+        expect(inputs.intermediate_spki_bytes.length).toBe(1024);
         expect(inputs.merkle_path.length).toBe(16);
         expect(inputs.merkle_path_indices.length).toBe(16);
-        expect(inputs.signed_attrs_bytes.length).toBe(512);
+        expect(inputs.signed_attrs_bytes.length).toBe(2048);
         expect(inputs.petition_text_hash.length).toBe(32);
 
-        // `signed_attrs_len` and offset are decimal strings
+        // Offsets + lengths as decimal strings (Noir u32 InputMap form).
         expect(inputs.signed_attrs_len).toBe("200");
         expect(inputs.message_digest_offset).toBe("50");
+        expect(inputs.subject_serial_offset).toBe("100");
+        expect(inputs.leaf_tbs_len).toBe("400");
+        expect(inputs.leaf_pubkey_offset).toBe("227");
+        expect(inputs.intermediate_pubkey_offset).toBe("27");
 
         // merkle_path_indices coerced to booleans
         for (const v of inputs.merkle_path_indices) expect(typeof v).toBe("boolean");
@@ -161,6 +192,8 @@ describe("buildWitness — shape contract", () => {
         expect(publics.petitionId).toBe(7n);
         expect(publics.nullifier).toBe(BigInt(inputs.nullifier));
         expect(publics.trustRoot).toBe(0xdeadbeefn);
+        expect(publics.intermediatePubkeyX).toBe(0xbeefn);
+        expect(publics.intermediatePubkeyY).toBe(0xcafen);
     });
 
     it("pads bytes right with zeros up to the circuit max length", async () => {
@@ -168,38 +201,59 @@ describe("buildWitness — shape contract", () => {
             parsed: makeParsedP7s(),
             ...baseArgs,
         });
-        // The synthetic signedAttrs was 200 bytes — everything past should be zero.
-        for (let i = 200; i < 512; i++) {
+        // signedAttrs was 200 bytes — everything past is zero.
+        for (let i = 200; i < 2048; i++) {
             expect(inputs.signed_attrs_bytes[i]).toBe(0);
         }
-        // leaf SPKI was 550 bytes — zero-padded out to 1024.
-        for (let i = 550; i < 1024; i++) {
-            expect(inputs.spki_bytes[i]).toBe(0);
+        // leaf TBS was 400 bytes — zero-padded out to 2048.
+        for (let i = 400; i < 2048; i++) {
+            expect(inputs.leaf_tbs_bytes[i]).toBe(0);
+        }
+        // intermediate SPKI was 200 bytes — zero-padded out to 1024.
+        for (let i = 200; i < 1024; i++) {
+            expect(inputs.intermediate_spki_bytes[i]).toBe(0);
         }
     });
 
-    it("splits sha256 into hi/lo that reassemble to the digest", async () => {
-        // Top-bit-set digest — the path that motivated the slot-5/6 split.
-        const digest = new Uint8Array(32);
-        for (let i = 0; i < 32; i++) digest[i] = 0xf0 ^ i;
-        const parsed = makeParsedP7s({ signedAttrsSha256: digest });
+    it("splits both SHA-256 digests into hi/lo that reassemble correctly", async () => {
+        const tbs = new Uint8Array(32);
+        const sa = new Uint8Array(32);
+        for (let i = 0; i < 32; i++) {
+            tbs[i] = 0xf0 ^ i;
+            sa[i] = 0x0f ^ i;
+        }
+        const parsed = makeParsedP7s({
+            leafTbsSha256: tbs,
+            signedAttrsSha256: sa,
+        });
 
         const { inputs } = await buildWitness({ parsed, ...baseArgs });
-        const hi = BigInt(inputs.signed_attrs_sha256_hi);
-        const lo = BigInt(inputs.signed_attrs_sha256_lo);
-        expect(hi >> 128n).toBe(0n);
-        expect(lo >> 128n).toBe(0n);
 
-        let direct = 0n;
-        for (const b of digest) direct = (direct << 8n) | BigInt(b);
-        expect((hi << 128n) | lo).toBe(direct);
+        const reassemble = (hi: bigint, lo: bigint) => (hi << 128n) | lo;
+        const directOf = (b: Uint8Array) => {
+            let v = 0n;
+            for (const x of b) v = (v << 8n) | BigInt(x);
+            return v;
+        };
+        expect(
+            reassemble(
+                BigInt(inputs.leaf_tbs_sha256_hi),
+                BigInt(inputs.leaf_tbs_sha256_lo),
+            ),
+        ).toBe(directOf(tbs));
+        expect(
+            reassemble(
+                BigInt(inputs.signed_attrs_sha256_hi),
+                BigInt(inputs.signed_attrs_sha256_lo),
+            ),
+        ).toBe(directOf(sa));
     });
 
-    it("rejects oversized signedAttrs / spki / wrong-length petitionTextHash / bad indices", async () => {
+    it("rejects oversized signedAttrs / leafTbs / intermediateSpki", async () => {
         await expect(
             buildWitness({
                 parsed: makeParsedP7s({
-                    signedAttrs: new Uint8Array(1024), // > 512 cap
+                    signedAttrs: new Uint8Array(4096), // > 2048 cap
                 }),
                 ...baseArgs,
             }),
@@ -208,12 +262,23 @@ describe("buildWitness — shape contract", () => {
         await expect(
             buildWitness({
                 parsed: makeParsedP7s({
-                    leafSpkiDer: new Uint8Array(2048), // > 1024 cap
+                    leafTbsBytes: new Uint8Array(4096), // > 2048 cap
                 }),
                 ...baseArgs,
             }),
-        ).rejects.toThrow(/leafSpkiDer/);
+        ).rejects.toThrow(/leafTbsBytes/);
 
+        await expect(
+            buildWitness({
+                parsed: makeParsedP7s({
+                    intermediateSpkiDer: new Uint8Array(2048), // > 1024 cap
+                }),
+                ...baseArgs,
+            }),
+        ).rejects.toThrow(/intermediateSpkiDer/);
+    });
+
+    it("rejects bad shape (wrong petitionTextHash / indices / merkle path)", async () => {
         await expect(
             buildWitness({
                 parsed: makeParsedP7s(),
@@ -250,5 +315,35 @@ describe("buildWitness — shape contract", () => {
                 ...baseArgs,
             }),
         ).rejects.toThrow(/messageDigestOffset/);
+    });
+
+    it("rejects a .p7s with no intermediate cert (D-v2 requires it)", async () => {
+        await expect(
+            buildWitness({
+                parsed: makeParsedP7s({
+                    intermediateCertDer: null,
+                    intermediateSpkiDer: null,
+                    intermediatePubkey: null,
+                    intermediatePubkeyOffset: null,
+                }),
+                ...baseArgs,
+            }),
+        ).rejects.toThrow(/intermediate/);
+    });
+
+    it("rejects out-of-range leafPubkeyOffset / intermediatePubkeyOffset", async () => {
+        await expect(
+            buildWitness({
+                parsed: makeParsedP7s({ leafPubkeyOffset: 5 }),
+                ...baseArgs,
+            }),
+        ).rejects.toThrow(/leafPubkeyOffset/);
+
+        await expect(
+            buildWitness({
+                parsed: makeParsedP7s({ intermediatePubkeyOffset: 5 }),
+                ...baseArgs,
+            }),
+        ).rejects.toThrow(/intermediatePubkeyOffset/);
     });
 });

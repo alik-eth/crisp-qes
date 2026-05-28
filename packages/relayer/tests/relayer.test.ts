@@ -62,19 +62,27 @@ function fakeClients(impls: {
 const VALID_BODY = {
     petitionId: "1",
     nullifier: "0x" + "11".repeat(32),
-    pubkeyX: "0x" + "22".repeat(32),
-    pubkeyY: "0x" + "33".repeat(32),
-    sigR: "0x" + "44".repeat(32),
-    sigS: "0x" + "55".repeat(32),
+    leafPubkeyX: "0x" + "22".repeat(32),
+    leafPubkeyY: "0x" + "33".repeat(32),
+    leafSigR: "0x" + "44".repeat(32),
+    leafSigS: "0x" + "55".repeat(32),
+    intermediatePubkeyX: "0x" + "66".repeat(32),
+    intermediatePubkeyY: "0x" + "77".repeat(32),
+    intermediateSigR: "0x" + "88".repeat(32),
+    intermediateSigS: "0x" + "99".repeat(32),
     proof: "0xdead",
     publicInputs: [
-        "0x" + "00".repeat(31) + "01", // petitionId == 1
-        "0x" + "11".repeat(32),
-        "0x" + "aa".repeat(32),
-        "0x" + "22".repeat(32),
-        "0x" + "33".repeat(32),
-        "0x" + "00".repeat(16) + "bb".repeat(16), // signedAttrsSha256_hi (128-bit limb)
-        "0x" + "00".repeat(16) + "cc".repeat(16), // signedAttrsSha256_lo (128-bit limb)
+        "0x" + "00".repeat(31) + "01", // [0]  petitionId == 1
+        "0x" + "11".repeat(32),         // [1]  nullifier
+        "0x" + "aa".repeat(32),         // [2]  trustRoot
+        "0x" + "22".repeat(32),         // [3]  leafPubkeyX
+        "0x" + "33".repeat(32),         // [4]  leafPubkeyY
+        "0x" + "66".repeat(32),         // [5]  intermediatePubkeyX
+        "0x" + "77".repeat(32),         // [6]  intermediatePubkeyY
+        "0x" + "00".repeat(16) + "bb".repeat(16), // [7]  leafTbsSha256_hi
+        "0x" + "00".repeat(16) + "cc".repeat(16), // [8]  leafTbsSha256_lo
+        "0x" + "00".repeat(16) + "dd".repeat(16), // [9]  signedAttrsSha256_hi
+        "0x" + "00".repeat(16) + "ee".repeat(16), // [10] signedAttrsSha256_lo
     ],
 };
 

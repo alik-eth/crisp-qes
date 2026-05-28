@@ -17,6 +17,7 @@ const SIGNER_ERROR_NAMES = [
     "InvalidProof",
     "InvalidTrustRoot",
     "InvalidSignature",
+    "InvalidCertChain",
 ] as const;
 
 type SignerErrorName = (typeof SIGNER_ERROR_NAMES)[number];
@@ -45,6 +46,7 @@ const STATUS_BY_NAME: Record<SignerErrorName, number> = {
     InvalidSignature: 422,
     InvalidProof: 422,
     InvalidTrustRoot: 422,
+    InvalidCertChain: 422,
 };
 
 function findRevertSelector(err: unknown): Hex | undefined {

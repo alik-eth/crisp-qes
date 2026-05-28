@@ -83,8 +83,10 @@
         },
         "trust": {
             "loadingManifest": "Loading trust-list manifest…",
-            "missingLeaf": "This certificate is not under any trusted CA in the current trust-root.",
-            "leafOk": "Trusted CA found: {{tsp}}",
+            "intermediateOk": "Trusted Diia CA: {{name}}",
+            "intermediateMissing": "This leaf is not under any trusted Diia CA in the current trust-root.",
+            "subjectDn": "Subject DN",
+            "spkiCommit": "SPKI commit",
             "manifestError": "Could not load the trust-list manifest."
         },
         "nullifier": {
@@ -112,6 +114,7 @@
                 "PetitionClosed": "The petition's deadline has passed — the signature is rejected.",
                 "UnknownPetition": "Petition not found in the registry.",
                 "InvalidSignature": "The P-256 signature failed RIP-7212 verification.",
+                "InvalidCertChain": "The intermediate CA did not sign the leaf TBSCertificate — chain invalid.",
                 "InvalidProof": "The ZK proof failed verification.",
                 "InvalidTrustRoot": "trust-root does not match the one pinned in the contract.",
                 "RelayerSubmitFailed": "The relayer could not submit the transaction.",

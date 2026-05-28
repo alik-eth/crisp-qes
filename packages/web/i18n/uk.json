@@ -83,8 +83,10 @@
         },
         "trust": {
             "loadingManifest": "Завантажуємо trust-list манифест…",
-            "missingLeaf": "Сертифікат не належить до жодного довіреного коренеого CA у поточному trust-root.",
-            "leafOk": "Знайдено довірений CA: {{tsp}}",
+            "intermediateOk": "Довірений посередник Дія: {{name}}",
+            "intermediateMissing": "Сертифікат не належить до жодного довіреного посередника Дія у поточному trust-root.",
+            "subjectDn": "Subject DN",
+            "spkiCommit": "SPKI commit",
             "manifestError": "Не вдалося завантажити trust-list манифест."
         },
         "nullifier": {
@@ -112,6 +114,7 @@
                 "PetitionClosed": "Дедлайн петиції минув — підпис не приймається.",
                 "UnknownPetition": "Петицію не знайдено у реєстрі.",
                 "InvalidSignature": "Підпис P-256 не пройшов перевірку RIP-7212.",
+                "InvalidCertChain": "Сертифікат проміжного CA не підписав leaf TBS — ланцюжок не валідний.",
                 "InvalidProof": "ZK-доказ не пройшов перевірку.",
                 "InvalidTrustRoot": "trust-root не збігається з пінованим у контракті.",
                 "RelayerSubmitFailed": "Релеєр не зміг надіслати транзакцію.",

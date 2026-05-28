@@ -9,12 +9,22 @@ export const petitionRegistryAbi = [
         name: "signPetition",
         stateMutability: "nonpayable",
         inputs: [
-            { name: "petitionId", type: "uint256" },
-            { name: "nullifier", type: "bytes32" },
-            { name: "pubkeyX", type: "uint256" },
-            { name: "pubkeyY", type: "uint256" },
-            { name: "sigR", type: "uint256" },
-            { name: "sigS", type: "uint256" },
+            {
+                name: "p",
+                type: "tuple",
+                components: [
+                    { name: "petitionId", type: "uint256" },
+                    { name: "nullifier", type: "bytes32" },
+                    { name: "leafPubkeyX", type: "uint256" },
+                    { name: "leafPubkeyY", type: "uint256" },
+                    { name: "leafSigR", type: "uint256" },
+                    { name: "leafSigS", type: "uint256" },
+                    { name: "intermediatePubkeyX", type: "uint256" },
+                    { name: "intermediatePubkeyY", type: "uint256" },
+                    { name: "intermediateSigR", type: "uint256" },
+                    { name: "intermediateSigS", type: "uint256" },
+                ],
+            },
             { name: "proof", type: "bytes" },
             { name: "publicInputs", type: "bytes32[]" },
         ],
@@ -54,6 +64,7 @@ export const petitionRegistryAbi = [
     { type: "error", name: "InvalidProof", inputs: [] },
     { type: "error", name: "InvalidTrustRoot", inputs: [] },
     { type: "error", name: "InvalidSignature", inputs: [] },
+    { type: "error", name: "InvalidCertChain", inputs: [] },
 ] as const;
 
 // Pre-computed 4-byte selectors of every custom error above, so we can map

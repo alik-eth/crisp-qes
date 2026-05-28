@@ -30,7 +30,7 @@ export const DOMAIN_PETITION_V1: bigint =
 export interface Proof {
     /** Raw ZK Honk proof bytes for the EVM verifier. */
     proofBytes: Uint8Array;
-    /** Public inputs (length 7) as bytes32-hex strings in registry order. */
+    /** Public inputs (length 11) as bytes32-hex strings in registry order. */
     publicInputs: string[];
 }
 
@@ -45,7 +45,7 @@ export interface ProveArgs {
  * `keccakZK` Honk variant the regenerated Solidity verifier expects
  * (`bb write_solidity_verifier -t evm`).
  *
- * Returns the raw proof bytes plus the 7 public inputs already cast to
+ * Returns the raw proof bytes plus the 11 public inputs already cast to
  * bytes32-hex in `PetitionRegistry.signPetition` order. The caller drops
  * those straight into the `publicInputs[]` calldata array.
  */

@@ -5,10 +5,14 @@ import { config } from "../config";
 export interface SubmitArgs {
     petitionId: bigint;
     nullifier: string;
-    pubkeyX: string;
-    pubkeyY: string;
-    sigR: string;
-    sigS: string;
+    leafPubkeyX: string;
+    leafPubkeyY: string;
+    leafSigR: string;
+    leafSigS: string;
+    intermediatePubkeyX: string;
+    intermediatePubkeyY: string;
+    intermediateSigR: string;
+    intermediateSigS: string;
     proof: string;
     publicInputs: string[];
 }
@@ -30,10 +34,14 @@ export async function submitSignature(args: SubmitArgs): Promise<SubmitOk | Subm
     const body = {
         petitionId: args.petitionId.toString(10),
         nullifier: args.nullifier,
-        pubkeyX: args.pubkeyX,
-        pubkeyY: args.pubkeyY,
-        sigR: args.sigR,
-        sigS: args.sigS,
+        leafPubkeyX: args.leafPubkeyX,
+        leafPubkeyY: args.leafPubkeyY,
+        leafSigR: args.leafSigR,
+        leafSigS: args.leafSigS,
+        intermediatePubkeyX: args.intermediatePubkeyX,
+        intermediatePubkeyY: args.intermediatePubkeyY,
+        intermediateSigR: args.intermediateSigR,
+        intermediateSigS: args.intermediateSigS,
         proof: args.proof,
         publicInputs: args.publicInputs,
     };

@@ -55,18 +55,6 @@ export function loadTrustManifest(): Promise<TrustManifest> {
     return cache;
 }
 
-export function findLeafByCommit(
-    manifest: TrustManifest,
-    commit: bigint,
-): ManifestLeaf | null {
-    const target = "0x" + commit.toString(16).padStart(64, "0");
-    for (const leaf of manifest.leaves) {
-        if (normaliseHex(leaf.spkiCommit) === target) return leaf;
-    }
-    return null;
-}
-
-function normaliseHex(h: string): string {
-    if (!h.startsWith("0x")) return ("0x" + h).toLowerCase();
-    return h.toLowerCase();
-}
+// Lookup helpers live in the SDK (`findIntermediate`) — keep this module
+// focused on fetch + caching so the web doesn't drift from the SDK's
+// canonical SPKI-commit computation.

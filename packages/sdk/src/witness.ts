@@ -1,22 +1,29 @@
-// Noir witness assembly for the CRISP-QES eligibility circuit.
+// Noir witness assembly for the CRISP-QES eligibility circuit (D-v2).
 //
-// Produces an `InputMap`-shaped JS object that `@noir-lang/noir_js` accepts
-// directly via `Noir.execute(...)`. The shape mirrors the `fn main(...)`
-// parameter declaration in `packages/circuit/src/main.nr`:
+// Mirrors the `fn main(...)` parameter declaration in
+// `packages/circuit/src/main.nr`:
 //
 //   public:
-//     petition_id, nullifier, trust_root, pubkey_x, pubkey_y,
+//     petition_id, nullifier, trust_root,
+//     leaf_pubkey_x, leaf_pubkey_y,
+//     intermediate_pubkey_x, intermediate_pubkey_y,
+//     leaf_tbs_sha256_hi, leaf_tbs_sha256_lo,
 //     signed_attrs_sha256_hi, signed_attrs_sha256_lo
 //
 //   private:
 //     subject_serial: [u8; 32]
-//     spki_bytes:     [u8; 1024]
-//     merkle_path:    [Field; 16]
+//     subject_serial_offset: u32
+//     leaf_tbs_bytes: [u8; 2048]
+//     leaf_tbs_len: u32
+//     leaf_pubkey_offset: u32
+//     intermediate_spki_bytes: [u8; 1024]
+//     intermediate_pubkey_offset: u32
+//     merkle_path: [Field; 16]
 //     merkle_path_indices: [bool; 16]
-//     signed_attrs_bytes:  [u8; 512]
-//     signed_attrs_len:    u32
+//     signed_attrs_bytes: [u8; 2048]
+//     signed_attrs_len: u32
 //     message_digest_offset: u32
-//     petition_text_hash:  [u8; 32]
+//     petition_text_hash: [u8; 32]
 //
 // All BN254 field values are emitted as `0x`-prefixed 32-byte hex (no
 // implicit reduction; values must be < field modulus). Byte arrays are
@@ -27,8 +34,9 @@ import { computeNullifier } from "./prove.js";
 
 const MERKLE_DEPTH = 16;
 const SUBJECT_SERIAL_LEN = 32;
-const SPKI_MAX_BYTES = 1024;
-const SIGNED_ATTRS_MAX_BYTES = 512;
+const LEAF_TBS_MAX_BYTES = 2048;
+const INTERMEDIATE_SPKI_MAX_BYTES = 1024;
+const SIGNED_ATTRS_MAX_BYTES = 2048;
 const PETITION_TEXT_HASH_LEN = 32;
 
 /** Hex form (`0x` + 64 hex chars) of a BN254 field element. */
@@ -39,13 +47,22 @@ export interface WitnessInputs {
     petition_id: FieldHex;
     nullifier: FieldHex;
     trust_root: FieldHex;
-    pubkey_x: FieldHex;
-    pubkey_y: FieldHex;
+    leaf_pubkey_x: FieldHex;
+    leaf_pubkey_y: FieldHex;
+    intermediate_pubkey_x: FieldHex;
+    intermediate_pubkey_y: FieldHex;
+    leaf_tbs_sha256_hi: FieldHex;
+    leaf_tbs_sha256_lo: FieldHex;
     signed_attrs_sha256_hi: FieldHex;
     signed_attrs_sha256_lo: FieldHex;
     // ---- private ----
     subject_serial: number[];
-    spki_bytes: number[];
+    subject_serial_offset: string;
+    leaf_tbs_bytes: number[];
+    leaf_tbs_len: string;
+    leaf_pubkey_offset: string;
+    intermediate_spki_bytes: number[];
+    intermediate_pubkey_offset: string;
     merkle_path: FieldHex[];
     merkle_path_indices: boolean[];
     signed_attrs_bytes: number[];
@@ -79,8 +96,12 @@ export interface WitnessPublicInputs {
     petitionId: bigint;
     nullifier: bigint;
     trustRoot: bigint;
-    pubkeyX: bigint;
-    pubkeyY: bigint;
+    leafPubkeyX: bigint;
+    leafPubkeyY: bigint;
+    intermediatePubkeyX: bigint;
+    intermediatePubkeyY: bigint;
+    leafTbsSha256Hi: bigint;
+    leafTbsSha256Lo: bigint;
     signedAttrsSha256Hi: bigint;
     signedAttrsSha256Lo: bigint;
 }
@@ -91,17 +112,37 @@ export interface BuildWitnessResult {
 }
 
 /**
- * Assemble the Noir witness for the eligibility proof. Throws synchronously
- * on shape violations (wrong array lengths, out-of-range field values) so
- * a buggy caller fails before the WASM prover is even spun up.
+ * Assemble the Noir witness for the v2 eligibility proof. Throws synchronously
+ * on shape violations (wrong array lengths, out-of-range field values,
+ * missing intermediate cert) so a buggy caller fails before the WASM prover
+ * is spun up.
  */
 export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitnessResult> {
-    const { parsed, petitionId, petitionTextHash, trustRoot, merklePath, merklePathIndices } = args;
+    const {
+        parsed,
+        petitionId,
+        petitionTextHash,
+        trustRoot,
+        merklePath,
+        merklePathIndices,
+    } = args;
+
+    if (
+        parsed.intermediateSpkiDer === null ||
+        parsed.intermediatePubkey === null ||
+        parsed.intermediatePubkeyOffset === null
+    ) {
+        throw new Error(
+            "buildWitness: D-v2 requires the intermediate CA cert in the .p7s SignedData (none found)",
+        );
+    }
 
     requireFitsBn254("petitionId", petitionId);
     requireFitsBn254("trustRoot", trustRoot);
     requireFitsBn254("pubkey.x", parsed.pubkey.x);
     requireFitsBn254("pubkey.y", parsed.pubkey.y);
+    requireFitsBn254("intermediate.x", parsed.intermediatePubkey.x);
+    requireFitsBn254("intermediate.y", parsed.intermediatePubkey.y);
     requireByteLen("petitionTextHash", petitionTextHash, PETITION_TEXT_HASH_LEN);
     requireLen("merklePath", merklePath, MERKLE_DEPTH);
     requireLen("merklePathIndices", merklePathIndices, MERKLE_DEPTH);
@@ -111,14 +152,40 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
             `buildWitness: signedAttrs is ${parsed.signedAttrs.length} bytes; circuit cap is ${SIGNED_ATTRS_MAX_BYTES}`,
         );
     }
-    if (parsed.leafSpkiDer.length > SPKI_MAX_BYTES) {
+    if (parsed.leafTbsBytes.length > LEAF_TBS_MAX_BYTES) {
         throw new Error(
-            `buildWitness: leafSpkiDer is ${parsed.leafSpkiDer.length} bytes; circuit cap is ${SPKI_MAX_BYTES}`,
+            `buildWitness: leafTbsBytes is ${parsed.leafTbsBytes.length} bytes; circuit cap is ${LEAF_TBS_MAX_BYTES}`,
+        );
+    }
+    if (parsed.intermediateSpkiDer.length > INTERMEDIATE_SPKI_MAX_BYTES) {
+        throw new Error(
+            `buildWitness: intermediateSpkiDer is ${parsed.intermediateSpkiDer.length} bytes; circuit cap is ${INTERMEDIATE_SPKI_MAX_BYTES}`,
         );
     }
     if (parsed.messageDigestOffset + 32 > parsed.signedAttrs.length) {
         throw new Error(
             `buildWitness: messageDigestOffset (${parsed.messageDigestOffset}) + 32 exceeds signedAttrs length (${parsed.signedAttrs.length})`,
+        );
+    }
+    if (parsed.subjectSerialOffset + SUBJECT_SERIAL_LEN > parsed.leafTbsBytes.length) {
+        throw new Error(
+            `buildWitness: subjectSerialOffset (${parsed.subjectSerialOffset}) + 32 exceeds leafTbsBytes length (${parsed.leafTbsBytes.length})`,
+        );
+    }
+    if (
+        parsed.leafPubkeyOffset < 27 ||
+        parsed.leafPubkeyOffset + 64 > parsed.leafTbsBytes.length
+    ) {
+        throw new Error(
+            `buildWitness: leafPubkeyOffset out of range (offset=${parsed.leafPubkeyOffset}, len=${parsed.leafTbsBytes.length})`,
+        );
+    }
+    if (
+        parsed.intermediatePubkeyOffset < 27 ||
+        parsed.intermediatePubkeyOffset + 64 > parsed.intermediateSpkiDer.length
+    ) {
+        throw new Error(
+            `buildWitness: intermediatePubkeyOffset out of range (offset=${parsed.intermediatePubkeyOffset}, len=${parsed.intermediateSpkiDer.length})`,
         );
     }
 
@@ -128,22 +195,36 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
     });
     const nullifierBig = BigInt(nullifier);
 
-    const { hi: shaHi, lo: shaLo } = splitSha256(parsed.signedAttrsSha256);
+    const { hi: tbsHi, lo: tbsLo } = splitSha256(parsed.leafTbsSha256);
+    const { hi: saHi, lo: saLo } = splitSha256(parsed.signedAttrsSha256);
 
     const subjectSerial = padBytesRight(parsed.subjectSerial, SUBJECT_SERIAL_LEN);
-    const spkiBytes = padBytesRight(parsed.leafSpkiDer, SPKI_MAX_BYTES);
+    const leafTbsBytes = padBytesRight(parsed.leafTbsBytes, LEAF_TBS_MAX_BYTES);
+    const intermediateSpkiBytes = padBytesRight(
+        parsed.intermediateSpkiDer,
+        INTERMEDIATE_SPKI_MAX_BYTES,
+    );
     const signedAttrsBytes = padBytesRight(parsed.signedAttrs, SIGNED_ATTRS_MAX_BYTES);
 
     const inputs: WitnessInputs = {
         petition_id: toFieldHex(petitionId),
         nullifier,
         trust_root: toFieldHex(trustRoot),
-        pubkey_x: toFieldHex(parsed.pubkey.x),
-        pubkey_y: toFieldHex(parsed.pubkey.y),
-        signed_attrs_sha256_hi: toFieldHex(shaHi),
-        signed_attrs_sha256_lo: toFieldHex(shaLo),
+        leaf_pubkey_x: toFieldHex(parsed.pubkey.x),
+        leaf_pubkey_y: toFieldHex(parsed.pubkey.y),
+        intermediate_pubkey_x: toFieldHex(parsed.intermediatePubkey.x),
+        intermediate_pubkey_y: toFieldHex(parsed.intermediatePubkey.y),
+        leaf_tbs_sha256_hi: toFieldHex(tbsHi),
+        leaf_tbs_sha256_lo: toFieldHex(tbsLo),
+        signed_attrs_sha256_hi: toFieldHex(saHi),
+        signed_attrs_sha256_lo: toFieldHex(saLo),
         subject_serial: Array.from(subjectSerial),
-        spki_bytes: Array.from(spkiBytes),
+        subject_serial_offset: parsed.subjectSerialOffset.toString(10),
+        leaf_tbs_bytes: Array.from(leafTbsBytes),
+        leaf_tbs_len: parsed.leafTbsBytes.length.toString(10),
+        leaf_pubkey_offset: parsed.leafPubkeyOffset.toString(10),
+        intermediate_spki_bytes: Array.from(intermediateSpkiBytes),
+        intermediate_pubkey_offset: parsed.intermediatePubkeyOffset.toString(10),
         merkle_path: merklePath.map(toFieldHex),
         merkle_path_indices: merklePathIndices.map(coerceBit),
         signed_attrs_bytes: Array.from(signedAttrsBytes),
@@ -158,10 +239,14 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
             petitionId,
             nullifier: nullifierBig,
             trustRoot,
-            pubkeyX: parsed.pubkey.x,
-            pubkeyY: parsed.pubkey.y,
-            signedAttrsSha256Hi: shaHi,
-            signedAttrsSha256Lo: shaLo,
+            leafPubkeyX: parsed.pubkey.x,
+            leafPubkeyY: parsed.pubkey.y,
+            intermediatePubkeyX: parsed.intermediatePubkey.x,
+            intermediatePubkeyY: parsed.intermediatePubkey.y,
+            leafTbsSha256Hi: tbsHi,
+            leafTbsSha256Lo: tbsLo,
+            signedAttrsSha256Hi: saHi,
+            signedAttrsSha256Lo: saLo,
         },
     };
 }
@@ -172,7 +257,7 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
 
 /**
  * Split a 32-byte SHA-256 output into the (hi, lo) 128-bit limbs the circuit
- * declares as public-input slots 5 and 6. Each limb is the big-endian
+ * declares for each SHA-256 public input. Each limb is the big-endian
  * unsigned integer encoding of the corresponding 16-byte half, strictly
  * less than 2^128 and therefore safely inside the BN254 field range.
  */

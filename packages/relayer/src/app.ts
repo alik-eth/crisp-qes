@@ -20,12 +20,16 @@ const decimalUint = z.string().regex(/^\d+$/, "expected decimal integer");
 const SubmitBody = z.object({
     petitionId: decimalUint,
     nullifier: hex32,
-    pubkeyX: hex32,
-    pubkeyY: hex32,
-    sigR: hex32,
-    sigS: hex32,
+    leafPubkeyX: hex32,
+    leafPubkeyY: hex32,
+    leafSigR: hex32,
+    leafSigS: hex32,
+    intermediatePubkeyX: hex32,
+    intermediatePubkeyY: hex32,
+    intermediateSigR: hex32,
+    intermediateSigS: hex32,
     proof: hex,
-    publicInputs: z.array(hex32).length(7),
+    publicInputs: z.array(hex32).length(11),
 });
 
 const TxParams = z.object({
@@ -73,6 +77,19 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
 
         // Cross-field sanity: publicInputs entries must equal the dedicated
         // fields (the contract checks this too, but bouncing here saves gas).
+        //
+        // Public-input layout (D-v2, length 11):
+        //   [0]  petitionId
+        //   [1]  nullifier
+        //   [2]  trustRoot           (not in body; checked on-chain only)
+        //   [3]  leafPubkeyX
+        //   [4]  leafPubkeyY
+        //   [5]  intermediatePubkeyX
+        //   [6]  intermediatePubkeyY
+        //   [7]  leafTbsSha256_hi    (limb, not in body)
+        //   [8]  leafTbsSha256_lo    (limb, not in body)
+        //   [9]  signedAttrsSha256_hi
+        //   [10] signedAttrsSha256_lo
         const piPetition = hexToBigInt(body.publicInputs[0] as Hex);
         if (piPetition.toString() !== body.petitionId) {
             return reply.code(400).send({
@@ -82,22 +99,32 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
         }
         if (
             body.publicInputs[1] !== body.nullifier ||
-            body.publicInputs[3] !== body.pubkeyX ||
-            body.publicInputs[4] !== body.pubkeyY
+            body.publicInputs[3] !== body.leafPubkeyX ||
+            body.publicInputs[4] !== body.leafPubkeyY ||
+            body.publicInputs[5] !== body.intermediatePubkeyX ||
+            body.publicInputs[6] !== body.intermediatePubkeyY
         ) {
             return reply.code(400).send({
                 error: "BadRequest",
-                detail: "publicInputs do not match (nullifier, pubkeyX, pubkeyY)",
+                detail:
+                    "publicInputs do not match (nullifier, leafPubkey*, intermediatePubkey*)",
             });
         }
 
+        const signCalldata = {
+            petitionId: BigInt(body.petitionId),
+            nullifier: body.nullifier as Hex,
+            leafPubkeyX: hexToBigInt(body.leafPubkeyX as Hex),
+            leafPubkeyY: hexToBigInt(body.leafPubkeyY as Hex),
+            leafSigR: hexToBigInt(body.leafSigR as Hex),
+            leafSigS: hexToBigInt(body.leafSigS as Hex),
+            intermediatePubkeyX: hexToBigInt(body.intermediatePubkeyX as Hex),
+            intermediatePubkeyY: hexToBigInt(body.intermediatePubkeyY as Hex),
+            intermediateSigR: hexToBigInt(body.intermediateSigR as Hex),
+            intermediateSigS: hexToBigInt(body.intermediateSigS as Hex),
+        };
         const args = [
-            BigInt(body.petitionId),
-            body.nullifier as Hex,
-            hexToBigInt(body.pubkeyX as Hex),
-            hexToBigInt(body.pubkeyY as Hex),
-            hexToBigInt(body.sigR as Hex),
-            hexToBigInt(body.sigS as Hex),
+            signCalldata,
             body.proof as Hex,
             body.publicInputs as Hex[],
         ] as const;
@@ -109,12 +136,7 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
                 abi: petitionRegistryAbi,
                 functionName: "signPetition",
                 args: args as unknown as readonly [
-                    bigint,
-                    Hex,
-                    bigint,
-                    bigint,
-                    bigint,
-                    bigint,
+                    typeof signCalldata,
                     Hex,
                     readonly Hex[],
                 ],
@@ -133,12 +155,7 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
                 abi: petitionRegistryAbi,
                 functionName: "signPetition",
                 args: args as unknown as readonly [
-                    bigint,
-                    Hex,
-                    bigint,
-                    bigint,
-                    bigint,
-                    bigint,
+                    typeof signCalldata,
                     Hex,
                     readonly Hex[],
                 ],

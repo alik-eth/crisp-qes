@@ -4,6 +4,8 @@ import {
     parseP7s,
     computeNullifier,
     buildWitness,
+    findIntermediate,
+    type FoundIntermediate,
     type ParsedP7s,
 } from "@crisp-qes/sdk";
 import { DropZone } from "../components/DropZone";
@@ -14,13 +16,7 @@ import {
     expectedMessageDigest,
 } from "../lib/messageDigest";
 import { readPetition, readTrustRoot, type PetitionView } from "../lib/registry";
-import {
-    findLeafByCommit,
-    loadTrustManifest,
-    type ManifestLeaf,
-    type TrustManifest,
-} from "../lib/manifest";
-import { spkiCommit } from "../lib/spkiCommit";
+import { loadTrustManifest, type TrustManifest } from "../lib/manifest";
 import { submitSignature, basescanTxUrl } from "../lib/relayer";
 import { config } from "../config";
 
@@ -30,7 +26,13 @@ interface Props {
     onDone: (txHash: `0x${string}`, newCount: number) => void;
 }
 
-type ProveStage = "idle" | "initWorker" | "loadingCircuit" | "buildWitness" | "proving" | "done";
+type ProveStage =
+    | "idle"
+    | "initWorker"
+    | "loadingCircuit"
+    | "buildWitness"
+    | "proving"
+    | "done";
 
 interface ProveOutput {
     proofBytes: Uint8Array;
@@ -51,8 +53,9 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
 
     const [manifest, setManifest] = useState<TrustManifest | null>(null);
     const [manifestErr, setManifestErr] = useState<string | null>(null);
-    const [leaf, setLeaf] = useState<ManifestLeaf | null>(null);
-    const [leafChecking, setLeafChecking] = useState(false);
+    const [foundCa, setFoundCa] = useState<FoundIntermediate | null>(null);
+    const [caMissing, setCaMissing] = useState(false);
+    const [caChecking, setCaChecking] = useState(false);
     const [trustRoot, setTrustRoot] = useState<bigint | null>(null);
 
     const [nullifier, setNullifier] = useState<string | null>(null);
@@ -94,31 +97,33 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
         };
     }, [petitionId]);
 
-    // Active step tracker (just for UI).
+    const trustOk = !!foundCa && !caMissing;
+
     const active: StepKey = useMemo<StepKey>(() => {
         if (!parsed) return "upload";
         if (tinuaOk === false || digestOk === false) return "verify";
-        if (!leaf) return "trust";
+        if (!trustOk) return "trust";
         if (!nullifier) return "nullifier";
         if (proveStage !== "done") return "prove";
         return "submit";
-    }, [parsed, tinuaOk, digestOk, leaf, nullifier, proveStage]);
+    }, [parsed, tinuaOk, digestOk, trustOk, nullifier, proveStage]);
 
     const done = useMemo<Set<StepKey>>(() => {
         const s = new Set<StepKey>();
         if (parsed) s.add("upload");
         if (tinuaOk && digestOk) s.add("verify");
-        if (leaf) s.add("trust");
+        if (trustOk) s.add("trust");
         if (nullifier) s.add("nullifier");
         if (proveStage === "done") s.add("prove");
         return s;
-    }, [parsed, tinuaOk, digestOk, leaf, nullifier, proveStage]);
+    }, [parsed, tinuaOk, digestOk, trustOk, nullifier, proveStage]);
 
     async function onFile(file: File) {
         setParseErr(null);
         setTinuaOk(null);
         setDigestOk(null);
-        setLeaf(null);
+        setFoundCa(null);
+        setCaMissing(false);
         setNullifier(null);
         setProof(null);
         setProveStage("idle");
@@ -148,15 +153,21 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
             });
             setNullifier(nul);
 
-            // (d) Trust-tree match.
+            // (d) Trust-tree match: D-v2 trust root commits to intermediate CAs.
+            //     `findIntermediate` recomputes the SPKI commit of the
+            //     intermediate from the .p7s bundle and looks it up in the
+            //     Diia manifest.
             if (manifest) {
-                setLeafChecking(true);
+                setCaChecking(true);
                 try {
-                    const commit = await spkiCommit(p.leafSpkiDer);
-                    const found = findLeafByCommit(manifest, commit);
-                    setLeaf(found);
+                    const found = await findIntermediate(p, manifest);
+                    if (found) {
+                        setFoundCa(found);
+                    } else {
+                        setCaMissing(true);
+                    }
                 } finally {
-                    setLeafChecking(false);
+                    setCaChecking(false);
                 }
             }
         } catch (e) {
@@ -168,7 +179,7 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
     }
 
     async function startProve() {
-        if (!parsed || !petition || !leaf || trustRoot === null) return;
+        if (!parsed || !petition || !foundCa || trustRoot === null) return;
         setProveErr(null);
         setProveStage("initWorker");
         try {
@@ -177,8 +188,8 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
                 petitionId,
                 petitionTextHash: hexToBytes(petition.textHash),
                 trustRoot,
-                merklePath: leaf.merklePath.map((h) => BigInt(h)),
-                merklePathIndices: leaf.merklePathIndices,
+                merklePath: foundCa.merklePath,
+                merklePathIndices: foundCa.merklePathIndices,
             });
 
             const worker = new Worker(
@@ -224,17 +235,21 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
     }
 
     async function doSubmit() {
-        if (!parsed || !proof || !nullifier) return;
+        if (!parsed || !proof || !nullifier || !parsed.intermediatePubkey) return;
         setSubmitErr(null);
         setSubmitting(true);
         try {
             const res = await submitSignature({
                 petitionId,
                 nullifier,
-                pubkeyX: bigIntTo32Hex(parsed.pubkey.x),
-                pubkeyY: bigIntTo32Hex(parsed.pubkey.y),
-                sigR: bigIntTo32Hex(parsed.signature.r),
-                sigS: bigIntTo32Hex(parsed.signature.s),
+                leafPubkeyX: bigIntTo32Hex(parsed.pubkey.x),
+                leafPubkeyY: bigIntTo32Hex(parsed.pubkey.y),
+                leafSigR: bigIntTo32Hex(parsed.signature.r),
+                leafSigS: bigIntTo32Hex(parsed.signature.s),
+                intermediatePubkeyX: bigIntTo32Hex(parsed.intermediatePubkey.x),
+                intermediatePubkeyY: bigIntTo32Hex(parsed.intermediatePubkey.y),
+                intermediateSigR: bigIntTo32Hex(parsed.leafCertSignature.r),
+                intermediateSigS: bigIntTo32Hex(parsed.leafCertSignature.s),
                 proof: "0x" + bytesToHexRaw(proof.proofBytes),
                 publicInputs: proof.publicInputs,
             });
@@ -260,9 +275,7 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
                 {t("sign.heading", { id: petitionId.toString() })}
             </h2>
 
-            {petitionErr ? (
-                <p className="error-line">{petitionErr}</p>
-            ) : null}
+            {petitionErr ? <p className="error-line">{petitionErr}</p> : null}
 
             <Steps active={active} done={done} />
 
@@ -328,19 +341,39 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
                             <p className="error-line">{t("sign.trust.manifestError")}</p>
                             <p className="note mono">{manifestErr}</p>
                         </>
-                    ) : !manifest || leafChecking ? (
+                    ) : !manifest || caChecking ? (
                         <>
                             <p className="note">{t("sign.trust.loadingManifest")}</p>
                             <div className="progress__line">
                                 <span />
                             </div>
                         </>
-                    ) : leaf ? (
-                        <p className="tag-ok">
-                            ✓ {t("sign.trust.leafOk", { tsp: leaf.tspName ?? leaf.subjectDn })}
-                        </p>
+                    ) : foundCa ? (
+                        <>
+                            <p className="tag-ok">
+                                ✓{" "}
+                                {t("sign.trust.intermediateOk", {
+                                    name:
+                                        foundCa.leaf.tspName ??
+                                        foundCa.leaf.subjectDn ??
+                                        "—",
+                                })}
+                            </p>
+                            <dl style={{ marginTop: 12 }}>
+                                <div className="field-row">
+                                    <dt>{t("sign.trust.subjectDn")}</dt>
+                                    <dd className="mono">
+                                        {foundCa.leaf.subjectDn ?? "—"}
+                                    </dd>
+                                </div>
+                                <div className="field-row">
+                                    <dt>{t("sign.trust.spkiCommit")}</dt>
+                                    <dd className="mono">{foundCa.leaf.spkiCommit}</dd>
+                                </div>
+                            </dl>
+                        </>
                     ) : (
-                        <p className="tag-bad">✕ {t("sign.trust.missingLeaf")}</p>
+                        <p className="tag-bad">✕ {t("sign.trust.intermediateMissing")}</p>
                     )}
                 </div>
             ) : null}
@@ -360,7 +393,7 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
             ) : null}
 
             {/* 5. Prove */}
-            {parsed && tinuaOk && digestOk && leaf && nullifier ? (
+            {parsed && tinuaOk && digestOk && foundCa && nullifier ? (
                 <div className="panel">
                     <p className="panel__title">{t("sign.steps.prove")}</p>
                     <p className="note">{t("sign.prove.intro")}</p>
@@ -404,7 +437,9 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
                             type="button"
                             disabled={submitting}
                         >
-                            {submitting ? t("sign.submit.sending") : t("sign.submit.send")}
+                            {submitting
+                                ? t("sign.submit.sending")
+                                : t("sign.submit.send")}
                         </button>
                     </div>
                     {submitErr ? (
@@ -431,9 +466,11 @@ function bytesToHexRaw(b: Uint8Array): string {
 function hexToBytes(hex: string): Uint8Array {
     const s = hex.startsWith("0x") ? hex.slice(2) : hex;
     const out = new Uint8Array(s.length / 2);
-    for (let i = 0; i < out.length; i++) out[i] = parseInt(s.slice(2 * i, 2 * i + 2), 16);
+    for (let i = 0; i < out.length; i++) {
+        out[i] = parseInt(s.slice(2 * i, 2 * i + 2), 16);
+    }
     return out;
 }
 
-// re-use basescan link helper (kept import side-effect-free); avoids tree-shake removal.
+// re-use basescan link helper; kept import side-effect-free.
 void basescanTxUrl;

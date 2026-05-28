@@ -26,7 +26,27 @@ import {
     SignedData,
     SignerInfo,
 } from "pkijs";
+import { readDerLength, indexOf, bytesEqAt } from "./asn1.js";
 import { extractP256Pubkey, extractSki, extractSubjectSerial } from "./leaf-cert.js";
+
+/**
+ * Canonical 27-byte prefix that opens every well-formed ECDSA-P-256
+ * SubjectPublicKeyInfo. The circuit asserts these bytes immediately before
+ * the X[0] byte of the (X,Y) point — so the SDK must locate the same offset.
+ *
+ *   30 59                       SEQUENCE 89
+ *     30 13                     SEQUENCE 19 (AlgorithmIdentifier)
+ *       06 07 2a 86 48 ce 3d 02 01      OID id-ecPublicKey
+ *       06 08 2a 86 48 ce 3d 03 01 07   OID secp256r1
+ *     03 42 00 04               BIT STRING 66, 0 unused bits, uncompressed point
+ *   -- then X[32] || Y[32]
+ */
+const P256_SPKI_PREFIX = new Uint8Array([
+    0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce,
+    0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d,
+    0x03, 0x01, 0x07, 0x03, 0x42, 0x00, 0x04,
+]);
+const P256_SPKI_PREFIX_LEN = P256_SPKI_PREFIX.length;
 
 const MESSAGE_DIGEST_OID = "1.2.840.113549.1.9.4";
 
@@ -49,18 +69,58 @@ export interface ParsedP7s {
     /** Leaf cert DER bytes. */
     leafCertDer: Uint8Array;
     /**
-     * Canonical SubjectPublicKeyInfo DER bytes of the leaf cert. The Noir
-     * circuit hashes a zero-padded 1024-byte version of this to derive
-     * `spki_commit`, which must equal the corresponding leaf entry in the
-     * LOTL Pedersen-Merkle trust tree.
+     * TBSCertificate bytes of the leaf cert — i.e. the inner SEQUENCE inside
+     * `leafCertDer` that the intermediate's ECDSA signature is computed over.
+     * The Noir circuit consumes this directly (zero-padded to
+     * `LEAF_TBS_MAX_BYTES`) and the contract feeds `sha256(leafTbsBytes)` to
+     * the RIP-7212 precompile as `msgHash` for the intermediate->leaf check.
+     */
+    leafTbsBytes: Uint8Array;
+    /** sha256(leafTbsBytes) — the precompile-side `msgHash`. */
+    leafTbsSha256: Uint8Array;
+    /**
+     * Byte offset within `leafTbsBytes` where the 32-byte `subjectSerial`
+     * value begins. The circuit asserts
+     * `leafTbsBytes[subjectSerialOffset .. +32] == subjectSerial`.
+     */
+    subjectSerialOffset: number;
+    /**
+     * Byte offset within `leafTbsBytes` where the 32-byte X coordinate of
+     * the leaf's P-256 pubkey begins (i.e. immediately after the canonical
+     * 27-byte P-256 SPKI prefix). The circuit asserts the prefix at
+     * `[offset-27 .. offset]` and extracts `(X, Y)` from `[offset .. offset+64]`.
+     */
+    leafPubkeyOffset: number;
+    /**
+     * Canonical SubjectPublicKeyInfo DER bytes of the leaf cert. The legacy
+     * D-v1 trust-root committed to leaf SPKIs; D-v2 commits to intermediate
+     * SPKIs instead, so this is now kept only for back-compat and parity
+     * checks — the witness builder no longer consumes it.
      */
     leafSpkiDer: Uint8Array;
     /** Intermediate cert DER (if present in SignedData certificates set). */
     intermediateCertDer: Uint8Array | null;
+    /** Canonical SPKI DER of the intermediate cert (null if intermediate absent). */
+    intermediateSpkiDer: Uint8Array | null;
+    /** P-256 pubkey of the intermediate (null if intermediate absent). */
+    intermediatePubkey: { x: bigint; y: bigint } | null;
+    /**
+     * Byte offset within `intermediateSpkiDer` where X[0] of the
+     * intermediate's P-256 pubkey begins. The circuit asserts the canonical
+     * prefix at `[offset-27 .. offset]` and extracts `(X, Y)` from there.
+     */
+    intermediatePubkeyOffset: number | null;
     /** P-256 pubkey affine coords from the leaf cert SPKI. */
     pubkey: { x: bigint; y: bigint };
-    /** ECDSA signature (r, s) on signedAttrs. */
+    /** ECDSA signature (r, s) on signedAttrs — the citizen's leaf signature. */
     signature: { r: bigint; s: bigint };
+    /**
+     * ECDSA signature (r, s) extracted from the leaf cert's `signatureValue`.
+     * Computed by the intermediate CA over `leafTbsBytes`, this is the
+     * second input to RIP-7212 in `PetitionRegistry.signPetition` (the
+     * chain-link from intermediate to leaf).
+     */
+    leafCertSignature: { r: bigint; s: bigint };
 }
 
 /**
@@ -118,17 +178,45 @@ export function parseP7s(bytes: Uint8Array): ParsedP7s {
         leafCert.subjectPublicKeyInfo.toSchema().toBER(false),
     );
 
-    // Intermediate: when more than one cert is present, return the issuer of
-    // the leaf (matched by DN equality) — that's the cert PetitionRegistry's
-    // chain-membership proof anchors against the Pedersen Merkle trust root.
+    // (4a) Leaf TBSCertificate slice + sha256 + the offsets the v2 circuit
+    //      consumes (subject serial, leaf pubkey).
+    const { tbsBytes: leafTbsBytes, tbsStart } = extractTbsBytes(leafCertDer);
+    const leafTbsSha256 = sha256(leafTbsBytes);
+    const subjectSerialOffset = locateSubjectSerialInTbs(
+        leafTbsBytes,
+        subjectSerial,
+        leafCertDer,
+        tbsStart,
+    );
+    const leafPubkeyOffset = locateP256PubkeyOffset(leafTbsBytes, "leaf TBSCertificate");
+
+    // (4b) intermediate-CA chain link: SPKI bytes, pubkey, pubkey offset.
     const intermediate = pickIntermediate(certs, leafCert);
     const intermediateCertDer = intermediate
         ? new Uint8Array(intermediate.toSchema().toBER(false))
         : null;
+    let intermediateSpkiDer: Uint8Array | null = null;
+    let intermediatePubkey: { x: bigint; y: bigint } | null = null;
+    let intermediatePubkeyOffset: number | null = null;
+    if (intermediate) {
+        intermediateSpkiDer = new Uint8Array(
+            intermediate.subjectPublicKeyInfo.toSchema().toBER(false),
+        );
+        intermediatePubkey = extractP256Pubkey(intermediate);
+        intermediatePubkeyOffset = locateP256PubkeyOffset(
+            intermediateSpkiDer,
+            "intermediate SubjectPublicKeyInfo",
+        );
+    }
 
-    // (7) Signature (r, s) — DER ECDSA-Sig-Value inside signerInfo.signature.
+    // (7) Signatures.
+    //  - `signature`        = leaf -> signedAttrs (citizen signing the petition).
+    //  - `leafCertSignature`= intermediate -> leafTbs (CA signing the cert).
     const signature = parseEcdsaSigValue(
         new Uint8Array(signer.signature.valueBlock.valueHexView),
+    );
+    const leafCertSignature = parseEcdsaSigValue(
+        new Uint8Array(leafCert.signatureValue.valueBlock.valueHexView),
     );
 
     return {
@@ -138,11 +226,94 @@ export function parseP7s(bytes: Uint8Array): ParsedP7s {
         messageDigestOffset,
         subjectSerial,
         leafCertDer,
+        leafTbsBytes,
+        leafTbsSha256,
+        subjectSerialOffset,
+        leafPubkeyOffset,
         leafSpkiDer,
         intermediateCertDer,
+        intermediateSpkiDer,
+        intermediatePubkey,
+        intermediatePubkeyOffset,
         pubkey,
         signature,
+        leafCertSignature,
     };
+}
+
+/**
+ * Extract the inner TBSCertificate SEQUENCE from an X.509 cert DER. The
+ * cert is `SEQUENCE { TBSCertificate, signatureAlgorithm, signatureValue }`;
+ * the first inner SEQUENCE is exactly TBSCertificate.
+ */
+function extractTbsBytes(certDer: Uint8Array): {
+    tbsBytes: Uint8Array;
+    tbsStart: number;
+} {
+    if (certDer.length === 0 || certDer[0] !== 0x30) {
+        throw new Error("parseP7s: leaf cert is not a SEQUENCE");
+    }
+    const outer = readDerLength(certDer, 1);
+    const innerStart = 1 + outer.headerLen;
+    if (certDer[innerStart] !== 0x30) {
+        throw new Error("parseP7s: leaf cert inner element is not TBSCertificate SEQUENCE");
+    }
+    const tbs = readDerLength(certDer, innerStart + 1);
+    const tbsLen = 1 + tbs.headerLen + tbs.contentLen;
+    const tbsBytes = certDer.slice(innerStart, innerStart + tbsLen);
+    return { tbsBytes, tbsStart: innerStart };
+}
+
+/**
+ * Find the offset within `tbsBytes` where the ETSI subject serial value
+ * begins. The DN walker in `extractSubjectSerial` works on the full leaf
+ * cert DER, so we re-run it against the same DER to recover an absolute
+ * offset and translate it to TBS-local coordinates.
+ */
+function locateSubjectSerialInTbs(
+    tbsBytes: Uint8Array,
+    subjectSerial: Uint8Array,
+    leafCertDer: Uint8Array,
+    tbsStart: number,
+): number {
+    // We re-search for the exact serial value bytes inside the TBS; the
+    // serialNumber RDN value is unique enough (TINUA- prefix + tax-ID) that
+    // a byte-scan won't false-match. We start the search after issuer DN by
+    // walking from the absolute hit in leafCertDer.
+    const absHit = indexOf(leafCertDer, subjectSerial);
+    if (absHit < 0) {
+        throw new Error("parseP7s: subjectSerial bytes not found in leaf cert DER");
+    }
+    const tbsRel = absHit - tbsStart;
+    if (tbsRel < 0 || tbsRel + subjectSerial.length > tbsBytes.length) {
+        throw new Error("parseP7s: subjectSerial lies outside TBSCertificate range");
+    }
+    // Sanity: the same bytes are actually there.
+    if (!bytesEqAt(tbsBytes, tbsRel, subjectSerial)) {
+        throw new Error("parseP7s: subjectSerial bytes mismatch in TBS slice");
+    }
+    return tbsRel;
+}
+
+/**
+ * Find the offset in `buf` immediately after the canonical 27-byte P-256
+ * SPKI prefix — i.e. where the first byte of X[0] sits. Throws if the
+ * prefix isn't present (we only support P-256 leafs and intermediates).
+ */
+function locateP256PubkeyOffset(buf: Uint8Array, label: string): number {
+    const at = indexOf(buf, P256_SPKI_PREFIX);
+    if (at < 0) {
+        throw new Error(
+            `parseP7s: canonical P-256 SPKI prefix not found in ${label}`,
+        );
+    }
+    const off = at + P256_SPKI_PREFIX_LEN;
+    if (off + 64 > buf.length) {
+        throw new Error(
+            `parseP7s: P-256 pubkey would run off the end of ${label} (off=${off}, len=${buf.length})`,
+        );
+    }
+    return off;
 }
 
 /**
