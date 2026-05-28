@@ -393,7 +393,13 @@ export function Enroll({ onBack, onDone }: Props) {
             const ok = verifyBlindEval(blindedElement, {
                 serverPubkey: hexDecode(resp.oprfPubkey),
                 evaluatedElement: hexDecode(resp.Y),
-                proof: hexDecode(resp.proof),
+                // #53: `resp.proof` is already a normalised 64-byte
+                // buffer (see `oprfClient.coerceProof`). The earlier
+                // `hexDecode(resp.proof)` call assumed the wire shape was
+                // a flat hex string and crashed with "t.slice is not a
+                // function" against the current server's `{ c, s }`
+                // object shape.
+                proof: resp.proof,
             });
             if (!ok) {
                 setOprfErr(t("enroll.oprf.dleqInvalid"));
