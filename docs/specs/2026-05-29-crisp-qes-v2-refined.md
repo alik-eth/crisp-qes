@@ -20,7 +20,7 @@ arbitrary computation, not vote tally. Pushing them through FHE-PSI
 would either scale linearly per enrollment (untenable past ~10⁴
 citizens) or push the design into research-grade FHE-PSI protocols.
 
-This v2.1 design drops FHE from the enrollment path entirely and
+This v2 design drops FHE from the enrollment path entirely and
 keeps it where it earns its keep: the tally + threshold check.
 
 ## 1. Architecture at a glance
@@ -139,17 +139,17 @@ same field element `s = pedersen([N_hi, N_lo], hashIndex=0)`. The
 when referring to the on-chain Merkle leaf, "s" is used in the
 protocol math; they are one value.
 
-The threat surface differs materially between the **v2.1 single-node
-demo** (what ships at grant time) and the **v2.2 threshold rollout**
+The threat surface differs materially between the **v2 single-node
+demo** (what ships at grant time) and the **v3 threshold rollout**
 (what the grant funds). The table below covers both; see §2.5 for the
 single-node-specific brute-force exposure that the threshold variant
 closes.
 
 | Actor                                | Sees                                | Does not see              |
 | ------------------------------------ | ----------------------------------- | ------------------------- |
-| Ciphernode i (v2.2 threshold)        | blinded input `M`, Diia QES         | RNOKPP, commitment, `N`   |
-| **OPRF service (v2.1 single-node)**  | **`M`, Diia QES, `N`, `commitment`, `k`** | **RNOKPP (but see §2.5: brute-forceable from `N` + `k`)** |
-| Threshold (≥t, v2.2)                 | Aggregate count, collision evidence | RNOKPP                    |
+| Ciphernode i (v3 threshold)        | blinded input `M`, Diia QES         | RNOKPP, commitment, `N`   |
+| **OPRF service (v2 single-node)**  | **`M`, Diia QES, `N`, `commitment`, `k`** | **RNOKPP (but see §2.5: brute-forceable from `N` + `k`)** |
+| Threshold (≥t, v3)                 | Aggregate count, collision evidence | RNOKPP                    |
 | On-chain                             | `commitment`, `enrollment_root`     | RNOKPP, Diia cert, mapping commitment ↔ citizen |
 | Citizen                              | own `enrollment_secret`             | k, k_i, others' RNOKPPs   |
 | Eavesdropper                         | OPRF transcript                     | Anything plaintext        |
@@ -165,17 +165,17 @@ later. Pinning `K_pub` to an authoritative source closes this.
 
 | Variant | Binding mechanism | Trust anchor |
 | ------- | ----------------- | ------------ |
-| **v2.1 (shipped)** | `K_pub` is **build-time-pinned** in the `v2-web` bundle via the `VITE_OPRF_PUBKEY` env var; client hard-fails on `/healthz` mismatch. | The Fly deployment (same TLS + COOP/COEP boundary as the rest of the SPA). |
-| **v2.2 (Phase-3)** | `K_pub` (and `K_pub,i` for the threshold variant) moves on-chain into `EnrollmentRegistry` as an admin-settable storage slot. Client reads it from the contract at boot. | The contract admin key, eventually a DAO multisig as the ciphernode committee onboards independent operators. |
+| **v2 (shipped)** | `K_pub` is **build-time-pinned** in the `v2-web` bundle via the `VITE_OPRF_PUBKEY` env var; client hard-fails on `/healthz` mismatch. | The Fly deployment (same TLS + COOP/COEP boundary as the rest of the SPA). |
+| **v3 (v3)** | `K_pub` (and `K_pub,i` for the threshold variant) moves on-chain into `EnrollmentRegistry` as an admin-settable storage slot. Client reads it from the contract at boot. | The contract admin key, eventually a DAO multisig as the ciphernode committee onboards independent operators. |
 
-Bundle-pinning is the right v2.1 answer because the trust anchor is
+Bundle-pinning is the right v2 answer because the trust anchor is
 already the Fly deploy — the same boundary that delivers the rest of
 the client. Moving to an on-chain registry is part of the same
 ciphernode-productionisation increment as threshold-OPRF rollout.
 
-#### 2.5.1 v2.1 single-node brute-force exposure (honest disclosure)
+#### 2.5.1 v2 single-node brute-force exposure (honest disclosure)
 
-The shipping v2.1 demo runs a **single** OPRF node — that node holds
+The shipping v2 demo runs a **single** OPRF node — that node holds
 `k` directly (no Shamir share), and the `/oprf/register` endpoint
 accepts the unblinded OPRF output `N` from the citizen so the service
 can sanity-check `s = pedersen([N_hi, N_lo], 0)` before appending to
@@ -191,22 +191,22 @@ arbitrary tree leaves, but it has a real privacy cost:
 > parallelisable.
 
 **This exposure is intrinsic to single-node OPRF, not a defect of
-the v2.1 implementation.** It is the reason v2.2 ships threshold-OPRF
+the v2 implementation.** It is the reason v3 ships threshold-OPRF
 with `k` distributed as Shamir shares across a 5-of-7 ciphernode
 committee — no single operator ever holds `k`, so no single operator
 can run the brute-force. The grant scope (§9) funds exactly this
 transition.
 
-Operational mitigations in the v2.1 demo window:
+Operational mitigations in the v2 demo window:
 
 - the OPRF service is operated by the project team only, on a single
   Fly app, with no third-party access to `k`;
 - the service is explicitly framed in the README and proposal as a
   **demo of the protocol**, not a production deployment;
-- pilot deployments before v2.2 ships SHOULD restrict `/oprf/register`
+- pilot deployments before v3 ships SHOULD restrict `/oprf/register`
   to a closed cohort and disclose this property to participants.
 
-#### 2.5.2 v2.2 architectural fix (preferred, deferred)
+#### 2.5.2 v3 architectural fix (preferred, deferred)
 
 The cleaner long-term fix is to **drop `N` from the `/oprf/register`
 payload entirely** and replace the server-side `s = pedersen([N_hi,
@@ -216,7 +216,7 @@ the citizen knows an `N` such that `M = N · h(RNOKPP)⁻¹ · G`,
 `Y = k · M` (verified by DLEQ), and `s = pedersen([N_hi, N_lo], 0)`,
 without revealing `N`. Combined with threshold-OPRF, this gives a
 service that learns **only** `(M, Diia QES, s)` — never `N`, never
-`k` in the clear. Scoped for v2.2 alongside threshold rollout.
+`k` in the clear. Scoped for v3 alongside threshold rollout.
 
 ### 2.6 Performance budget
 
@@ -269,20 +269,21 @@ fn main(
 Public inputs: 3 (petition_id, enrollment_root, nullifier).
 Private inputs: 1 + 2D fields.
 
-### 3.3 Performance projection vs MVP
+### 3.3 Performance
 
-| Surface              | MVP circuit            | v2 circuit (this design) |
-| -------------------- | ---------------------- | ------------------------ |
-| Public inputs        | 15                     | 3                        |
-| Constraint count     | ~10⁵ (CAdES + ECDSA)   | ~10³ (Merkle + 2 hashes) |
-| Native prove time    | ~14.5 s                | ~1–2 s (projected)       |
-| Browser prove time   | ~77 s                  | ~5–10 s (projected)      |
-| Proof size           | 10,176 B               | ~10,000 B (constant)     |
-| Verifier gas         | 4.24 M                 | ~3.5–3.8 M (projected)   |
+| Surface              | v2 circuit                            |
+| -------------------- | ------------------------------------- |
+| Public inputs        | 3                                     |
+| Constraint count     | ~10³ (Merkle + 2 hashes)              |
+| Native prove time    | ~1–2 s (measured: 823 ms on commodity hardware) |
+| Browser prove time   | ~5–10 s (projected)                   |
+| Proof size           | ~10,000 B (constant)                  |
+| Verifier gas         | ~3.5–3.8 M (projected)                |
 
-**Crucially:** the slow path of MVP — CAdES `signedAttrs` walk, P-256
-ECDSA verify, SPKI commit — is *entirely gone*. All the heavy lifting
-moved to enrollment time, which is amortised once per citizen.
+All heavy verification (Diia QES validation, RNOKPP attestation,
+CAdES walk, P-256 ECDSA) happens at enrollment time and is amortised
+once per citizen identity. Per-signature cost is purely the Merkle +
+nullifier proof.
 
 ### 3.4 Storage of `enrollment_secret`
 
@@ -302,16 +303,16 @@ Primary: **WebAuthn PRF extension** (Passkey).
 Disaster-recovery backup: **BIP-39 mnemonic**, shown once at
 enrollment.
 
-- **v2.1 status (honest disclosure):** the mnemonic UI is wired and
+- **v2 status (honest disclosure):** the mnemonic UI is wired and
   citizens can save the 24 words, but **mnemonic-only recovery is not
-  active in v2.1**. The reason is structural: `s = pedersen([N_hi,
+  active in v2**. The reason is structural: `s = pedersen([N_hi,
   N_lo], 0)` where `N = k · Hash_to_curve(RNOKPP)` is the OPRF output,
   and the mnemonic only round-trips `HKDF(N)` — an irreversible
-  derivation. The v2.1 demo path therefore stores the wrapped OPRF
+  derivation. The v2 demo path therefore stores the wrapped OPRF
   output in IndexedDB under the Passkey PRF and uses platform
   credential sync (iCloud Keychain / Google Password Manager) as the
   cross-device recovery path. Mnemonic-only re-derivation lights up in
-  **v2.2** via one of two paths:
+  **v3** via one of two paths:
   - *(a)* **Mnemonic as second factor for OPRF re-derivation:**
     citizen presents mnemonic + re-runs OPRF protocol with their Diia
     QES; the mnemonic authorises the ciphernode quorum to release the
@@ -321,14 +322,14 @@ enrollment.
   - *(b)* **Encode raw `N` in the mnemonic directly:** drop the HKDF
     step so the mnemonic carries 256 bits of `N` (24 BIP-39 words ≈
     264 bits, fits cleanly). Cleaner cryptographically, but requires
-    a one-time re-enrollment for citizens enrolled under v2.1.
+    a one-time re-enrollment for citizens enrolled under v2.
 
-  Either path is in v2.2 grant scope. v2.1 recovery without cloud sync
+  Either path is in v3 grant scope. v2 recovery without cloud sync
   requires re-enrollment under a new commitment (see §3.5 row 3).
-- The mnemonic UI is retained in v2.1 so that future-compatible backups
+- The mnemonic UI is retained in v2 so that future-compatible backups
   are captured at the right moment in the user flow; a disclosure
   paragraph in the UI tells the citizen "your mnemonic activates a
-  cross-device recovery path that ships in v2.2."
+  cross-device recovery path that ships in v3."
 
 Browser support (target Q3 2026):
 
@@ -349,11 +350,11 @@ no syncable backup. Unacceptable for a civic-grade tool.
 
 ### 3.5 Recovery flows
 
-Two rows below split by version. v2.1 ships with Passkey cloud-sync as
-the only zero-friction recovery; v2.2 lights up the mnemonic path
+Two rows below split by version. v2 ships with Passkey cloud-sync as
+the only zero-friction recovery; v3 lights up the mnemonic path
 (see §3.4 for why).
 
-| Scenario                                  | v2.1 path (shipped)                         | v2.2 path (grant scope)                     |
+| Scenario                                  | v2 path (shipped)                         | v3 path (grant scope)                     |
 | ----------------------------------------- | ------------------------------------------- | ------------------------------------------- |
 | Lost phone, signed into Google/iCloud     | New device → Passkey syncs in               | Same                                        |
 | Lost phone, no cloud sync, has mnemonic   | **Re-enroll under new commitment** (epoch transition required; see row 3) | BIP-39 mnemonic → re-derive `s` via OPRF-quorum-released re-derivation OR direct N-from-mnemonic, per §3.4 (a)/(b) |
@@ -418,63 +419,63 @@ PetitionRegistry sets a `mode` flag).
 Mode is selected by the petition creator and fixed at creation. Cannot
 be upgraded mid-petition.
 
-## 5. What this changes vs. MVP
+## 5. v2 properties
 
-| Property                          | MVP                       | v2.1                                      |
-| --------------------------------- | ------------------------- | ----------------------------------------- |
-| Diia QES at signature time        | required                  | not required (used once at enrollment)    |
-| Browser-side prove time           | ~77 s                     | ~5–10 s (projected)                       |
-| Cert-renewal Sybil resistance     | ✗ broken                  | ✓ closed (commitment = OPRF over RNOKPP)  |
-| Cross-petition unlinkability      | ✓ per-petition            | ✓ per-petition                            |
-| Coercion resistance               | ✗                         | ✗ (deferred to v2.2)                      |
-| Tally privacy                     | ✗ (counts are public)     | ✓ optional threshold-only decryption      |
-| Ballot modes                      | signature only            | signature / yes-no / yes-no-abstain       |
-| Operator trust                    | none required             | t-of-n ciphernode honesty (typical 5-of-7) |
-| Onboarding friction               | none (sign immediately)   | one-time enrollment (~ 2 s + Passkey reg) |
+| Property                          | v2                                          |
+| --------------------------------- | ------------------------------------------- |
+| Diia QES at signature time        | not required (used once at enrollment)      |
+| Browser-side prove time           | ~5–10 s (projected; ~823 ms native measured) |
+| Cert-renewal Sybil resistance     | ✓ closed (commitment = OPRF over RNOKPP)    |
+| Cross-petition unlinkability      | ✓ per-petition                              |
+| Coercion resistance               | ✗ (deferred to v3)                          |
+| Tally privacy                     | ✓ optional threshold-only decryption        |
+| Ballot modes                      | signature / yes-no / yes-no-abstain         |
+| Operator trust                    | t-of-n ciphernode honesty (typical 5-of-7; single-node in v2 demo, threshold in v3) |
+| Onboarding friction               | one-time enrollment (~ 2 s + Passkey reg)   |
 
 ## 6. What this changes vs. spec § 6
 
-| Original § 6 claim                                       | v2.1 refinement                                             |
+| Original § 6 claim                                       | v2 refinement                                             |
 | -------------------------------------------------------- | ----------------------------------------------------------- |
 | "FHE-checked tax-ID uniqueness at enrollment"            | OPRF-checked uniqueness at enrollment                       |
 | "Ciphernode committee runs FHE-PSI"                      | Ciphernode committee runs threshold OPRF + threshold-FHE tally |
-| "Browser prove time inherited from MVP (~80 s)"          | Browser prove time drops to single-digit seconds            |
+| "Browser prove time inherited from earlier circuit"      | Browser prove time drops to single-digit seconds (new minimal-circuit shape) |
 | "Diia QES required per signature"                        | Diia QES required **once** per citizen at enrollment        |
 | "Cert renewal breaks Sybil"                              | Closed completely (commitment ≠ pubkey)                     |
 | "CRISP integration: enrollment + tally"                  | CRISP integration: tally only                               |
-| "JCJ fake-credentials branch from v2 day 1"              | JCJ deferred to v2.2                                        |
+| "JCJ fake-credentials branch from v2 day 1"              | JCJ deferred to v3                                        |
 
 The original § 6 is preserved as historical context but should be
 treated as superseded by this document for all design decisions from
 2026-05-29 onward.
 
-## 7. Out of scope for v2.1 — deferred to v2.2
+## 7. Out of scope for v2 — deferred to v3
 
-> **v2.1 ships with a single-node OPRF service operated by the project
+> **v2 ships with a single-node OPRF service operated by the project
 > team.** This is a deliberate scoping decision — the cryptographic
 > interface (RFC 9497 2HashDH ristretto255-SHA512) is identical to the
 > threshold variant, so the migration is a keygen ceremony + Shamir
 > share storage at each ciphernode, with no wire-format changes for
-> clients. Phase-3 productionisation (multi-operator ciphernode
+> clients. v3 productionisation (multi-operator ciphernode
 > committee) is the follow-on grant ask. See §2.2 for the protocol
 > sketch (which describes the threshold form already) and §2.5 for the
 > service-key binding path from build-time pinning to on-chain registry.
 
 - **Threshold OPRF productionisation**: keygen ceremony, Shamir share
   distribution to a 5-of-7 ciphernode committee, on-chain `K_pub`
-  registry (§2.5 v2.2 row). The v2.1 protocol sketch in §2.2 already
-  describes the threshold variant — v2.1 simply runs it with n=t=1.
+  registry (§2.5 v3 row). The v2 protocol sketch in §2.2 already
+  describes the threshold variant — v2 simply runs it with n=t=1.
 - **JCJ fake-credentials coercion resistance**: citizen registers
   real + fake secrets; ciphernode FHE filters fakes at tally time. This
   is the most research-grade piece and lands as its own increment once
-  v2.1 is in production.
+  v2 is in production.
 - **Recursive proof composition** (RISC Zero wrapper around the Noir
   proof). Useful for tally proofs over many petitions; not load-bearing
-  for v2.1.
+  for v2.
 - **Per-citizen reputation / weighted voting** based on prior
   participation. Layer atop the existing nullifier scheme.
 
-## 8. Out of scope for v2 entirely — Phase 3
+## 8. Out of scope for v2 entirely — v3
 
 - Multi-QTSP / multi-country (RSA-PSS support in-circuit, per-country
   trust roots, eIDAS LOTL integration beyond Diia).
@@ -482,11 +483,11 @@ treated as superseded by this document for all design decisions from
 - Petition discovery / search / classification UI.
 - DAO governance over ciphernode committee membership.
 
-## 9. Phase-2 grant scope mapping
+## 9. v3 grant scope mapping
 
 The Mindigital × Binance × Lviv IT Cluster × Web3 Institute grant
 (Web3 Resilience Lab, $25 k cap, deadline 2026-05-31) is sized for
-"validation of v2.1 architecture + ciphernode partnership"; full
+"validation of v2 architecture + ciphernode partnership"; full
 production deployment is the follow-on Phase 2 grant ask.
 
 Within the $25 k envelope, plausible deliverables:
@@ -506,7 +507,7 @@ production-implemented within this grant.
 
 ### 9.1 Two committees, two cryptographic primitives — why this is the honest framing
 
-The Phase-2 architecture splits across **two independent ciphernode
+The v3 architecture splits across **two independent ciphernode
 committees**, each running the production-ready primitive for its
 specific job:
 
@@ -549,11 +550,11 @@ our enrollment committee, or extend their stack. The integration
 surface is their CRISP client SDK; the partnership memo (deliverable
 in §9 above) is the scoping conversation, not an infrastructure build.
 
-**OPRF → FHE migration** is captured as Phase-3 research: if and when
+**OPRF → FHE migration** is captured as v3 research: if and when
 Interfold ships sub-second threshold-FHE equality checks at our
 enrollment scale (production-ready FHE-PSI), the enrollment committee
 could migrate from OPRF to FHE without any user-visible change. Until
-then, OPRF is the production-deployable primitive, and v2.1 ships
+then, OPRF is the production-deployable primitive, and v2 ships
 behind it.
 
 ## 10. Open research questions
@@ -563,7 +564,7 @@ behind it.
    better post-quantum properties.
 2. **Enrollment-epoch length**: how often to rotate the OPRF key?
    Shorter epochs = better forward secrecy but more re-enrollment
-   pain. Suggest 12 months for v2.1.
+   pain. Suggest 12 months for v2.
 3. **Ciphernode committee bootstrapping**: how does the first
    committee get selected? Likely: Interfold's existing operator set
    plus 2–3 Ukrainian civic-tech orgs. Needs partnership memos.
@@ -581,5 +582,5 @@ behind it.
   Iryna Vovkotrub (for legal framing under Ukrainian data-protection
   law), independent crypto reviewer (for OPRF + Passkey-PRF
   composition).
-- Next gate: Phase-2 grant proposal cites this document as the
+- Next gate: v3 grant proposal cites this document as the
   technical foundation for the funded scope.
