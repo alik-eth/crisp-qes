@@ -174,7 +174,7 @@
                 "NullifierAlreadyUsed": "You have already voted on this petition.",
                 "PetitionClosed": "The petition's deadline has passed.",
                 "InvalidProof": "ZK proof did not verify.",
-                "InvalidTrustRoot": "enrollment-root mismatch versus contract state.",
+                "InvalidEnrollmentRoot": "enrollment-root mismatch versus contract state.",
                 "InvalidVote": "This vote value is not allowed for the petition's mode.",
                 "Network": "Network error contacting the relayer.",
                 "Unknown": "Unknown relayer error."

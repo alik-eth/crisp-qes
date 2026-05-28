@@ -12,7 +12,7 @@ import {
     entropyFromMnemonic,
     isValidMnemonic,
 } from "../lib/bip39Recovery";
-import { pedersenCommit, pedersenSecret } from "../lib/pedersen";
+import { pedersenS } from "../lib/pedersen";
 import { oprfRecoverPath } from "../lib/oprfClient";
 import {
     registerPasskey,
@@ -43,8 +43,7 @@ export function Recover({ onBack }: Props) {
     const [err, setErr] = useState<string | null>(null);
     const [recovered, setRecovered] = useState<{
         N: Uint8Array;
-        commitment: `0x${string}`;
-        secret: `0x${string}`;
+        s: `0x${string}`;
         merklePath: `0x${string}`[];
         merklePathIndices: (0 | 1)[];
         leafIndex: number;
@@ -64,13 +63,11 @@ export function Recover({ onBack }: Props) {
             // against the same RNOKPP and assert that the returned `N`
             // matches the cached one.
             const N = entropyFromMnemonic(m);
-            const commitment = await pedersenCommit(N);
-            const secret = await pedersenSecret(N);
-            const path = await oprfRecoverPath(commitment);
+            const s = await pedersenS(N);
+            const path = await oprfRecoverPath(s);
             setRecovered({
                 N,
-                commitment,
-                secret,
+                s,
                 merklePath: path.merklePath,
                 merklePathIndices: path.merklePathIndices,
                 leafIndex: path.leafIndex,
@@ -96,7 +93,7 @@ export function Recover({ onBack }: Props) {
                 name,
             );
             const payload: EnrollmentPayload = {
-                enrollmentSecret: recovered.secret,
+                enrollmentSecret: recovered.s,
                 oprfOutputN: hexEncode(recovered.N),
                 merklePath: recovered.merklePath,
                 merklePathIndices: recovered.merklePathIndices,
@@ -104,7 +101,7 @@ export function Recover({ onBack }: Props) {
             const ciphertext = await wrapPayload(payload, pk.prfOutput);
             await putEnrollment({
                 version: 1,
-                commitment: recovered.commitment,
+                commitment: recovered.s,
                 leafIndex: recovered.leafIndex,
                 credentialId: hexEncode(pk.credentialId),
                 ciphertext,
@@ -170,8 +167,8 @@ export function Recover({ onBack }: Props) {
                     <p className="panel__title">{t("recover.ok")}</p>
                     <dl>
                         <div className="field-row">
-                            <dt>commitment</dt>
-                            <dd className="mono">{recovered.commitment}</dd>
+                            <dt>s (commitment)</dt>
+                            <dd className="mono">{recovered.s}</dd>
                         </div>
                         <div className="field-row">
                             <dt>leafIndex</dt>

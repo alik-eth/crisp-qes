@@ -1,23 +1,23 @@
-// Client for the v2 OPRF service (task #32, single-node Fastify).
+// Client for the v2 OPRF service (`packages/v2-oprf`).
 //
-// Wire shape mirrors §3.1 of the v2 spec:
+// Wire shapes, in lock-step with `packages/v2-oprf/src/app.ts`:
 //
 //   POST /oprf/blind-eval
-//     body: { blindedInput: hex, attestation: { p7s: base64 } }
-//     200:  { Y: hex, kSchnorrProof: { c: hex, s: hex }, K: hex }
+//     body: { blindedInput: hex32, attestation: { p7s: base64 } }
+//     200:  { Y: hex32, proof: hex(64), blindedInput: hex32, oprfPubkey: hex32 }
+//     401: AttestationError
+//     400: BadRequest | BadBlindedInput
 //
 //   POST /oprf/register
-//     body: { commitment: hex32, blindedInputUsed: hex }
+//     body: { commitment: hex32, blindedInputUsed: hex32, unblindedOutput: hex32 }
 //     200:  { leafIndex, merklePath: hex32[20], merklePathIndices: 0|1[20],
-//             oldRoot: hex32, newRoot: hex32, attesterSig: hex }
-//     409:  { error: "already enrolled" }
+//             oldRoot: hex32, newRoot: hex32, attesterSig: hex, attesterAddr: hex }
+//     400: BadRequest | CommitmentMismatch
+//     409: AlreadyEnrolled
 //
 //   GET /enrollment/:commitment/path
 //     200: { leafIndex, merklePath, merklePathIndices, root }
-//
-// Until task #32 deploys its real `/healthz` shape we keep the routes
-// loose with `unknown` JSON; the typed surface below is what the
-// enrollment flow consumes after we narrow.
+//     404: NotEnrolled
 
 import { config } from "../config";
 
@@ -25,9 +25,11 @@ export interface BlindEvalResponse {
     /** 32-byte ristretto-encoded `Y = k * M`. */
     Y: `0x${string}`;
     /** Server pubkey `K = k*G` (32-byte ristretto encoding). */
-    K: `0x${string}`;
-    /** DLEQ proof: c, s as 32-byte little-endian scalars. */
-    proof: { c: `0x${string}`; s: `0x${string}` };
+    oprfPubkey: `0x${string}`;
+    /** DLEQ proof: 64 bytes = `c (32 LE) || s (32 LE)`. */
+    proof: `0x${string}`;
+    /** Echo of the request's blindedInput (reconciliation). */
+    blindedInput: `0x${string}`;
 }
 
 export interface RegisterResponse {
@@ -37,6 +39,7 @@ export interface RegisterResponse {
     oldRoot: `0x${string}`;
     newRoot: `0x${string}`;
     attesterSig: `0x${string}`;
+    attesterAddr: `0x${string}`;
 }
 
 export interface RecoverPathResponse {
@@ -65,14 +68,19 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
         body: JSON.stringify(body),
     });
     if (!r.ok) {
-        let detail: string;
+        let parsed: { error?: string; detail?: string } = {};
         try {
-            detail = JSON.stringify(await r.json());
+            parsed = (await r.json()) as typeof parsed;
         } catch {
-            detail = await r.text();
+            // body wasn't JSON
         }
-        const err = new Error(`OPRF ${path} → ${r.status}: ${detail}`);
-        (err as Error & { status: number }).status = r.status;
+        const err = new Error(
+            `OPRF ${path} → ${r.status} ${parsed.error ?? ""} ${
+                parsed.detail ?? ""
+            }`.trim(),
+        ) as Error & { status: number; code: string };
+        err.status = r.status;
+        err.code = parsed.error ?? "Unknown";
         throw err;
     }
     return (await r.json()) as T;
@@ -88,13 +96,15 @@ export async function oprfBlindEval(
     });
 }
 
-export async function oprfRegister(
-    commitment: `0x${string}`,
-    blindedInputUsed: Uint8Array,
-): Promise<RegisterResponse> {
+export async function oprfRegister(args: {
+    commitment: `0x${string}`;
+    blindedInputUsed: Uint8Array;
+    unblindedOutput: Uint8Array;
+}): Promise<RegisterResponse> {
     return postJson("/oprf/register", {
-        commitment,
-        blindedInputUsed: hex(blindedInputUsed),
+        commitment: args.commitment,
+        blindedInputUsed: hex(args.blindedInputUsed),
+        unblindedOutput: hex(args.unblindedOutput),
     });
 }
 

@@ -174,7 +174,7 @@
                 "NullifierAlreadyUsed": "Ви вже голосували за цю петицію.",
                 "PetitionClosed": "Дедлайн петиції минув.",
                 "InvalidProof": "ZK-доказ не пройшов перевірку.",
-                "InvalidTrustRoot": "enrollment-root не збігається з тим, що збережений у контракті.",
+                "InvalidEnrollmentRoot": "enrollment-root не збігається з тим, що збережений у контракті.",
                 "InvalidVote": "Цей варіант голосу не дозволений у режимі петиції.",
                 "Network": "Мережева помилка під час звернення до relayer.",
                 "Unknown": "Невідома помилка relayer."

@@ -1,9 +1,8 @@
-// Minimal ABIs for the v2 contracts.
+// ABIs for the v2 contracts (`packages/v2-contracts/out/...`).
 //
-// These shapes match `docs/specs/2026-05-29-crisp-qes-v2-refined.md` §3
-// and the task #31 brief. They'll be re-confirmed against the actual
-// deployed bytecode the moment task #31 lands; the surface is small
-// enough that no integration code path here cares about ordering.
+// Shapes are kept in sync with the deployed bytecode by hand-copying the
+// strictly-typed minimal surface the web app uses. Full ABIs live in the
+// contracts package; this file is intentionally small.
 
 export const enrollmentRegistryAbi = [
     {
@@ -47,11 +46,16 @@ export const BallotModeLabel: Record<BallotMode, "Signature" | "YesNo" | "YesNoA
     2: "YesNoAbstain",
 };
 
-/** Allowed vote codes per mode. */
+/**
+ * Vote encoding per the deployed contract (#31):
+ *   Signature mode:    only `0` (= sign / yes) is allowed.
+ *   YesNo mode:        0 = No, 1 = Yes.
+ *   YesNoAbstain mode: 0 = No, 1 = Yes, 2 = Abstain.
+ */
 export const VotesForMode: Record<BallotMode, number[]> = {
-    0: [0], // Signature: only "yes/sign" (encoded as 0)
-    1: [0, 1], // YesNo: yes=0, no=1
-    2: [0, 1, 2], // YesNoAbstain: yes=0, no=1, abstain=2
+    0: [0],
+    1: [0, 1],
+    2: [0, 1, 2],
 };
 
 export const petitionRegistryV2Abi = [
@@ -76,16 +80,28 @@ export const petitionRegistryV2Abi = [
                     { name: "createdAt", type: "uint64" },
                     { name: "deadline", type: "uint64" },
                     { name: "threshold", type: "uint32" },
-                    { name: "yesCount", type: "uint32" },
-                    { name: "noCount", type: "uint32" },
-                    { name: "abstainCount", type: "uint32" },
+                    { name: "signatureCount", type: "uint32" },
                     { name: "thresholdReached", type: "bool" },
                     { name: "depositRefunded", type: "bool" },
                     { name: "mode", type: "uint8" },
+                    { name: "yesCount", type: "uint32" },
+                    { name: "noCount", type: "uint32" },
+                    { name: "abstainCount", type: "uint32" },
                     { name: "textHash", type: "bytes32" },
                     { name: "fullText", type: "bytes" },
                 ],
             },
+        ],
+    },
+    {
+        type: "function",
+        name: "voteCounts",
+        stateMutability: "view",
+        inputs: [{ name: "id", type: "uint256" }],
+        outputs: [
+            { name: "yesCount", type: "uint32" },
+            { name: "noCount", type: "uint32" },
+            { name: "abstainCount", type: "uint32" },
         ],
     },
     {
@@ -139,7 +155,7 @@ export const petitionRegistryV2Abi = [
     { type: "error", name: "UnknownPetition", inputs: [] },
     { type: "error", name: "PetitionClosed", inputs: [] },
     { type: "error", name: "InvalidProof", inputs: [] },
-    { type: "error", name: "InvalidTrustRoot", inputs: [] },
+    { type: "error", name: "InvalidEnrollmentRoot", inputs: [] },
     { type: "error", name: "NullifierAlreadyUsed", inputs: [] },
     { type: "error", name: "InvalidVote", inputs: [] },
 ] as const;

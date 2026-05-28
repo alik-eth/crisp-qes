@@ -18,10 +18,7 @@ import {
     registerPasskey,
 } from "../lib/webauthnPrf";
 import { blind, unblind, verifyBlindEval } from "../lib/voprf";
-import {
-    pedersenCommit,
-    pedersenSecret,
-} from "../lib/pedersen";
+import { pedersenS } from "../lib/pedersen";
 import { oprfBlindEval, oprfRegister } from "../lib/oprfClient";
 import {
     putEnrollment,
@@ -75,8 +72,8 @@ export function Enroll({ onBack, onDone }: Props) {
 
     const [oprfResult, setOprfResult] = useState<{
         N: Uint8Array;
-        commitment: `0x${string}`;
-        secret: `0x${string}`;
+        blindedElement: Uint8Array;
+        s: `0x${string}`;
     } | null>(null);
     const [oprfBusy, setOprfBusy] = useState(false);
     const [oprfErr, setOprfErr] = useState<string | null>(null);
@@ -156,19 +153,19 @@ export function Enroll({ onBack, onDone }: Props) {
             const { blind: r, blindedElement } = blind(rn);
             const resp = await oprfBlindEval(blindedElement, p7sBytes);
             const ok = verifyBlindEval(blindedElement, {
-                serverPubkey: hexDecode(resp.K),
+                serverPubkey: hexDecode(resp.oprfPubkey),
                 evaluatedElement: hexDecode(resp.Y),
-                proofC: hexDecode(resp.proof.c),
-                proofS: hexDecode(resp.proof.s),
+                proof: hexDecode(resp.proof),
             });
             if (!ok) {
                 setOprfErr(t("enroll.oprf.dleqInvalid"));
                 return;
             }
             const N = unblind(hexDecode(resp.Y), r);
-            const commitment = await pedersenCommit(N);
-            const secret = await pedersenSecret(N);
-            setOprfResult({ N, commitment, secret });
+            // s is BOTH the enrollment secret AND the on-chain Merkle leaf
+            // AND what the OPRF service stores as `commitment`.
+            const s = await pedersenS(N);
+            setOprfResult({ N, blindedElement, s });
         } catch (e) {
             setOprfErr(e instanceof Error ? e.message : String(e));
         } finally {
@@ -181,18 +178,20 @@ export function Enroll({ onBack, onDone }: Props) {
         setRegisterBusy(true);
         setRegisterErr(null);
         try {
-            const r = await oprfRegister(
-                oprfResult.commitment,
-                // For the demo we don't strictly need the blinded element
-                // again — it's a reconciliation field. The OPRF server is
-                // free to ignore it.
-                new Uint8Array(32),
-            );
+            // Server-side guard: backend recomputes pedersen([N_hi,N_lo],0)
+            // and checks it equals `commitment` (= s). So we must send N too.
+            const r = await oprfRegister({
+                commitment: oprfResult.s,
+                blindedInputUsed: oprfResult.blindedElement,
+                unblindedOutput: oprfResult.N,
+            });
 
-            // TODO(blocked by #31): once the EnrollmentRegistry address is
-            // live, submit `updateRoot(newRoot, attesterSig)` via the
-            // wallet connector here. For now we record the OPRF response
-            // and rely on the relayer (task #34) to land the root update.
+            // TODO(N5): in the relayer-sponsored flow, the relayer takes
+            // `(newRoot, attesterSig)` and posts EnrollmentRegistry.updateRoot
+            // on the citizen's behalf. We have the attesterSig in hand and
+            // would otherwise drive this through WalletConnect; for the demo
+            // path we surface the values and store them locally so Sign can
+            // proceed against whatever root is currently pinned on-chain.
 
             setRegisterResult({
                 merklePath: r.merklePath,
@@ -204,7 +203,7 @@ export function Enroll({ onBack, onDone }: Props) {
 
             // Persist the enrollment encrypted under the PRF key.
             const payload: EnrollmentPayload = {
-                enrollmentSecret: oprfResult.secret,
+                enrollmentSecret: oprfResult.s,
                 oprfOutputN: hexEncode(oprfResult.N),
                 merklePath: r.merklePath,
                 merklePathIndices: r.merklePathIndices,
@@ -212,7 +211,7 @@ export function Enroll({ onBack, onDone }: Props) {
             const ciphertext = await wrapPayload(payload, passkey.prfOutput);
             await putEnrollment({
                 version: 1,
-                commitment: oprfResult.commitment,
+                commitment: oprfResult.s,
                 leafIndex: r.leafIndex,
                 credentialId: hexEncode(passkey.credentialId),
                 ciphertext,
@@ -311,11 +310,7 @@ export function Enroll({ onBack, onDone }: Props) {
                         <dl>
                             <div className="field-row">
                                 <dt>{t("enroll.oprf.commit")}</dt>
-                                <dd className="mono">{oprfResult.commitment}</dd>
-                            </div>
-                            <div className="field-row">
-                                <dt>{t("enroll.oprf.secret")}</dt>
-                                <dd className="mono">{oprfResult.secret}</dd>
+                                <dd className="mono">{oprfResult.s}</dd>
                             </div>
                         </dl>
                     ) : oprfBusy ? (

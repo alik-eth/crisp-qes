@@ -1,4 +1,12 @@
 // Read paths against PetitionRegistryV2 + EnrollmentRegistry.
+//
+// Tuple shape of `getPetition` mirrors the deployed contract (#31):
+//   { creator, createdAt, deadline, threshold, signatureCount,
+//     thresholdReached, depositRefunded, mode,
+//     yesCount, noCount, abstainCount, textHash, fullText }
+//
+// `signatureCount` is the Signature-mode tally; for YesNo / YesNoAbstain
+// modes the totals come from yes+no(+abstain).
 
 import { type Hex, hexToBytes } from "viem";
 import {
@@ -18,6 +26,7 @@ export interface PetitionView {
     createdAt: bigint;
     deadline: bigint;
     threshold: number;
+    signatureCount: number;
     yesCount: number;
     noCount: number;
     abstainCount: number;
@@ -85,6 +94,7 @@ export async function readPetition(id: bigint): Promise<PetitionView | null> {
             createdAt: pet.createdAt,
             deadline: pet.deadline,
             threshold: Number(pet.threshold),
+            signatureCount: Number(pet.signatureCount),
             yesCount: Number(pet.yesCount),
             noCount: Number(pet.noCount),
             abstainCount: Number(pet.abstainCount),

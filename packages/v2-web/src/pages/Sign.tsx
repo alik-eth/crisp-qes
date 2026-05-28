@@ -263,12 +263,15 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
                     </p>
                     <div className="actions">
                         {allowedVotes.map((v) => {
+                            // Contract vote semantics (#31):
+                            //   Signature: 0 = sign
+                            //   YesNo / YesNoAbstain: 0=No, 1=Yes, 2=Abstain
                             const label =
                                 petition.modeLabel === "Signature"
                                     ? t("sign.vote.signOnly")
-                                    : v === 0
+                                    : v === 1
                                       ? t("sign.vote.yes")
-                                      : v === 1
+                                      : v === 0
                                         ? t("sign.vote.no")
                                         : t("sign.vote.abstain");
                             return (

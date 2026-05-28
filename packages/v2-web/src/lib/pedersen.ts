@@ -1,23 +1,15 @@
-// Pedersen commit helpers that match the v2 circuit (#30).
+// Pedersen helpers that match the v2 circuit (#30) and OPRF server (#32).
 //
-// The 32-byte ristretto-encoded OPRF output `N` is split into two
-// 16-byte little-endian limbs (`N_lo`, `N_hi`) and folded through
-// `bb.js` Pedersen with different hashIndex domain separators:
+// Team-lead re-pin (2026-05-29):
+//   • Single value `s = pedersen_hash([N_hi, N_lo], hashIndex=0)`.
+//   • `s` IS the enrollment secret AND the on-chain Merkle leaf AND the
+//     value the OPRF server stores as `commitment`. No extra wrapping hash.
+//   • Domain separators are all `hashIndex=0` in v2.1; `hashIndex=1` is
+//     reserved for the v2.2 JCJ branch — do not use it yet.
+//   • Nullifier (public): `pedersen_hash([s, petition_id, DOMAIN_PETITION_V2], 0)`.
 //
-//   commitment        = pedersen_hash([N_hi, N_lo], 0)
-//   enrollment_secret = pedersen_hash([N_hi, N_lo], 1)
-//
-// The circuit then folds the secret into the Merkle leaf:
-//   enrollment_leaf  = pedersen_hash([enrollment_secret], 0)
-//
-// and uses the secret + petition id + DOMAIN_PETITION_V2 for the
-// nullifier. We expose helpers for all four so the Enroll and Sign
-// flows can pin these constructions in one place.
-//
-// `Fr` is no longer exported from @aztec/bb.js@4.x; the bb.js API is
-// `{ inputs: Uint8Array[], hashIndex } → { hash: Uint8Array }` with
-// inputs/outputs as 32-byte big-endian BN254 field elements. This file
-// hands the raw buffers to bb.js and converts at the edges.
+// `Fr` is no longer exported from @aztec/bb.js@4.x; bb.js expects raw
+// 32-byte big-endian BN254 field elements. We convert at the edges.
 
 import { BarretenbergSync } from "@aztec/bb.js";
 
@@ -68,56 +60,43 @@ async function pedersenFields(
     return be32ToBigInt(hash);
 }
 
-/** Split a 32-byte little-endian buffer into two 16-byte limbs (lo, hi). */
-export function splitLE32(buf: Uint8Array): { lo: bigint; hi: bigint } {
-    if (buf.length !== 32) throw new Error("splitLE32: expected 32 bytes");
-    let lo = 0n;
+/** Split a 32-byte big-endian buffer into two 128-bit limbs (hi, lo). */
+export function splitBE32(buf: Uint8Array): { hi: bigint; lo: bigint } {
+    if (buf.length !== 32) throw new Error("splitBE32: expected 32 bytes");
     let hi = 0n;
-    for (let i = 15; i >= 0; i--) lo = (lo << 8n) | BigInt(buf[i]!);
-    for (let i = 31; i >= 16; i--) hi = (hi << 8n) | BigInt(buf[i]!);
-    return { lo, hi };
+    let lo = 0n;
+    for (let i = 0; i < 16; i++) hi = (hi << 8n) | BigInt(buf[i]!);
+    for (let i = 16; i < 32; i++) lo = (lo << 8n) | BigInt(buf[i]!);
+    return { hi, lo };
 }
 
 /**
- * Commit the OPRF output for on-chain storage.
- * Matches the v2 spec: `commitment = pedersen_hash([N_hi, N_lo], 0)`.
+ * Derive `s = pedersen_hash([N_hi, N_lo], 0)` — the single value the rest
+ * of v2.1 uses as enrollment secret, on-chain commitment, and Merkle
+ * leaf. `N` is the 32-byte unblinded ristretto255 OPRF output.
+ *
+ * Note: ristretto255 encodes 32-byte points as canonical *little-endian*
+ * encodings of the (x, y) compressed representation. The OPRF server
+ * (#32) also limbifies via BE on the 32-byte ristretto encoding — both
+ * sides treat the OPRF output as an opaque 32-byte buffer when feeding
+ * pedersen. We follow suit.
  */
-export async function pedersenCommit(N: Uint8Array): Promise<`0x${string}`> {
-    const { lo, hi } = splitLE32(N);
+export async function pedersenS(N: Uint8Array): Promise<`0x${string}`> {
+    const { hi, lo } = splitBE32(N);
     return bigintToHex32(await pedersenFields([hi, lo], 0));
 }
 
 /**
- * Derive the enrollment secret `s = pedersen_hash([N_hi, N_lo], 1)`.
- * This is the scalar the circuit hashes into the Merkle leaf and folds
- * into the nullifier.
- */
-export async function pedersenSecret(N: Uint8Array): Promise<`0x${string}`> {
-    const { lo, hi } = splitLE32(N);
-    return bigintToHex32(await pedersenFields([hi, lo], 1));
-}
-
-/**
- * Compute `enrollment_leaf = pedersen_hash([s], 0)` — same construction the
- * circuit uses to verify the Merkle path.
- */
-export async function pedersenLeaf(
-    secretHex: `0x${string}`,
-): Promise<`0x${string}`> {
-    return bigintToHex32(await pedersenFields([hexToBigInt(secretHex)], 0));
-}
-
-/**
- * Compute the nullifier for a `(secret, petition_id)` pair.
+ * Compute the nullifier for a `(s, petition_id)` pair.
  *   nullifier = pedersen_hash([s, petition_id, DOMAIN_PETITION_V2], 0)
  */
 export async function pedersenNullifier(
-    secretHex: `0x${string}`,
+    sHex: `0x${string}`,
     petitionId: bigint,
 ): Promise<`0x${string}`> {
     return bigintToHex32(
         await pedersenFields(
-            [hexToBigInt(secretHex), petitionId, DOMAIN_PETITION_V2],
+            [hexToBigInt(sHex), petitionId, DOMAIN_PETITION_V2],
             0,
         ),
     );
