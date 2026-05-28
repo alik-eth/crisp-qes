@@ -232,6 +232,14 @@ crisp-qes/
 
 ## 6. v2 roadmap (post-grant, designed-for)
 
+> **Superseded — see `docs/specs/2026-05-29-crisp-qes-v2-refined.md`.**
+> Original § 6 is retained below for historical context only. The
+> refined v2.1 design drops FHE from enrollment (replaces it with a
+> threshold OPRF) and keeps FHE only for the tally + threshold-check
+> stage. Reasoning: FHE performance today doesn't extend to
+> set-membership / collision checks at enrollment scale.
+
+
 The MVP architecture is constructed so v2 is purely additive — no rewrite of the
 circuit, contract, or web flow.
 
