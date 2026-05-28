@@ -5,23 +5,31 @@
 // Merkle commitment all agree on the same byte-for-byte hash. See
 // `packages/lotl-flattener/src/ca/pedersen.ts` for the bb.js bindings.
 //
-// Commitment derivation (pinned by team-lead in the design discussion):
+// Derivation (re-pinned by team-lead 2026-05-29 — the *secret* and the
+// *tree leaf* are now the same value, dropping the extra `pedersen([leaf])`
+// wrapper that earlier drafts had):
 //
 //   N      = 32-byte canonical ristretto255 encoding of the unblinded OPRF
-//            output  N = k * H_to_curve(RNOKPP)
+//            output, N = k * H_to_curve(RNOKPP)
 //   N_hi   = BigInt(N[0..16])      (BE, high 128 bits as a Field)
 //   N_lo   = BigInt(N[16..32])     (BE, low  128 bits as a Field)
-//   commitment        = pedersen_hash([N_hi, N_lo], hashIndex = 0)
-//   enrollment_secret = pedersen_hash([N_hi, N_lo], hashIndex = 1)
-//   merkle_leaf       = pedersen_hash([enrollment_secret], hashIndex = 0)
+//   s      = pedersen_hash([N_hi, N_lo], 0)   // the secret AND the tree leaf
+//   nullifier = pedersen_hash([s, petition_id, DOMAIN_PETITION_V2], 0)   // client-side
 //
-// `packages/v2-circuit` consumes the same formula for the witness.
+// Domain-separator budget for v2.1:
+//   hashIndex 0  — secret derivation, nullifier, Merkle node hash
+//   hashIndex 1  — reserved for v2.2's JCJ "fake-credential" branch
+//
+// On the wire, /oprf/register accepts `commitment` (kept for backward
+// compat with what v2-web is already calling it); semantically the value
+// IS `s`.
+//
+// `packages/circuit` (Noir) consumes the identical formula for the witness.
 
 import { pedersenHashFields } from "@crisp-qes/lotl-flattener";
 
-export const COMMITMENT_HASH_INDEX = 0;
-export const SECRET_HASH_INDEX = 1;
-export const LEAF_HASH_INDEX = 0;
+/** Sole hashIndex used by v2.1; hashIndex 1 reserved for JCJ in v2.2. */
+export const SECRET_HASH_INDEX = 0;
 
 /** Split the 32-byte ristretto255 output into BN254-safe (hi, lo) limbs. */
 export function splitOprfOutput(N: Uint8Array): { hi: bigint; lo: bigint } {
@@ -37,24 +45,21 @@ export function splitOprfOutput(N: Uint8Array): { hi: bigint; lo: bigint } {
     return { hi, lo };
 }
 
-/** Re-derive `commitment = pedersen_hash([N_hi, N_lo], 0)` from N. */
-export async function commitmentFromOprfOutput(N: Uint8Array): Promise<bigint> {
+/**
+ * Re-derive `s = pedersen_hash([N_hi, N_lo], 0)` from N. This is both the
+ * citizen's enrollment_secret and the Merkle leaf the EnrollmentRegistry
+ * stores. (Earlier drafts used a separate `commitment` value derived under
+ * a distinct hashIndex; team-lead collapsed the two on 2026-05-29.)
+ */
+export async function secretFromOprfOutput(N: Uint8Array): Promise<bigint> {
     const { hi, lo } = splitOprfOutput(N);
-    return pedersenHashFields([hi, lo], COMMITMENT_HASH_INDEX);
+    return pedersenHashFields([hi, lo], SECRET_HASH_INDEX);
 }
 
 /**
- * Re-derive the Merkle leaf for the v2 circuit:
- *
- *   s    = pedersen([N_hi, N_lo], 1)
- *   leaf = pedersen([s], 0)
- *
- * Exposed so the test harness can verify path correctness end-to-end.
+ * Back-compat alias — earlier callers used the name `commitment`. The
+ * value is identical to `s` (the enrollment_secret == the tree leaf).
  */
-export async function leafFromOprfOutput(N: Uint8Array): Promise<bigint> {
-    const { hi, lo } = splitOprfOutput(N);
-    const s = await pedersenHashFields([hi, lo], SECRET_HASH_INDEX);
-    return pedersenHashFields([s], LEAF_HASH_INDEX);
-}
+export const commitmentFromOprfOutput = secretFromOprfOutput;
 
 export { pedersenHashFields };

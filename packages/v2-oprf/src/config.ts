@@ -20,6 +20,19 @@ export interface OprfConfig {
     oprfKey: Uint8Array;        // 32-byte LE ristretto255 scalar
     oprfPubkey: Uint8Array;     // 32-byte ristretto255 public key (set in app)
     attesterKey: `0x${string}`; // 32-byte secp256k1 priv key, 0x-prefixed
+    /**
+     * Chain ID the EnrollmentRegistry is deployed on. Baked into the
+     * attester signature digest so a captured sig can't cross forks /
+     * chains. Base Sepolia = 84532 (the v2.1 demo target).
+     */
+    chainId: number;
+    /**
+     * EnrollmentRegistry deployment address. Baked into the digest so a
+     * captured sig can't cross contracts. Zero address in dev means
+     * "registry not yet deployed" — the service still boots, but signed
+     * root updates won't verify against a real registry until this is set.
+     */
+    enrollmentRegistry: `0x${string}`;
     corsAllowedOrigins: string[];
 }
 
@@ -91,6 +104,25 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OprfConfig {
         .map((s) => s.trim())
         .filter(Boolean);
 
+    const chainId = Number(env.CHAIN_ID ?? (isProd ? 84532 : 31337));
+    const rawRegistry = env.ENROLLMENT_REGISTRY ?? (isProd ? "" : "");
+    let enrollmentRegistry: `0x${string}` = "0x0000000000000000000000000000000000000000";
+    if (rawRegistry) {
+        if (!/^0x[0-9a-fA-F]{40}$/.test(rawRegistry)) {
+            throw new Error(
+                "[v2-oprf] ENROLLMENT_REGISTRY must be a 20-byte hex address",
+            );
+        }
+        enrollmentRegistry = rawRegistry as `0x${string}`;
+    } else if (!isProd) {
+        // Dev fallback — signed root updates won't verify against a real
+        // registry, but the service still boots so the client can iterate.
+        // eslint-disable-next-line no-console
+        console.warn(
+            "[v2-oprf] ENROLLMENT_REGISTRY not set — signing against zero address",
+        );
+    }
+
     return {
         port: Number(env.PORT ?? 8788),
         isProd,
@@ -98,6 +130,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OprfConfig {
         oprfKey,
         oprfPubkey: new Uint8Array(32), // filled by buildApp once curve is loaded
         attesterKey,
+        chainId,
+        enrollmentRegistry,
         corsAllowedOrigins,
     };
 }

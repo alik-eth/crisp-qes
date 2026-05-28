@@ -17,7 +17,6 @@ import { EnrollmentStore } from "../src/db.js";
 import { MerkleIndex } from "../src/merkle.js";
 import {
     blind,
-    derivePublicKey,
     fromHex,
     randomScalar,
     ristretto255,
@@ -52,6 +51,9 @@ async function buildTestApp() {
         oprfKey: scalarToLE(k),
         oprfPubkey: new Uint8Array(32),
         attesterKey: `0x${bytesToHex(randomBytes(32))}` as `0x${string}`,
+        chainId: 31337,
+        enrollmentRegistry:
+            "0x1234567890abcdef1234567890abcdef12345678" as `0x${string}`,
         corsAllowedOrigins: ["*"],
     };
     const store = new EnrollmentStore(":memory:");

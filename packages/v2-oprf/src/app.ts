@@ -124,6 +124,8 @@ export async function buildApp(
             currentRoot: bigintToHex32(snap.root),
             oprfPubkey: `0x${bytesToHex(oprfPubkey)}`,
             attesterAddr: attester.address,
+            chainId: cfg.chainId,
+            enrollmentRegistry: cfg.enrollmentRegistry,
         };
     });
 
@@ -230,10 +232,12 @@ export async function buildApp(
                 .send({ error: "AlreadyEnrolled", commitment });
         }
 
-        const attesterSig = attester.sign({
+        const { sig: attesterSig, innerDigest: digest } = attester.sign({
             oldRoot: append.oldRoot,
             newRoot: append.newRoot,
-            leafIndex: append.leafIndex,
+            newCommitments: [observed],
+            chainId: cfg.chainId,
+            enrollmentRegistry: cfg.enrollmentRegistry,
         });
         store.kvSet("current_root", bigintToHex32(append.newRoot));
 
@@ -243,8 +247,14 @@ export async function buildApp(
             merklePathIndices: append.indices,
             oldRoot: bigintToHex32(append.oldRoot),
             newRoot: bigintToHex32(append.newRoot),
+            // Exactly the calldata the client passes to
+            // EnrollmentRegistry.updateRoot(newRoot, newCommitments, sig).
+            newCommitments: [commitment],
             attesterSig,
             attesterAddr: attester.address,
+            attesterDigest: digest,
+            chainId: cfg.chainId,
+            enrollmentRegistry: cfg.enrollmentRegistry,
         });
     });
 
