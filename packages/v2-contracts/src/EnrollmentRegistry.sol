@@ -30,8 +30,19 @@ contract EnrollmentRegistry {
     bytes32 public enrollmentRoot;
 
     /// @notice OPRF attester address. Updates to `enrollmentRoot` must be
-    ///         signed by the private key for this address.
-    address public immutable oprfAttester;
+    ///         signed by the private key for this address. Mutable via
+    ///         `setOprfAttester` so the deploy script can ship with a
+    ///         placeholder before backend's real key is provisioned, and
+    ///         so we can rotate it without redeploying. The migration
+    ///         story to a threshold OPRF (spec sec 2.3 post-grant) also
+    ///         needs this lever.
+    address public oprfAttester;
+
+    /// @notice Admin authorised to rotate `oprfAttester`. Set to the
+    ///         deployer at construction time; can be moved with
+    ///         `transferAdmin`. Distinct from `oprfAttester` so a
+    ///         compromised attester key cannot rotate itself.
+    address public admin;
 
     /// @notice Used-commitment map. The OPRF service writes here when a
     ///         commitment (the citizen's pedersen-hashed OPRF output) is
@@ -43,19 +54,64 @@ contract EnrollmentRegistry {
 
     event RootUpdated(bytes32 indexed oldRoot, bytes32 indexed newRoot, uint256 blockNumber);
     event CommitmentMarked(bytes32 indexed commitment);
+    event OprfAttesterChanged(address indexed oldAttester, address indexed newAttester);
+    event AdminTransferred(address indexed oldAdmin, address indexed newAdmin);
 
     // ---------- errors ----------
 
     error BadSignature();
     error EmptyBatch();
+    error NotAdmin();
+    error ZeroAddress();
 
     // ---------- construction ----------
 
-    constructor(address oprfAttester_, bytes32 genesisRoot) {
-        if (oprfAttester_ == address(0)) revert BadSignature();
+    /// @param oprfAttester_  Initial attester. May be a placeholder when
+    ///                       backend's key isn't ready; admin can rotate
+    ///                       it via `setOprfAttester` later.
+    /// @param genesisRoot    Initial enrollment Merkle root, typically
+    ///                       `bytes32(0)` for an empty enrollment set.
+    /// @param admin_         Address allowed to rotate the attester. The
+    ///                       deploy script defaults this to `msg.sender`
+    ///                       so the deployer keeps the lever; pass a
+    ///                       multisig here for production.
+    constructor(address oprfAttester_, bytes32 genesisRoot, address admin_) {
+        if (admin_ == address(0)) revert ZeroAddress();
+        // oprfAttester_ may be zero at deploy time (the deploy script
+        // ships a placeholder when backend's real key is still pending).
+        // setOprfAttester wires up the real value before the first
+        // updateRoot is attempted.
         oprfAttester = oprfAttester_;
+        admin = admin_;
         enrollmentRoot = genesisRoot;
         emit RootUpdated(bytes32(0), genesisRoot, block.number);
+        emit OprfAttesterChanged(address(0), oprfAttester_);
+        emit AdminTransferred(address(0), admin_);
+    }
+
+    // ---------- admin API ----------
+
+    modifier onlyAdmin() {
+        if (msg.sender != admin) revert NotAdmin();
+        _;
+    }
+
+    /// @notice Rotate the OPRF attester. Admin-only. Useful for the
+    ///         "ship before backend is ready" workflow and for the
+    ///         eventual threshold-OPRF migration (spec sec 2.3).
+    function setOprfAttester(address newAttester) external onlyAdmin {
+        if (newAttester == address(0)) revert ZeroAddress();
+        address old = oprfAttester;
+        oprfAttester = newAttester;
+        emit OprfAttesterChanged(old, newAttester);
+    }
+
+    /// @notice Hand the admin role to a new address (e.g. multisig).
+    function transferAdmin(address newAdmin) external onlyAdmin {
+        if (newAdmin == address(0)) revert ZeroAddress();
+        address old = admin;
+        admin = newAdmin;
+        emit AdminTransferred(old, newAdmin);
     }
 
     // ---------- attester API ----------
@@ -85,6 +141,11 @@ contract EnrollmentRegistry {
         bytes calldata signature
     ) external {
         if (newCommitments.length == 0) revert EmptyBatch();
+        // Block updates until the real attester is wired up. Without this
+        // guard a placeholder-deployed registry would accept any garbage
+        // signature whose recovery yields address(0) (which is what
+        // ecrecover returns for malformed inputs).
+        if (oprfAttester == address(0)) revert BadSignature();
 
         bytes32 oldRoot = enrollmentRoot;
         bytes32 commitmentsHash = keccak256(abi.encodePacked(newCommitments));

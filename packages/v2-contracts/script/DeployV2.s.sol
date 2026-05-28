@@ -12,6 +12,16 @@ contract DeployV2 is Script {
     ///      item 5. Mirrors the MVP default.
     uint256 internal constant DEFAULT_CREATION_DEPOSIT = 0.001 ether;
 
+    /// @dev Placeholder attester address used when `OPRF_ATTESTER` is not
+    ///      yet set by backend. EnrollmentRegistry.updateRoot blocks while
+    ///      the attester is at the zero address, but a non-zero placeholder
+    ///      makes the deployed registry inspectable (`oprfAttester()` view
+    ///      returns the placeholder so the web UI can detect "not yet
+    ///      wired"). Admin must call `setOprfAttester(real)` before any
+    ///      enrollment batch lands.
+    address internal constant OPRF_ATTESTER_PLACEHOLDER =
+        0x000000000000000000000000000000000000dEaD;
+
     function run()
         external
         returns (
@@ -20,15 +30,22 @@ contract DeployV2 is Script {
             PetitionRegistryV2 registry
         )
     {
-        address oprfAttester = vm.envAddress("OPRF_ATTESTER");
+        // OPRF_ATTESTER is optional at deploy time: ship a placeholder so
+        // the contracts build/deploy/test even when backend's signing key
+        // isn't wired yet. Admin rotates to the real value via
+        // `EnrollmentRegistry.setOprfAttester(...)` once available.
+        address oprfAttester = vm.envOr("OPRF_ATTESTER", OPRF_ATTESTER_PLACEHOLDER);
         // Optional genesis root. Defaults to bytes32(0), meaning "empty
         // enrollment set"; the first `updateRoot` call rolls in the
         // initial batch.
         bytes32 genesisRoot = vm.envOr("V2_GENESIS_ROOT", bytes32(0));
         uint256 creationDeposit = vm.envOr("CREATION_DEPOSIT_WEI", DEFAULT_CREATION_DEPOSIT);
+        // Admin is whoever signed the deploy tx. Pass through env if the
+        // production multisig is known up-front.
+        address admin = vm.envOr("V2_ADMIN", msg.sender);
 
         vm.startBroadcast();
-        enrollmentRegistry = new EnrollmentRegistry(oprfAttester, genesisRoot);
+        enrollmentRegistry = new EnrollmentRegistry(oprfAttester, genesisRoot, admin);
         verifier = new UltraVerifierV2();
         registry = new PetitionRegistryV2(
             IVerifierV2(address(verifier)), enrollmentRegistry, creationDeposit
@@ -39,6 +56,12 @@ contract DeployV2 is Script {
         console.log("UltraVerifierV2:    ", address(verifier));
         console.log("PetitionRegistryV2: ", address(registry));
         console.log("oprfAttester:       ", oprfAttester);
+        console.log("admin:              ", admin);
         console.log("CREATION_DEPOSIT:   ", creationDeposit);
+        if (oprfAttester == OPRF_ATTESTER_PLACEHOLDER) {
+            console.log("WARNING: deployed with placeholder attester; admin must");
+            console.log("call EnrollmentRegistry.setOprfAttester(real) before any");
+            console.log("OPRF batch can land.");
+        }
     }
 }

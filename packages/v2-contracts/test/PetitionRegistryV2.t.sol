@@ -35,7 +35,7 @@ contract PetitionRegistryV2Test is Test {
 
     function setUp() public {
         attester = vm.addr(attesterPk);
-        enrollment = new EnrollmentRegistry(attester, GENESIS_ROOT);
+        enrollment = new EnrollmentRegistry(attester, GENESIS_ROOT, address(this));
         verifier = new MockVerifierV2();
         registry = new PetitionRegistryV2(
             IVerifierV2(address(verifier)), enrollment, DEPOSIT
@@ -278,7 +278,7 @@ contract EnrollmentRegistryTest is Test {
 
     function setUp() public {
         attester = vm.addr(attesterPk);
-        enrollment = new EnrollmentRegistry(attester, GENESIS_ROOT);
+        enrollment = new EnrollmentRegistry(attester, GENESIS_ROOT, address(this));
     }
 
     function _signUpdate(
@@ -357,6 +357,76 @@ contract EnrollmentRegistryTest is Test {
         // fail (signed digest contained the old root, not the new one).
         vm.expectRevert(EnrollmentRegistry.BadSignature.selector);
         enrollment.updateRoot(root1, c1, sig1);
+    }
+
+    // ---------- admin / attester rotation ----------
+
+    function test_admin_can_rotate_attester() public {
+        address newAttester = address(0xABCD);
+        vm.expectEmit(true, true, false, true);
+        emit EnrollmentRegistry.OprfAttesterChanged(attester, newAttester);
+        enrollment.setOprfAttester(newAttester);
+        assertEq(enrollment.oprfAttester(), newAttester);
+    }
+
+    function test_non_admin_cannot_rotate_attester() public {
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(EnrollmentRegistry.NotAdmin.selector);
+        enrollment.setOprfAttester(address(0xABCD));
+    }
+
+    function test_rotate_attester_rejects_zero() public {
+        vm.expectRevert(EnrollmentRegistry.ZeroAddress.selector);
+        enrollment.setOprfAttester(address(0));
+    }
+
+    function test_admin_transfer_moves_lever() public {
+        address newAdmin = address(0xADAD);
+        vm.expectEmit(true, true, false, true);
+        emit EnrollmentRegistry.AdminTransferred(address(this), newAdmin);
+        enrollment.transferAdmin(newAdmin);
+        // The old admin loses the lever immediately.
+        vm.expectRevert(EnrollmentRegistry.NotAdmin.selector);
+        enrollment.setOprfAttester(address(0xABCD));
+        // The new admin gains it.
+        vm.prank(newAdmin);
+        enrollment.setOprfAttester(address(0xABCD));
+        assertEq(enrollment.oprfAttester(), address(0xABCD));
+    }
+
+    function test_deploy_with_placeholder_attester_blocks_updateRoot() public {
+        // Mirrors the DeployV2.s.sol "ship before backend is ready" flow:
+        // attester starts at address(0); admin rotates to real later. Any
+        // updateRoot in the meantime must revert, even with a syntactically
+        // valid signature (which would recover to address(0) for malformed
+        // input and otherwise to some non-zero address).
+        EnrollmentRegistry placeholder =
+            new EnrollmentRegistry(address(0), GENESIS_ROOT, address(this));
+        bytes32 newRoot = bytes32(uint256(0xFADE));
+        bytes32[] memory commitments = new bytes32[](1);
+        commitments[0] = bytes32(uint256(1));
+        // Signing with any key — the digest commits to address(this) of
+        // the placeholder, so the signature is internally consistent;
+        // only the attester==0 gate stops the update.
+        bytes32 commitmentsHash = keccak256(abi.encodePacked(commitments));
+        bytes32 digest = keccak256(
+            abi.encode(
+                GENESIS_ROOT, newRoot, commitmentsHash, block.chainid, address(placeholder)
+            )
+        );
+        bytes32 ethSigned = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", digest)
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(attesterPk, ethSigned);
+        bytes memory sig = abi.encodePacked(r, s, v);
+
+        vm.expectRevert(EnrollmentRegistry.BadSignature.selector);
+        placeholder.updateRoot(newRoot, commitments, sig);
+
+        // Now admin wires the real attester and the same call succeeds.
+        placeholder.setOprfAttester(attester);
+        placeholder.updateRoot(newRoot, commitments, sig);
+        assertEq(placeholder.enrollmentRoot(), newRoot);
     }
 
     function test_update_root_rejects_empty_batch() public {
