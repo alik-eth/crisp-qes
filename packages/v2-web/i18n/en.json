@@ -139,7 +139,8 @@
             "show": "Reveal mnemonic",
             "hide": "Hide",
             "saved": "I've written it down — finish enrollment",
-            "warning": "Never share these words. No representative of Diia, the ciphernode, or this app will ever ask for them."
+            "warning": "Never share these words. No representative of Diia, the ciphernode, or this app will ever ask for them.",
+            "disclosure": "Save these 24 words. In v2.1, recovery without Passkey cloud sync requires re-enrollment — the mnemonic activates seamless cross-device recovery in v2.2."
         },
         "done": {
             "title": "Enrollment complete",

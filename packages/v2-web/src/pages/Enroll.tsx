@@ -674,9 +674,20 @@ export function Enroll({ onBack, onDone }: Props) {
                     <p className="note">{t("enroll.backup.intro")}</p>
                     <p className="note text-warn">{t("enroll.backup.warning")}</p>
                     {mnemonicRevealed ? (
-                        <p className="mono" style={{ fontSize: 15, lineHeight: 1.7 }}>
-                            {mnemonic}
-                        </p>
+                        <>
+                            <p className="mono" style={{ fontSize: 15, lineHeight: 1.7 }}>
+                                {mnemonic}
+                            </p>
+                            {/*
+                              v2.1 disclosure (spec §3.4 / codex audit): the
+                              mnemonic is HKDF(N), so it can't actually
+                              re-derive `s = pedersen([N_hi, N_lo], 0)` for
+                              cross-device recovery in v2.1. Citizens still
+                              capture it now so the v2.2 path is seamless;
+                              see `lib/bip39Recovery.ts` for the marker.
+                            */}
+                            <p className="note">{t("enroll.backup.disclosure")}</p>
+                        </>
                     ) : null}
                     <div className="actions">
                         <button
