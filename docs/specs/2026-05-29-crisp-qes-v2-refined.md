@@ -300,67 +300,42 @@ Primary: **WebAuthn PRF extension** (Passkey).
   the credential across devices via OS-level encrypted backup.
   Citizens don't see the seed.
 
-Disaster-recovery backup: **none — mnemonic deleted.** Earlier v2
-drafts shipped a non-functional BIP-39 mnemonic backup placeholder.
-It has been removed from the UI and the codebase. The structural
-reason: `s = pedersen([N_hi, N_lo], 0)` where `N = k ·
-Hash_to_curve(RNOKPP)` is the OPRF output, and any mnemonic-based
-representation of `N` either fails structurally (HKDF is one-way) or
-fails as a UX recovery primitive for civic-tech users (sub-30%
-write-down/recall rate, becomes a non-rotatable bearer credential).
-See `/tmp/recovery-design.md` for the full analysis.
+Disaster-recovery backup: **none — mnemonic deleted, no replacement
+added in v2.** Earlier v2 drafts shipped a non-functional BIP-39
+mnemonic backup placeholder. It has been removed from the UI and the
+codebase.
 
-**v2 recovery: three tiers, all client-side, zero protocol change.**
+**v2 recovery, in one sentence:** Passkey cloud sync is the only
+recovery path during the v2 bridge window. Citizens who lose access
+without cloud sync wait for the v3 epoch transition to re-enroll
+under fresh Diia QES.
 
-#### Tier 1 — Cloud-synced Passkey (primary)
+Why we don't add multi-Passkey ceremony, server-encrypted backup,
+or QES-anchored within-epoch recovery in v2:
 
-Apple iCloud Keychain / Google Password Manager / Mozilla Sync
-back up the discoverable credential (including its PRF capability)
-across devices signed into the same account. Covers the ~80% case
-where a citizen loses one device but is signed in elsewhere. Already
-shipping; not changed.
+- **Multi-Passkey ceremony** adds friction to an enrollment that
+  should take 2 seconds. Citizens with a second device already have
+  cloud-sync coverage (Tier 1). Citizens without one just skip.
+  Net UX negative for marginal coverage.
+- **QES-anchored within-epoch recovery** (re-running
+  `/oprf/blind-eval` with fresh blinding to re-derive `N`) creates
+  an abuse surface: anyone holding a stolen Diia QES can recover
+  the citizen's `s` and sign as them. The OPRF service can't
+  distinguish legitimate from stolen — both look like a valid QES
+  + fresh blind-eval. Advertising "recovery via Diia" is also
+  advertising an attack path.
+- **Server-encrypted backup**, **Shamir social recovery**,
+  **mnemonic** — all rejected for the reasons documented in
+  `/tmp/recovery-design.md`.
 
-#### Tier 2 — Multi-Passkey enrollment ceremony (secondary)
+**The recovery primitive is epoch rotation** (v3 spec §6). Recovery
+isn't a separate mechanism in this system; it's a property of yearly
+re-enrollment with fresh Diia QES. The v2 bridge inherits the
+state's Diia recovery floor for now — anyone who can re-issue Diia
+through state channels recovers at the next epoch transition.
 
-At enrollment, after the first Passkey is created and the on-chain
-commitment lands, the UI prompts the citizen to register a second
-device (laptop biometric, USB security key, or another phone). The
-same `N` is wrapped under the second Passkey's PRF output and stored
-as an additional `EnrollmentRecord` row in IndexedDB. The store
-schema in `packages/web/src/lib/encryptedStore.ts` already supports
-multiple rows per citizen. Optional skip with disclosure.
-
-#### Tier 3 — QES-anchored recovery (tertiary)
-
-If a citizen lands on a fresh device with no Passkey and no cloud
-sync, but still has Diia QES, they enter the recovery flow:
-
-1. Citizen completes the QES verification (download binding → Diia
-   sign → upload `.p7s`), same shape as enrollment.
-2. Client runs `/oprf/blind-eval` with fresh blinding `r'` over
-   RNOKPP. *(Critical: blind-eval only — never `/oprf/register`,
-   which has a uniqueness check.)*
-3. Client unblinds the response to `N`. By OPRF determinism, this
-   is the **same** `N` as the original enrollment: same `RNOKPP` +
-   same `k` → same `N`, regardless of fresh blinding.
-4. Client computes `s = pedersen([N_hi, N_lo], 0)`.
-5. Client queries `EnrollmentRegistry` events for the matching `s`
-   to find the leaf index.
-6. Client rebuilds the Merkle path from on-chain leaves.
-7. Client creates a new Passkey on the new device, wraps the
-   recovered `N` + Merkle path under it, stores in IndexedDB.
-
-The OPRF service operator sees a `blind-eval` call indistinguishable
-from any other. No service change, no contract change.
-
-#### Recovery floor
-
-Triple-loss (no Passkey, no cloud sync, no Diia QES) in v2 has no
-recovery path within the v2 epoch. The citizen waits for the v3
-epoch transition to re-enroll with a fresh / re-issued Diia QES
-(v3 spec §6 epoch-rotated enrollment). This is the same floor as
-any QES-anchored civic-identity system — the system inherits the
-state's ID-recovery process as its ultimate floor.
+Honest disclosure to citizens: *"Recovery: Passkey cloud sync only
+in v2; yearly re-enrollment in v3 onward."*
 
 Browser support (target Q3 2026):
 
@@ -383,12 +358,10 @@ no syncable backup. Unacceptable for a civic-grade tool.
 
 | Loss scenario                                       | v2 recovery path                                                 |
 | --------------------------------------------------- | ---------------------------------------------------------------- |
-| Lost phone, signed into iCloud / Google             | Passkey syncs in on next device (Tier 1)                         |
-| Lost phone, has a secondary registered Passkey      | Secondary Passkey unwraps `N` from IndexedDB (Tier 2)            |
-| Lost all Passkeys, has Diia QES                     | QES-anchored recovery: fresh `/oprf/blind-eval` → re-derive `N` (Tier 3) |
-| Lost all Passkeys, lost Diia, can re-issue Diia     | Re-issue Diia via state recovery channels → Tier 3 recovery       |
-| Triple-loss with no Diia recourse                   | Wait for v3 epoch rotation (§v3 spec §6) — re-enroll under fresh QES next epoch |
-| Compromised device (key stolen)                     | Citizen revokes enrollment via signed revocation; re-enrolls in next epoch |
+| Lost phone, signed into iCloud / Google             | Passkey syncs in on next device                                  |
+| Lost phone, no cloud sync                           | Wait for v3 epoch rotation (v3 spec §6) — re-enroll under fresh Diia QES |
+| Lost Diia QES (re-issuable through state channels)  | Re-issue Diia → wait for v3 epoch rotation → fresh enrollment    |
+| Compromised device (key stolen)                     | Wait for v3 epoch rotation — old `s` orphans, new `s_year` issued under fresh QES |
 
 The "re-enroll under new commitment" path **does not** reintroduce
 the cert-renewal Sybil hole, because the OPRF is deterministic on
