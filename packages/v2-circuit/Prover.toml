@@ -1,0 +1,6 @@
+enrollment_secret = ""
+petition_id = ""
+enrollment_root = ""
+nullifier = ""
+merkle_path = ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]
+merkle_path_indices = ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]

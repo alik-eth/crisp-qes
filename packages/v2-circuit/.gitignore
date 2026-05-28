@@ -1,0 +1,4 @@
+# Noir / Barretenberg
+target/
+proofs/
+Verifier.toml
