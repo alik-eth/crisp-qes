@@ -1,6 +1,15 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+    BaseError,
+    ContractFunctionRevertedError,
+    getAddress,
+} from "viem";
 import { readAllPetitions, type PetitionView } from "../lib/registry";
+import { useWallet } from "../lib/walletContext";
+import { petitionRegistryAbi } from "../lib/abi";
+import { config } from "../config";
+import { ensureChain } from "../lib/wallet";
 
 interface Props {
     onSign: (id: bigint) => void;
@@ -20,25 +29,119 @@ function formatDate(epochSecs: bigint, locale: string): string {
     });
 }
 
+interface WithdrawState {
+    [petitionIdStr: string]:
+        | { kind: "idle" }
+        | { kind: "submitting" }
+        | { kind: "mining" }
+        | { kind: "error"; message: string };
+}
+
 export function PetitionList({ onSign }: Props) {
     const { t, i18n } = useTranslation();
     const [items, setItems] = useState<PetitionView[] | null>(null);
     const [err, setErr] = useState<string | null>(null);
+    const [now, setNow] = useState<number>(() => Math.floor(Date.now() / 1000));
+    const { session, setSession } = useWallet();
+    const [wd, setWd] = useState<WithdrawState>({});
+
+    const reload = useCallback(async () => {
+        try {
+            const all = await readAllPetitions();
+            setItems(all);
+        } catch (e) {
+            setErr(e instanceof Error ? e.message : String(e));
+        }
+    }, []);
 
     useEffect(() => {
-        let alive = true;
-        (async () => {
-            try {
-                const all = await readAllPetitions();
-                if (alive) setItems(all);
-            } catch (e) {
-                if (alive) setErr(e instanceof Error ? e.message : String(e));
+        void reload();
+        // Re-tick "now" once a minute so the "deadline passed" branch flips
+        // without the user having to refresh.
+        const id = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 60_000);
+        return () => clearInterval(id);
+    }, [reload]);
+
+    async function handleWithdraw(p: PetitionView) {
+        if (!session) return;
+        const key = p.id.toString();
+        try {
+            if (session.chainId !== config.chainId) {
+                const post = await ensureChain(session);
+                setSession({ ...session, chainId: post });
+                if (post !== config.chainId) {
+                    setWd((s) => ({
+                        ...s,
+                        [key]: {
+                            kind: "error",
+                            message: t("list.card.withdraw.errors.wrongChain"),
+                        },
+                    }));
+                    return;
+                }
             }
-        })();
-        return () => {
-            alive = false;
-        };
-    }, []);
+            setWd((s) => ({ ...s, [key]: { kind: "submitting" } }));
+
+            const { publicClient } = await import("../lib/chain");
+            // Simulate on our public RPC for a proper gas estimate + early
+            // revert decoding (otherwise MetaMask falls back to a too-low
+            // default and the wallet sees an opaque revert).
+            const { request } = await publicClient.simulateContract({
+                account: session.address,
+                address: config.registry,
+                abi: petitionRegistryAbi,
+                functionName: "withdrawDeposit",
+                args: [p.id],
+            });
+            let gas = request.gas;
+            if (!gas) {
+                gas = await publicClient.estimateContractGas({
+                    account: session.address,
+                    address: config.registry,
+                    abi: petitionRegistryAbi,
+                    functionName: "withdrawDeposit",
+                    args: [p.id],
+                });
+            }
+            const gasBuf = (gas * 125n) / 100n;
+
+            const txHash = await session.client.writeContract({
+                ...request,
+                gas: gasBuf,
+                account: session.address,
+                chain: config.chain,
+            });
+            setWd((s) => ({ ...s, [key]: { kind: "mining" } }));
+            const receipt = await publicClient.waitForTransactionReceipt({
+                hash: txHash,
+            });
+            if (receipt.status !== "success") {
+                setWd((s) => ({
+                    ...s,
+                    [key]: {
+                        kind: "error",
+                        message: t("list.card.withdraw.errors.unknown"),
+                    },
+                }));
+                return;
+            }
+            setWd((s) => ({ ...s, [key]: { kind: "idle" } }));
+            await reload();
+        } catch (e) {
+            setWd((s) => ({
+                ...s,
+                [key]: {
+                    kind: "error",
+                    message: friendlyWithdrawError(e, t),
+                },
+            }));
+        }
+    }
+
+    const connectedAddr = useMemo(
+        () => (session ? getAddress(session.address) : null),
+        [session],
+    );
 
     if (err) {
         return (
@@ -77,7 +180,10 @@ export function PetitionList({ onSign }: Props) {
             <h2 className="section__title">{t("list.heading")}</h2>
             <div className="petition-grid">
                 {items.map((p) => {
-                    const ratio = p.threshold > 0 ? Math.min(1, p.signatureCount / p.threshold) : 0;
+                    const ratio =
+                        p.threshold > 0
+                            ? Math.min(1, p.signatureCount / p.threshold)
+                            : 0;
                     const statusClass =
                         p.status === "Open"
                             ? "status-tag--open"
@@ -85,7 +191,18 @@ export function PetitionList({ onSign }: Props) {
                               ? "status-tag--reached"
                               : "status-tag--closed";
                     const truncated =
-                        p.fullText.length > 320 ? p.fullText.slice(0, 320) + "…" : p.fullText;
+                        p.fullText.length > 320
+                            ? p.fullText.slice(0, 320) + "…"
+                            : p.fullText;
+
+                    const deadlinePassed = now > Number(p.deadline);
+                    const isCreator =
+                        connectedAddr !== null &&
+                        getAddress(p.creator) === connectedAddr;
+                    const canWithdraw =
+                        isCreator && deadlinePassed && !p.depositRefunded;
+                    const wdState = wd[p.id.toString()] ?? { kind: "idle" };
+
                     return (
                         <article className="petition-card" key={p.id.toString()}>
                             <div>
@@ -107,10 +224,13 @@ export function PetitionList({ onSign }: Props) {
                                             {p.signatureCount.toString()}
                                         </span>
                                         <span className="petition-card__count-of">
-                                            {t("list.card.of")} {p.threshold.toString()}
+                                            {t("list.card.of")}{" "}
+                                            {p.threshold.toString()}
                                         </span>
                                         <div className="petition-card__bar">
-                                            <span style={{ width: `${ratio * 100}%` }} />
+                                            <span
+                                                style={{ width: `${ratio * 100}%` }}
+                                            />
                                         </div>
                                     </dd>
                                 </div>
@@ -132,6 +252,51 @@ export function PetitionList({ onSign }: Props) {
                                             {t("list.card.sign")}
                                         </button>
                                     </div>
+                                ) : (
+                                    <div>
+                                        {p.status === "ThresholdReached" ? (
+                                            <p className="note">
+                                                {t(
+                                                    "list.card.closedReason.ThresholdReached",
+                                                )}
+                                            </p>
+                                        ) : p.status === "Closed" ? (
+                                            <p className="note">
+                                                {t(
+                                                    "list.card.closedReason.Closed",
+                                                )}
+                                            </p>
+                                        ) : null}
+                                    </div>
+                                )}
+
+                                {canWithdraw ? (
+                                    <div>
+                                        <button
+                                            className="btn btn--small btn--ghost"
+                                            type="button"
+                                            onClick={() => handleWithdraw(p)}
+                                            disabled={
+                                                wdState.kind === "submitting" ||
+                                                wdState.kind === "mining"
+                                            }
+                                        >
+                                            {wdState.kind === "submitting"
+                                                ? t(
+                                                      "list.card.withdraw.submitting",
+                                                  )
+                                                : wdState.kind === "mining"
+                                                  ? t(
+                                                        "list.card.withdraw.mining",
+                                                    )
+                                                  : t("list.card.withdraw.cta")}
+                                        </button>
+                                        {wdState.kind === "error" ? (
+                                            <p className="error-line">
+                                                {wdState.message}
+                                            </p>
+                                        ) : null}
+                                    </div>
                                 ) : null}
                             </dl>
                         </article>
@@ -140,4 +305,36 @@ export function PetitionList({ onSign }: Props) {
             </div>
         </section>
     );
+}
+
+function friendlyWithdrawError(
+    err: unknown,
+    t: (k: string) => string,
+): string {
+    if (err instanceof BaseError) {
+        const reverted = err.walk(
+            (e) => e instanceof ContractFunctionRevertedError,
+        );
+        if (reverted instanceof ContractFunctionRevertedError) {
+            const name = reverted.data?.errorName;
+            switch (name) {
+                case "NotCreator":
+                    return t("list.card.withdraw.errors.notCreator");
+                case "PetitionStillOpen":
+                    return t("list.card.withdraw.errors.stillOpen");
+                case "DepositAlreadyRefunded":
+                    return t("list.card.withdraw.errors.alreadyRefunded");
+                case "RefundTransferFailed":
+                    return t("list.card.withdraw.errors.transferFailed");
+                default:
+                    return reverted.shortMessage ?? t("list.card.withdraw.errors.unknown");
+            }
+        }
+        return err.shortMessage ?? err.message;
+    }
+    if (err && typeof err === "object" && "code" in err) {
+        const code = (err as { code?: number }).code;
+        if (code === 4001) return t("list.card.withdraw.errors.userRejected");
+    }
+    return err instanceof Error ? err.message : String(err);
 }

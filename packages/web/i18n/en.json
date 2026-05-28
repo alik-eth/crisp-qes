@@ -46,7 +46,25 @@
             "count": "Signatures collected",
             "of": "of",
             "creator": "Created by",
-            "sign": "Sign"
+            "sign": "Sign",
+            "closedReason": {
+                "ThresholdReached": "Threshold reached — signing is closed.",
+                "Closed": "Deadline passed — signing is closed."
+            },
+            "withdraw": {
+                "cta": "Withdraw deposit",
+                "submitting": "Signing in wallet…",
+                "mining": "Waiting for confirmation…",
+                "errors": {
+                    "notCreator": "Only the petition creator can withdraw the deposit.",
+                    "stillOpen": "The petition's deadline has not passed yet.",
+                    "alreadyRefunded": "The deposit has already been refunded.",
+                    "transferFailed": "Transfer of the deposit failed. Please retry.",
+                    "userRejected": "The transaction was cancelled in the wallet.",
+                    "wrongChain": "Wallet is not on Base Sepolia.",
+                    "unknown": "Unknown error while withdrawing the deposit."
+                }
+            }
         },
         "status": {
             "Open": "Open",
@@ -108,6 +126,12 @@
         "prove": {
             "intro": "Your browser will now compute the ZK proof. This takes 30 seconds to 2 minutes — do not close the tab.",
             "start": "Generate proof",
+            "waiting": "Waiting for the preceding steps to complete.",
+            "needs": {
+                "verify": "Certificate check",
+                "trust": "Certificate found under a trusted Diia CA",
+                "nullifier": "Nullifier computed"
+            },
             "stages": {
                 "initWorker": "Initialising worker…",
                 "loadingCircuit": "Loading circuit…",
@@ -142,7 +166,15 @@
         "intro": "Publish a petition text into the PetitionRegistry contract on Base. Creating a petition requires connecting a wallet and locking a refundable anti-spam deposit.",
         "back": "Back to petitions",
         "submit": "Publish petition",
+        "submitWithDeposit": "Publish petition · 0.001 ETH",
         "submitting": "Publishing…",
+        "cta": {
+            "needsWallet": "Connect a wallet first.",
+            "wrongChain": "Switch your wallet to Base Sepolia."
+        },
+        "publish": {
+            "title": "Wallet & publish"
+        },
         "tx": "Transaction",
         "privacy": {
             "title": "What is visible on-chain",
@@ -168,7 +200,8 @@
         "deposit": {
             "title": "Anti-spam deposit",
             "amount": "Amount",
-            "body": "The deposit is locked by the contract and refundable to the creator after the petition's deadline has passed — regardless of whether the threshold was reached."
+            "body": "The deposit is locked by the contract and refundable to the creator after the petition's deadline has passed — regardless of whether the threshold was reached.",
+            "oneLine": "A 0.001 ETH deposit is locked by the contract and refunded to the creator after the petition's deadline."
         },
         "wallet": {
             "title": "Wallet",

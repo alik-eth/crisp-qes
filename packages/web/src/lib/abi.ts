@@ -63,11 +63,22 @@ export const petitionRegistryAbi = [
         ],
         outputs: [{ name: "id", type: "uint256" }],
     },
-    // Surfaced solely to decode createPetition revert reasons in the UI.
+    {
+        type: "function",
+        name: "withdrawDeposit",
+        stateMutability: "nonpayable",
+        inputs: [{ name: "id", type: "uint256" }],
+        outputs: [],
+    },
+    // Surfaced solely to decode revert reasons in the UI.
     { type: "error", name: "WrongDeposit", inputs: [] },
     { type: "error", name: "EmptyText", inputs: [] },
     { type: "error", name: "TextTooLarge", inputs: [] },
     { type: "error", name: "DeadlineInPast", inputs: [] },
+    { type: "error", name: "NotCreator", inputs: [] },
+    { type: "error", name: "PetitionStillOpen", inputs: [] },
+    { type: "error", name: "DepositAlreadyRefunded", inputs: [] },
+    { type: "error", name: "RefundTransferFailed", inputs: [] },
 ] as const;
 
 export type PetitionStatusCode = 0 | 1 | 2 | 3;

@@ -493,30 +493,77 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
             ) : null}
 
             {/* 5. Prove */}
-            {parsed && tinuaOk && digestOk && foundCa && nullifier ? (
+            {parsed ? (
                 <div className="panel">
                     <p className="panel__title">{t("sign.steps.prove")}</p>
                     <p className="note">{t("sign.prove.intro")}</p>
-                    {proveStage === "idle" ? (
-                        <div className="actions">
-                            <button
-                                className="btn btn--accent"
-                                onClick={startProve}
-                                type="button"
-                            >
-                                {t("sign.prove.start")}
-                            </button>
-                        </div>
-                    ) : proveStage === "done" ? (
-                        <p className="tag-ok">✓ {t("sign.prove.stages.done")}</p>
-                    ) : (
-                        <div className="progress">
-                            <span>{t(`sign.prove.stages.${proveStage}`)}</span>
-                            <div className="progress__line">
-                                <span />
-                            </div>
-                        </div>
-                    )}
+
+                    {(() => {
+                        const checks: Array<{ key: string; ok: boolean }> = [
+                            { key: "verify", ok: !!(tinuaOk && digestOk) },
+                            { key: "trust", ok: trustOk },
+                            { key: "nullifier", ok: !!nullifier },
+                        ];
+                        const allReady = checks.every((c) => c.ok);
+                        const proveBusy =
+                            proveStage !== "idle" && proveStage !== "done";
+                        return (
+                            <>
+                                <ul className="checklist">
+                                    {checks.map((c) => (
+                                        <li
+                                            key={c.key}
+                                            className={
+                                                c.ok
+                                                    ? "checklist__item checklist__item--ok"
+                                                    : "checklist__item"
+                                            }
+                                        >
+                                            <span aria-hidden>
+                                                {c.ok ? "✓" : "○"}
+                                            </span>{" "}
+                                            {t(`sign.prove.needs.${c.key}`)}
+                                        </li>
+                                    ))}
+                                </ul>
+
+                                {proveStage === "done" ? (
+                                    <p className="tag-ok">
+                                        ✓ {t("sign.prove.stages.done")}
+                                    </p>
+                                ) : proveBusy ? (
+                                    <div className="progress">
+                                        <span>
+                                            {t(
+                                                `sign.prove.stages.${proveStage}`,
+                                            )}
+                                        </span>
+                                        <div className="progress__line">
+                                            <span />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="actions">
+                                        <button
+                                            className="btn btn--accent"
+                                            onClick={startProve}
+                                            type="button"
+                                            disabled={!allReady}
+                                            title={
+                                                allReady
+                                                    ? undefined
+                                                    : t("sign.prove.waiting")
+                                            }
+                                            aria-disabled={!allReady}
+                                        >
+                                            {t("sign.prove.start")}
+                                        </button>
+                                    </div>
+                                )}
+                            </>
+                        );
+                    })()}
+
                     {proveErr ? (
                         <p className="error-line">
                             {t("sign.prove.error", { detail: proveErr })}

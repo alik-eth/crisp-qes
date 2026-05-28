@@ -13,6 +13,7 @@ export interface PetitionView {
     threshold: number;
     signatureCount: number;
     thresholdReached: boolean;
+    depositRefunded: boolean;
     textHash: Hex;
     fullText: string;
     status: "Open" | "Closed" | "ThresholdReached" | "Unknown";
@@ -66,6 +67,7 @@ export async function readPetition(id: bigint): Promise<PetitionView | null> {
             threshold: Number(pet.threshold),
             signatureCount: Number(pet.signatureCount),
             thresholdReached: pet.thresholdReached,
+            depositRefunded: pet.depositRefunded,
             textHash: pet.textHash,
             fullText: decodeText(pet.fullText),
             status: PetitionStatusLabel[Number(status) as PetitionStatusCode] ?? "Unknown",

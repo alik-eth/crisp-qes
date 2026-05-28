@@ -13,7 +13,6 @@ import { useTranslation } from "react-i18next";
 import {
     BaseError,
     ContractFunctionRevertedError,
-    formatEther,
     stringToBytes,
     toHex,
 } from "viem";
@@ -29,6 +28,7 @@ import {
     type InjectedDetail,
     type WalletSession,
 } from "../lib/wallet";
+import { useWallet } from "../lib/walletContext";
 
 interface Props {
     onBack: () => void;
@@ -70,10 +70,11 @@ function localToEpochSecs(local: string): number {
 export function Create({ onBack, onCreated }: Props) {
     const { t } = useTranslation();
 
+    const { session, setSession, clearSession } = useWallet();
+
     const [text, setText] = useState("");
     const [deadlineLocal, setDeadlineLocal] = useState(defaultDeadlineLocal());
     const [threshold, setThreshold] = useState("100");
-    const [session, setSession] = useState<WalletSession | null>(null);
     const [phase, setPhase] = useState<Phase>({ kind: "idle" });
     const [injected, setInjected] = useState<InjectedDetail[]>([]);
 
@@ -102,9 +103,22 @@ export function Create({ onBack, onCreated }: Props) {
         return errs;
     }, [byteLen, deadlineLocal, deadlineEpoch, thresholdNum]);
 
+    const onTargetChain =
+        session !== null && session.chainId === config.chainId;
+    const phaseIdle = phase.kind === "idle" || phase.kind === "error";
     const canSubmit =
-        validation.length === 0 &&
-        (phase.kind === "idle" || phase.kind === "error");
+        validation.length === 0 && session !== null && onTargetChain && phaseIdle;
+
+    // Why the submit button is greyed out — surfaced via `title` /
+    // `aria-disabled-reason` so the user knows what to fix.
+    const disabledReason: string | null = (() => {
+        if (!phaseIdle) return null; // showing phase progress instead
+        if (validation.length > 0)
+            return t(`create.validation.${validation[0]}`);
+        if (!session) return t("create.cta.needsWallet");
+        if (!onTargetChain) return t("create.cta.wrongChain");
+        return null;
+    })();
 
     useEffect(() => {
         startInjectedDiscovery();
@@ -153,7 +167,7 @@ export function Create({ onBack, onCreated }: Props) {
 
     async function handleDisconnect() {
         await disconnectWallet(session);
-        setSession(null);
+        clearSession();
         setPhase({ kind: "idle" });
     }
 
@@ -264,11 +278,6 @@ export function Create({ onBack, onCreated }: Props) {
             </p>
 
             <div className="panel">
-                <h3 className="panel__title">{t("create.privacy.title")}</h3>
-                <p className="note">{t("create.privacy.body")}</p>
-            </div>
-
-            <div className="panel">
                 <h3 className="panel__title">{t("create.form.title")}</h3>
 
                 <label className="field-block">
@@ -340,18 +349,8 @@ export function Create({ onBack, onCreated }: Props) {
             </div>
 
             <div className="panel">
-                <h3 className="panel__title">{t("create.deposit.title")}</h3>
-                <dl className="field-row">
-                    <dt>{t("create.deposit.amount")}</dt>
-                    <dd className="mono">
-                        {formatEther(config.creationDepositWei)} ETH
-                    </dd>
-                </dl>
-                <p className="note">{t("create.deposit.body")}</p>
-            </div>
+                <h3 className="panel__title">{t("create.publish.title")}</h3>
 
-            <div className="panel">
-                <h3 className="panel__title">{t("create.wallet.title")}</h3>
                 {!session ? (
                     <>
                         <p className="note">{t("create.wallet.needed")}</p>
@@ -414,31 +413,30 @@ export function Create({ onBack, onCreated }: Props) {
                                 {t("create.wallet.noInjected")}
                             </p>
                         ) : null}
-
-                        <div className="actions">
-                            <button
-                                className="btn btn--ghost"
-                                type="button"
-                                onClick={onBack}
-                            >
-                                {t("create.back")}
-                            </button>
-                        </div>
                     </>
                 ) : (
-                    <>
-                        <dl className="field-row">
+                    <dl>
+                        <div className="field-row">
                             <dt>{t("create.wallet.connected")}</dt>
-                            <dd className="mono">{session.label}</dd>
-                        </dl>
-                        <dl className="field-row">
-                            <dt>{t("create.wallet.address")}</dt>
-                            <dd className="mono">{shortAddr(session.address)}</dd>
-                        </dl>
-                        <dl className="field-row">
+                            <dd className="mono">
+                                {session.label} · {shortAddr(session.address)}{" "}
+                                <button
+                                    className="btn--link"
+                                    type="button"
+                                    onClick={handleDisconnect}
+                                    disabled={
+                                        phase.kind === "submitting" ||
+                                        phase.kind === "mining"
+                                    }
+                                >
+                                    {t("create.wallet.disconnect")}
+                                </button>
+                            </dd>
+                        </div>
+                        <div className="field-row">
                             <dt>{t("create.wallet.chain")}</dt>
                             <dd className="mono">
-                                {session.chainId === config.chainId ? (
+                                {onTargetChain ? (
                                     <span className="tag-ok">
                                         {config.chain.name} ({config.chainId})
                                     </span>
@@ -451,41 +449,47 @@ export function Create({ onBack, onCreated }: Props) {
                                     </span>
                                 )}
                             </dd>
-                        </dl>
-                        <div className="actions">
-                            <button
-                                className="btn btn--accent"
-                                type="button"
-                                onClick={handleSubmit}
-                                disabled={!canSubmit}
-                            >
-                                {phase.kind === "submitting" ||
-                                phase.kind === "mining" ||
-                                phase.kind === "switching"
-                                    ? t("create.submitting")
-                                    : t("create.submit")}
-                            </button>
-                            <button
-                                className="btn btn--ghost"
-                                type="button"
-                                onClick={handleDisconnect}
-                                disabled={
-                                    phase.kind === "submitting" ||
-                                    phase.kind === "mining"
-                                }
-                            >
-                                {t("create.wallet.disconnect")}
-                            </button>
-                            <button
-                                className="btn btn--link"
-                                type="button"
-                                onClick={onBack}
-                            >
-                                {t("create.back")}
-                            </button>
                         </div>
-                    </>
+                    </dl>
                 )}
+
+                <p className="note" style={{ marginTop: 14 }}>
+                    {t("create.deposit.oneLine")}
+                </p>
+
+                <div className="actions" style={{ marginTop: 18 }}>
+                    <button
+                        className="btn btn--accent"
+                        type="button"
+                        onClick={handleSubmit}
+                        disabled={!canSubmit}
+                        title={disabledReason ?? undefined}
+                        aria-disabled={!canSubmit}
+                    >
+                        {phase.kind === "submitting" ||
+                        phase.kind === "mining" ||
+                        phase.kind === "switching"
+                            ? t("create.submitting")
+                            : t("create.submitWithDeposit")}
+                    </button>
+                    <button
+                        className="btn btn--link"
+                        type="button"
+                        onClick={onBack}
+                    >
+                        {t("create.back")}
+                    </button>
+                </div>
+
+                {disabledReason ? (
+                    <p
+                        className="note text-warn"
+                        style={{ marginTop: 8 }}
+                        role="status"
+                    >
+                        {disabledReason}
+                    </p>
+                ) : null}
 
                 {phaseLabel ? (
                     <p className="progress">
@@ -506,6 +510,13 @@ export function Create({ onBack, onCreated }: Props) {
                     <p className="error-line">{phase.message}</p>
                 ) : null}
             </div>
+
+            <details className="disclosure">
+                <summary className="disclosure__summary">
+                    {t("create.privacy.title")}
+                </summary>
+                <p className="note">{t("create.privacy.body")}</p>
+            </details>
         </section>
     );
 }
