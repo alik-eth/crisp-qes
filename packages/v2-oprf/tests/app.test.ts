@@ -99,15 +99,24 @@ maybe("v2-oprf /oprf/blind-eval", () => {
         expect(res.statusCode).toBe(200);
         const body = res.json() as {
             Y: `0x${string}`;
-            proof: `0x${string}`;
+            K: `0x${string}`;
+            proof: { c: `0x${string}`; s: `0x${string}` };
             oprfPubkey: `0x${string}`;
         };
 
+        // K is the duplicated public-key alias web's oprfClient expects;
+        // `oprfPubkey` is the legacy field kept for backward compat.
+        expect(body.K).toBe(body.oprfPubkey);
+        // `proof` arrives as a {c, s} pair; reassemble for verifyProof.
+        const proofBytes = new Uint8Array([
+            ...fromHex(body.proof.c),
+            ...fromHex(body.proof.s),
+        ]);
+
         // Client-side DLEQ verification + unblind sanity.
         const Y = fromHex(body.Y);
-        const proof = fromHex(body.proof);
-        const Kpub = fromHex(body.oprfPubkey);
-        expect(verifyProof(Kpub, M, Y, proof)).toBe(true);
+        const Kpub = fromHex(body.K);
+        expect(verifyProof(Kpub, M, Y, proofBytes)).toBe(true);
 
         const N = unblind(r, Y);
         const Nref = ristretto255.Point

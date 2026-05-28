@@ -169,15 +169,21 @@ export async function buildApp(
             });
         }
 
+        // Wire shape pinned by v2-web's `oprfClient.ts`:
+        //   { Y, K, proof: { c, s } }
+        // `proof` is the (c, s) Chaum-Pedersen DLEQ pair, each 32-byte
+        // scalar (little-endian per RFC 9496). We also keep `oprfPubkey`
+        // and the echoed `blindedInput` as additive fields so older
+        // clients keep working.
+        const c = `0x${bytesToHex(out.proof.slice(0, 32))}`;
+        const s = `0x${bytesToHex(out.proof.slice(32, 64))}`;
+        const Khex = `0x${bytesToHex(oprfPubkey)}`;
         return reply.code(200).send({
             Y: toHex(out.Y),
-            proof: toHex(out.proof),
-            // Echo so the client doesn't have to re-derive it; matches our
-            // single-node /register reconciliation field.
+            K: Khex,
+            proof: { c, s },
             blindedInput,
-            // Convenience: clients may want the suite-specific server pub
-            // without an extra /healthz round-trip on first contact.
-            oprfPubkey: `0x${bytesToHex(oprfPubkey)}`,
+            oprfPubkey: Khex,
         });
     });
 
@@ -272,11 +278,16 @@ export async function buildApp(
             return reply.code(404).send({ error: "NotEnrolled", commitment });
         }
         const proof = await merkle.proofAt(idx);
+        const rootHex = bigintToHex32(proof.root);
+        // Recovery flow: same shape as /oprf/register; no append happens,
+        // so oldRoot == newRoot and there's no fresh attesterSig.
         return reply.code(200).send({
             leafIndex: proof.leafIndex,
             merklePath: proof.path.map(bigintToHex32),
             merklePathIndices: proof.indices,
-            root: bigintToHex32(proof.root),
+            oldRoot: rootHex,
+            newRoot: rootHex,
+            root: rootHex,
         });
     });
 
