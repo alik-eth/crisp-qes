@@ -17,14 +17,22 @@ const PIN = {
   treeDepth: 16,
 } as const;
 
-// Golden root for the lotl-mini fixture under PIN. Generated on first
-// successful local run of `node dist/cli.js --in fixtures/lotl-mini.xml ...`.
-// Any drift here means either:
+// Golden root for the lotl-mini fixture under PIN. Any drift here means
+// either:
 //   (a) the @aztec/bb.js Pedersen impl changed under our feet — escalate,
 //   (b) the SPKI-commit / Merkle node domain separators were touched — must
 //       be paired with the Noir circuit + Solidity registry update,
 //   (c) the fixture XML changed — re-pin deliberately.
-const GOLDEN_ROOT = "0x1314962800e8b604128af20cc101b73f454f797cc23495e0dab6c3a0a9058ed0";
+//
+// History:
+//   - 0x1314962800e8b604128af20cc101b73f454f797cc23495e0dab6c3a0a9058ed0 was
+//     the previous golden when `spkiCommit` used bb.js's `pedersenHashBuffer`
+//     (opaque byte chunking). Noir's stdlib has no in-circuit equivalent for
+//     that chunking, so the circuit (packages/circuit/src/spki.nr) pins an
+//     explicit 33×31-byte + 1×1-byte big-endian chunking with the Field-array
+//     `pedersen_hash_with_separator`. The flattener was switched to mirror
+//     that chunking (D-fix-1), which produces the new root below.
+const GOLDEN_ROOT = "0x068d1c6d1d6cf03dfa7d5e7c646659be0d6edc96cc9081502b2a53db66ce472b";
 
 let outDir: string;
 beforeEach(async () => {
