@@ -20,6 +20,7 @@
 
 import { BarretenbergSync, Fr } from "@aztec/bb.js";
 import type { ParsedP7s } from "./p7s.js";
+import { findIssuerInBundle, parseP7bBundle } from "./bundle.js";
 
 const SPKI_COMMIT_DOMAIN = 1;
 const SPKI_MAX_BYTES = 1024;
@@ -49,18 +50,33 @@ export interface TrustManifestLike {
 }
 
 export interface FoundIntermediate {
-    /** The manifest leaf matched to the .p7s's intermediate cert. */
+    /** The manifest leaf matched to the intermediate cert. */
     leaf: TrustManifestLeafLike;
-    /** The intermediate cert DER (echo of `parsed.intermediateCertDer`). */
+    /** The intermediate cert DER — either from the .p7s or the fallback bundle. */
     intermediateCertDer: Uint8Array;
-    /** The intermediate SPKI DER (echo of `parsed.intermediateSpkiDer`). */
+    /** The intermediate SPKI DER (91 bytes for P-256). */
     intermediateSpkiDer: Uint8Array;
+    /** Intermediate's P-256 pubkey (x, y). */
+    intermediatePubkey: { x: bigint; y: bigint };
+    /** Byte offset within `intermediateSpkiDer` where X[0] sits (27 by construction). */
+    intermediatePubkeyOffset: number;
     /** Pedersen commit of the intermediate SPKI (bigint). */
     intermediateSpkiCommit: bigint;
     /** Bottom-up sibling path, BN254 field-valued — ready for `buildWitness`. */
     merklePath: bigint[];
     /** Bottom-up index bits (0/1), ready for `buildWitness`. */
     merklePathIndices: number[];
+    /** Where the intermediate cert came from. */
+    source: "p7s" | "bundle";
+}
+
+export interface FindIntermediateOpts {
+    /**
+     * Public Diia `.p7b` bundle bytes. When the .p7s carries only the leaf
+     * (`parsed.intermediateCertDer === null`), the lookup falls back to
+     * matching `leafCertDer.AKI` against bundle certs' SKIs.
+     */
+    bundleP7b?: Uint8Array;
 }
 
 /**
@@ -71,20 +87,49 @@ export interface FoundIntermediate {
 export async function findIntermediate(
     parsed: ParsedP7s,
     manifest: TrustManifestLike,
+    opts: FindIntermediateOpts = {},
 ): Promise<FoundIntermediate | null> {
-    if (
-        parsed.intermediateCertDer === null ||
-        parsed.intermediateSpkiDer === null
-    ) {
-        return null;
-    }
     if (manifest.hash !== "pedersen-bn254" || manifest.version !== "1") {
         throw new Error(
             `findIntermediate: unsupported manifest version/hash (${manifest.version}/${manifest.hash})`,
         );
     }
 
-    const commit = await spkiCommit(parsed.intermediateSpkiDer);
+    let certDer: Uint8Array;
+    let spkiDer: Uint8Array;
+    let pubkey: { x: bigint; y: bigint };
+    let pubkeyOffset: number;
+    let source: "p7s" | "bundle";
+
+    if (
+        parsed.intermediateCertDer !== null &&
+        parsed.intermediateSpkiDer !== null &&
+        parsed.intermediatePubkey !== null &&
+        parsed.intermediatePubkeyOffset !== null
+    ) {
+        certDer = parsed.intermediateCertDer;
+        spkiDer = parsed.intermediateSpkiDer;
+        pubkey = parsed.intermediatePubkey;
+        pubkeyOffset = parsed.intermediatePubkeyOffset;
+        source = "p7s";
+    } else {
+        // Fall back to the Diia `.p7b` bundle: resolve the leaf's AKI to a
+        // bundle cert's SKI. Caller must supply the bundle bytes; without
+        // them the chain-verify witness cannot be assembled.
+        if (!opts.bundleP7b) {
+            return null;
+        }
+        const bundle = parseP7bBundle(opts.bundleP7b);
+        const issuer = findIssuerInBundle(parsed.leafCertDer, bundle);
+        if (!issuer) return null;
+        certDer = issuer.certDer;
+        spkiDer = issuer.spkiDer;
+        pubkey = issuer.pubkey;
+        pubkeyOffset = issuer.pubkeyOffset;
+        source = "bundle";
+    }
+
+    const commit = await spkiCommit(spkiDer);
     const target = toHex32(commit);
     for (const leaf of manifest.leaves) {
         if (normaliseHex(leaf.spkiCommit) !== target) continue;
@@ -100,11 +145,14 @@ export async function findIntermediate(
         }
         return {
             leaf,
-            intermediateCertDer: parsed.intermediateCertDer,
-            intermediateSpkiDer: parsed.intermediateSpkiDer,
+            intermediateCertDer: certDer,
+            intermediateSpkiDer: spkiDer,
+            intermediatePubkey: pubkey,
+            intermediatePubkeyOffset: pubkeyOffset,
             intermediateSpkiCommit: commit,
             merklePath: leaf.merklePath.map((h) => BigInt(h)),
             merklePathIndices: leaf.merklePathIndices.slice(),
+            source,
         };
     }
     return null;

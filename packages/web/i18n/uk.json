@@ -84,7 +84,9 @@
         "trust": {
             "loadingManifest": "Завантажуємо trust-list манифест…",
             "intermediateOk": "Довірений посередник Дія: {{name}}",
+            "intermediateFromBundle": "Знайдено за AKI у Diia bundle: {{cn}}",
             "intermediateMissing": "Сертифікат не належить до жодного довіреного посередника Дія у поточному trust-root.",
+            "intermediateUnknown": "Видавник цього сертифіката не знайдено серед довірених Diia CA.",
             "subjectDn": "Subject DN",
             "spkiCommit": "SPKI commit",
             "manifestError": "Не вдалося завантажити trust-list манифест."

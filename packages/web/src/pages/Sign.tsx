@@ -53,6 +53,7 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
 
     const [manifest, setManifest] = useState<TrustManifest | null>(null);
     const [manifestErr, setManifestErr] = useState<string | null>(null);
+    const [bundleBytes, setBundleBytes] = useState<Uint8Array | null>(null);
     const [foundCa, setFoundCa] = useState<FoundIntermediate | null>(null);
     const [caMissing, setCaMissing] = useState(false);
     const [caChecking, setCaChecking] = useState(false);
@@ -67,18 +68,25 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
     const [submitting, setSubmitting] = useState(false);
     const [submitErr, setSubmitErr] = useState<string | null>(null);
 
-    // Load petition + trust root + manifest in parallel.
+    // Load petition + trust root + manifest + public Diia .p7b bundle in
+    // parallel. The bundle is served as a static asset at /diia_ecdsa.p7b
+    // and is the AKI-lookup fallback for .p7s files that omit the issuer.
     useEffect(() => {
         let alive = true;
         (async () => {
             try {
-                const [p, tr, mf] = await Promise.all([
+                const [p, tr, mf, bundle] = await Promise.all([
                     readPetition(petitionId),
                     readTrustRoot(),
                     loadTrustManifest().catch((e) => {
                         if (alive) setManifestErr(e instanceof Error ? e.message : String(e));
                         return null;
                     }),
+                    fetch("/diia_ecdsa.p7b", { credentials: "omit" })
+                        .then(async (r) =>
+                            r.ok ? new Uint8Array(await r.arrayBuffer()) : null,
+                        )
+                        .catch(() => null),
                 ]);
                 if (!alive) return;
                 if (!p) {
@@ -88,6 +96,7 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
                 setPetition(p);
                 setTrustRoot(BigInt(tr));
                 if (mf) setManifest(mf);
+                if (bundle) setBundleBytes(bundle);
             } catch (e) {
                 if (alive) setPetitionErr(e instanceof Error ? e.message : String(e));
             }
@@ -155,12 +164,15 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
 
             // (d) Trust-tree match: D-v2 trust root commits to intermediate CAs.
             //     `findIntermediate` recomputes the SPKI commit of the
-            //     intermediate from the .p7s bundle and looks it up in the
-            //     Diia manifest.
+            //     intermediate (from the .p7s bundle when present, or
+            //     resolved via AKI against the public Diia .p7b fallback)
+            //     and looks it up in the Diia manifest.
             if (manifest) {
                 setCaChecking(true);
                 try {
-                    const found = await findIntermediate(p, manifest);
+                    const found = await findIntermediate(p, manifest, {
+                        bundleP7b: bundleBytes ?? undefined,
+                    });
                     if (found) {
                         setFoundCa(found);
                     } else {
@@ -190,6 +202,16 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
                 trustRoot,
                 merklePath: foundCa.merklePath,
                 merklePathIndices: foundCa.merklePathIndices,
+                // When the .p7s omits the intermediate, the resolved
+                // bundle cert overrides the (null) parsed.intermediate*.
+                intermediate:
+                    foundCa.source === "bundle"
+                        ? {
+                              spkiDer: foundCa.intermediateSpkiDer,
+                              pubkey: foundCa.intermediatePubkey,
+                              pubkeyOffset: foundCa.intermediatePubkeyOffset,
+                          }
+                        : undefined,
             });
 
             const worker = new Worker(
@@ -235,10 +257,13 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
     }
 
     async function doSubmit() {
-        if (!parsed || !proof || !nullifier || !parsed.intermediatePubkey) return;
+        if (!parsed || !proof || !nullifier || !foundCa) return;
         setSubmitErr(null);
         setSubmitting(true);
         try {
+            // The intermediate pubkey may come from the .p7s or — when the
+            // .p7s omitted the issuer — from the bundle-resolved cert.
+            const interPubkey = foundCa.intermediatePubkey;
             const res = await submitSignature({
                 petitionId,
                 nullifier,
@@ -246,8 +271,8 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
                 leafPubkeyY: bigIntTo32Hex(parsed.pubkey.y),
                 leafSigR: bigIntTo32Hex(parsed.signature.r),
                 leafSigS: bigIntTo32Hex(parsed.signature.s),
-                intermediatePubkeyX: bigIntTo32Hex(parsed.intermediatePubkey.x),
-                intermediatePubkeyY: bigIntTo32Hex(parsed.intermediatePubkey.y),
+                intermediatePubkeyX: bigIntTo32Hex(interPubkey.x),
+                intermediatePubkeyY: bigIntTo32Hex(interPubkey.y),
                 intermediateSigR: bigIntTo32Hex(parsed.leafCertSignature.r),
                 intermediateSigS: bigIntTo32Hex(parsed.leafCertSignature.s),
                 proof: "0x" + bytesToHexRaw(proof.proofBytes),
@@ -352,12 +377,21 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
                         <>
                             <p className="tag-ok">
                                 ✓{" "}
-                                {t("sign.trust.intermediateOk", {
-                                    name:
-                                        foundCa.leaf.tspName ??
-                                        foundCa.leaf.subjectDn ??
-                                        "—",
-                                })}
+                                {t(
+                                    foundCa.source === "bundle"
+                                        ? "sign.trust.intermediateFromBundle"
+                                        : "sign.trust.intermediateOk",
+                                    {
+                                        name:
+                                            foundCa.leaf.tspName ??
+                                            foundCa.leaf.subjectDn ??
+                                            "—",
+                                        cn:
+                                            foundCa.leaf.tspName ??
+                                            foundCa.leaf.subjectDn ??
+                                            "—",
+                                    },
+                                )}
                             </p>
                             <dl style={{ marginTop: 12 }}>
                                 <div className="field-row">
@@ -372,6 +406,8 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
                                 </div>
                             </dl>
                         </>
+                    ) : parsed && parsed.intermediateCertDer === null ? (
+                        <p className="tag-bad">✕ {t("sign.trust.intermediateUnknown")}</p>
                     ) : (
                         <p className="tag-bad">✕ {t("sign.trust.intermediateMissing")}</p>
                     )}

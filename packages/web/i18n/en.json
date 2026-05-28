@@ -84,7 +84,9 @@
         "trust": {
             "loadingManifest": "Loading trust-list manifest…",
             "intermediateOk": "Trusted Diia CA: {{name}}",
+            "intermediateFromBundle": "Resolved via AKI lookup in Diia bundle: {{cn}}",
             "intermediateMissing": "This leaf is not under any trusted Diia CA in the current trust-root.",
+            "intermediateUnknown": "This certificate's issuer is not in the bundled Diia CAs.",
             "subjectDn": "Subject DN",
             "spkiCommit": "SPKI commit",
             "manifestError": "Could not load the trust-list manifest."

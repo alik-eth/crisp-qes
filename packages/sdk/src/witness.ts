@@ -71,6 +71,12 @@ export interface WitnessInputs {
     petition_text_hash: number[];
 }
 
+export interface IntermediateOverride {
+    spkiDer: Uint8Array;
+    pubkey: { x: bigint; y: bigint };
+    pubkeyOffset: number;
+}
+
 export interface BuildWitnessArgs {
     parsed: ParsedP7s;
     petitionId: bigint;
@@ -89,6 +95,14 @@ export interface BuildWitnessArgs {
      * we accept that and coerce to booleans for the Noir circuit.
      */
     merklePathIndices: number[];
+    /**
+     * Intermediate-cert source override. When the `.p7s` doesn't carry the
+     * intermediate (`parsed.intermediateCertDer === null`), the caller
+     * resolves the issuer via the public Diia `.p7b` bundle
+     * (see `findIntermediate`) and passes the resulting SPKI / pubkey /
+     * offset triple here. When omitted, the values come from `parsed.*`.
+     */
+    intermediate?: IntermediateOverride;
 }
 
 /** Precomputed public-input values exposed alongside the witness map. */
@@ -127,13 +141,24 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
         merklePathIndices,
     } = args;
 
+    // The intermediate SPKI / pubkey / offset can come either from the
+    // parsed .p7s (Diia normally bundles the issuer) or from the optional
+    // `intermediate` override (when the .p7s only carried the leaf and the
+    // caller resolved the issuer via the public .p7b bundle).
+    const intermediateSpkiDer =
+        args.intermediate?.spkiDer ?? parsed.intermediateSpkiDer;
+    const intermediatePubkey =
+        args.intermediate?.pubkey ?? parsed.intermediatePubkey;
+    const intermediatePubkeyOffset =
+        args.intermediate?.pubkeyOffset ?? parsed.intermediatePubkeyOffset;
+
     if (
-        parsed.intermediateSpkiDer === null ||
-        parsed.intermediatePubkey === null ||
-        parsed.intermediatePubkeyOffset === null
+        intermediateSpkiDer === null ||
+        intermediatePubkey === null ||
+        intermediatePubkeyOffset === null
     ) {
         throw new Error(
-            "buildWitness: D-v2 requires the intermediate CA cert in the .p7s SignedData (none found)",
+            "buildWitness: D-v2 requires an intermediate CA cert (none in .p7s and no `intermediate` override supplied)",
         );
     }
 
@@ -141,8 +166,8 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
     requireFitsBn254("trustRoot", trustRoot);
     requireFitsBn254("pubkey.x", parsed.pubkey.x);
     requireFitsBn254("pubkey.y", parsed.pubkey.y);
-    requireFitsBn254("intermediate.x", parsed.intermediatePubkey.x);
-    requireFitsBn254("intermediate.y", parsed.intermediatePubkey.y);
+    requireFitsBn254("intermediate.x", intermediatePubkey.x);
+    requireFitsBn254("intermediate.y", intermediatePubkey.y);
     requireByteLen("petitionTextHash", petitionTextHash, PETITION_TEXT_HASH_LEN);
     requireLen("merklePath", merklePath, MERKLE_DEPTH);
     requireLen("merklePathIndices", merklePathIndices, MERKLE_DEPTH);
@@ -157,9 +182,9 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
             `buildWitness: leafTbsBytes is ${parsed.leafTbsBytes.length} bytes; circuit cap is ${LEAF_TBS_MAX_BYTES}`,
         );
     }
-    if (parsed.intermediateSpkiDer.length > INTERMEDIATE_SPKI_MAX_BYTES) {
+    if (intermediateSpkiDer.length > INTERMEDIATE_SPKI_MAX_BYTES) {
         throw new Error(
-            `buildWitness: intermediateSpkiDer is ${parsed.intermediateSpkiDer.length} bytes; circuit cap is ${INTERMEDIATE_SPKI_MAX_BYTES}`,
+            `buildWitness: intermediateSpkiDer is ${intermediateSpkiDer.length} bytes; circuit cap is ${INTERMEDIATE_SPKI_MAX_BYTES}`,
         );
     }
     if (parsed.messageDigestOffset + 32 > parsed.signedAttrs.length) {
@@ -181,11 +206,11 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
         );
     }
     if (
-        parsed.intermediatePubkeyOffset < 27 ||
-        parsed.intermediatePubkeyOffset + 64 > parsed.intermediateSpkiDer.length
+        intermediatePubkeyOffset < 27 ||
+        intermediatePubkeyOffset + 64 > intermediateSpkiDer.length
     ) {
         throw new Error(
-            `buildWitness: intermediatePubkeyOffset out of range (offset=${parsed.intermediatePubkeyOffset}, len=${parsed.intermediateSpkiDer.length})`,
+            `buildWitness: intermediatePubkeyOffset out of range (offset=${intermediatePubkeyOffset}, len=${intermediateSpkiDer.length})`,
         );
     }
 
@@ -201,7 +226,7 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
     const subjectSerial = padBytesRight(parsed.subjectSerial, SUBJECT_SERIAL_LEN);
     const leafTbsBytes = padBytesRight(parsed.leafTbsBytes, LEAF_TBS_MAX_BYTES);
     const intermediateSpkiBytes = padBytesRight(
-        parsed.intermediateSpkiDer,
+        intermediateSpkiDer,
         INTERMEDIATE_SPKI_MAX_BYTES,
     );
     const signedAttrsBytes = padBytesRight(parsed.signedAttrs, SIGNED_ATTRS_MAX_BYTES);
@@ -212,8 +237,8 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
         trust_root: toFieldHex(trustRoot),
         leaf_pubkey_x: toFieldHex(parsed.pubkey.x),
         leaf_pubkey_y: toFieldHex(parsed.pubkey.y),
-        intermediate_pubkey_x: toFieldHex(parsed.intermediatePubkey.x),
-        intermediate_pubkey_y: toFieldHex(parsed.intermediatePubkey.y),
+        intermediate_pubkey_x: toFieldHex(intermediatePubkey.x),
+        intermediate_pubkey_y: toFieldHex(intermediatePubkey.y),
         leaf_tbs_sha256_hi: toFieldHex(tbsHi),
         leaf_tbs_sha256_lo: toFieldHex(tbsLo),
         signed_attrs_sha256_hi: toFieldHex(saHi),
@@ -224,7 +249,7 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
         leaf_tbs_len: parsed.leafTbsBytes.length.toString(10),
         leaf_pubkey_offset: parsed.leafPubkeyOffset.toString(10),
         intermediate_spki_bytes: Array.from(intermediateSpkiBytes),
-        intermediate_pubkey_offset: parsed.intermediatePubkeyOffset.toString(10),
+        intermediate_pubkey_offset: intermediatePubkeyOffset.toString(10),
         merkle_path: merklePath.map(toFieldHex),
         merkle_path_indices: merklePathIndices.map(coerceBit),
         signed_attrs_bytes: Array.from(signedAttrsBytes),
@@ -241,8 +266,8 @@ export async function buildWitness(args: BuildWitnessArgs): Promise<BuildWitness
             trustRoot,
             leafPubkeyX: parsed.pubkey.x,
             leafPubkeyY: parsed.pubkey.y,
-            intermediatePubkeyX: parsed.intermediatePubkey.x,
-            intermediatePubkeyY: parsed.intermediatePubkey.y,
+            intermediatePubkeyX: intermediatePubkey.x,
+            intermediatePubkeyY: intermediatePubkey.y,
             leafTbsSha256Hi: tbsHi,
             leafTbsSha256Lo: tbsLo,
             signedAttrsSha256Hi: saHi,
