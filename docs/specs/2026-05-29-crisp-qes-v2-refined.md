@@ -86,14 +86,27 @@ citizen:
 each ciphernode i ∈ {1..n}:
   verify Diia QES on the bundle (off-chain, cheap)
   Y_i = k_i · M                                    (OPRF share)
-  return (i, Y_i)
+  π_i = DLEQ_prove(K_pub,i = k_i · G,  Y_i = k_i · M)
+  return (i, Y_i, π_i)
 
 citizen:
-  collect ≥ t shares (Y_i)
-  Y = LagrangeCombine({(i, Y_i)})                  (= k · M)
-  N = r⁻¹ · Y                                      (= k · X = F_k(RNOKPP))
-  commitment = Hash(N)
+  verify each DLEQ proof π_i                       (rejects rogue k_i)
+  collect ≥ t valid shares
+  Y    = LagrangeCombine({(i, Y_i)})               (= k · M)
+  N    = r⁻¹ · Y                                   (= k · X = F_k(RNOKPP))
+  N_hi = high 128 bits of canonical(N), BE
+  N_lo = low  128 bits of canonical(N), BE
+  s    = pedersen_hash([N_hi, N_lo], hashIndex=0)
 ```
+
+`s` is **both** the citizen's `enrollment_secret` **and** the on-chain
+Merkle leaf — there is no extra `Hash(s)` or `pedersen([leaf])`
+wrapper above `s`. Earlier drafts of this spec used a separate
+`commitment = Hash(N)` value; the web client, OPRF backend, and Noir
+circuit collapsed those to a single value on 2026-05-29 to eliminate
+the dual-hashing inconsistency. The wire endpoint `/oprf/register`
+still accepts a parameter named `commitment` for back-compat; the
+value passed is `s`.
 
 ### 2.3 Uniqueness check
 
@@ -127,7 +140,26 @@ it to `S_i` and to the on-chain enrollment Merkle tree.
 | Citizen        | own `enrollment_secret`             | k, k_i, others' RNOKPPs   |
 | Eavesdropper   | OPRF transcript                     | Anything plaintext        |
 
-### 2.5 Performance budget
+### 2.5 Service-key binding (defence against MITM substitution)
+
+The DLEQ proof from §2.2 binds the returned `Y` to the same `k` that
+produced the service's published `K_pub` — but only if the client
+verifies against a `K_pub` it trusts. A MITM attacker who can swap
+`K_pub` *and* `Y` for a pair derived from their own `k*` would pass
+DLEQ verification while learning a per-citizen `N` they can correlate
+later. Pinning `K_pub` to an authoritative source closes this.
+
+| Variant | Binding mechanism | Trust anchor |
+| ------- | ----------------- | ------------ |
+| **v2.1 (shipped)** | `K_pub` is **build-time-pinned** in the `v2-web` bundle via the `VITE_OPRF_PUBKEY` env var; client hard-fails on `/healthz` mismatch. | The Fly deployment (same TLS + COOP/COEP boundary as the rest of the SPA). |
+| **v2.2 (Phase-3)** | `K_pub` (and `K_pub,i` for the threshold variant) moves on-chain into `EnrollmentRegistry` as an admin-settable storage slot. Client reads it from the contract at boot. | The contract admin key, eventually a DAO multisig as the ciphernode committee onboards independent operators. |
+
+Bundle-pinning is the right v2.1 answer because the trust anchor is
+already the Fly deploy — the same boundary that delivers the rest of
+the client. Moving to an on-chain registry is part of the same
+ciphernode-productionisation increment as threshold-OPRF rollout.
+
+### 2.6 Performance budget
 
 | Op                            | Target                |
 | ----------------------------- | --------------------- |
@@ -155,18 +187,22 @@ Citizen with `enrollment_secret` signs petition `id` such that:
 
 ```noir
 fn main(
-    enrollment_secret:        Field,    // private
+    enrollment_secret:        Field,    // private  = s from §2.2
     merkle_path:              [Field; D], // private
     merkle_path_indices:      [Field; D], // private
     petition_id:              pub Field,
     enrollment_root:          pub Field,
     nullifier:                pub Field,
 ) {
-    let leaf = pedersen_hash([enrollment_secret]);
+    // `s` is itself the Merkle leaf — no extra pedersen([leaf]) wrapper.
+    // This matches the re-pinning made on 2026-05-29 (see §2.2).
+    let leaf = enrollment_secret;
     let recomputed_root = merkle_verify(leaf, merkle_path, merkle_path_indices);
     assert(recomputed_root == enrollment_root);
 
-    let computed_null = pedersen_hash([enrollment_secret, petition_id, DOMAIN_PETITION_V2]);
+    let computed_null = pedersen_hash(
+        [enrollment_secret, petition_id, DOMAIN_PETITION_V2], 0,
+    );
     assert(computed_null == nullifier);
 }
 ```
@@ -330,6 +366,20 @@ treated as superseded by this document for all design decisions from
 
 ## 7. Out of scope for v2.1 — deferred to v2.2
 
+> **v2.1 ships with a single-node OPRF service operated by the project
+> team.** This is a deliberate scoping decision — the cryptographic
+> interface (RFC 9497 2HashDH ristretto255-SHA512) is identical to the
+> threshold variant, so the migration is a keygen ceremony + Shamir
+> share storage at each ciphernode, with no wire-format changes for
+> clients. Phase-3 productionisation (multi-operator ciphernode
+> committee) is the follow-on grant ask. See §2.2 for the protocol
+> sketch (which describes the threshold form already) and §2.5 for the
+> service-key binding path from build-time pinning to on-chain registry.
+
+- **Threshold OPRF productionisation**: keygen ceremony, Shamir share
+  distribution to a 5-of-7 ciphernode committee, on-chain `K_pub`
+  registry (§2.5 v2.2 row). The v2.1 protocol sketch in §2.2 already
+  describes the threshold variant — v2.1 simply runs it with n=t=1.
 - **JCJ fake-credentials coercion resistance**: citizen registers
   real + fake secrets; ciphernode FHE filters fakes at tally time. This
   is the most research-grade piece and lands as its own increment once
