@@ -11,6 +11,7 @@ import {
 import { DropZone } from "../components/DropZone";
 import { Steps, type StepKey } from "../components/Steps";
 import {
+    buildBindingBytes,
     bytesEqual,
     bytesToHex,
     expectedMessageDigest,
@@ -44,6 +45,8 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
 
     const [petition, setPetition] = useState<PetitionView | null>(null);
     const [petitionErr, setPetitionErr] = useState<string | null>(null);
+    const [bindingDownloaded, setBindingDownloaded] = useState(false);
+    const [bindingExpanded, setBindingExpanded] = useState(false);
 
     const [parsing, setParsing] = useState(false);
     const [parsed, setParsed] = useState<ParsedP7s | null>(null);
@@ -109,23 +112,50 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
     const trustOk = !!foundCa && !caMissing;
 
     const active: StepKey = useMemo<StepKey>(() => {
+        if (!parsed && !bindingDownloaded) return "binding";
         if (!parsed) return "upload";
         if (tinuaOk === false || digestOk === false) return "verify";
         if (!trustOk) return "trust";
         if (!nullifier) return "nullifier";
         if (proveStage !== "done") return "prove";
         return "submit";
-    }, [parsed, tinuaOk, digestOk, trustOk, nullifier, proveStage]);
+    }, [parsed, bindingDownloaded, tinuaOk, digestOk, trustOk, nullifier, proveStage]);
 
     const done = useMemo<Set<StepKey>>(() => {
         const s = new Set<StepKey>();
+        // Binding is "done" once the user has either downloaded the file or
+        // bypassed the step entirely by uploading a .p7s that was prepared
+        // elsewhere (the messageDigest check will catch any mismatch).
+        if (bindingDownloaded || parsed) s.add("binding");
         if (parsed) s.add("upload");
         if (tinuaOk && digestOk) s.add("verify");
         if (trustOk) s.add("trust");
         if (nullifier) s.add("nullifier");
         if (proveStage === "done") s.add("prove");
         return s;
-    }, [parsed, tinuaOk, digestOk, trustOk, nullifier, proveStage]);
+    }, [bindingDownloaded, parsed, tinuaOk, digestOk, trustOk, nullifier, proveStage]);
+
+    function handleDownloadBinding() {
+        if (!petition) return;
+        const bytes = buildBindingBytes(petitionId, petition.textHash);
+        // Copy into a fresh ArrayBuffer (not SharedArrayBuffer) so the Blob
+        // constructor type-checks under our strict DOM lib. Then drive an
+        // anchor click — works in every current browser without permission
+        // prompts. We revoke the object URL on the next tick to avoid
+        // leaking it.
+        const ab = new ArrayBuffer(bytes.byteLength);
+        new Uint8Array(ab).set(bytes);
+        const blob = new Blob([ab], { type: "application/octet-stream" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `petition-${petitionId.toString()}-binding.bin`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+        setBindingDownloaded(true);
+    }
 
     async function onFile(file: File) {
         setParseErr(null);
@@ -300,6 +330,43 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
             {petitionErr ? <p className="error-line">{petitionErr}</p> : null}
 
             <Steps active={active} done={done} />
+
+            {/* 0. Binding file */}
+            <div className="panel">
+                <p className="panel__title">{t("sign.steps.binding")}</p>
+                <p className="note">{t("sign.binding.intro")}</p>
+                <div className="actions">
+                    <button
+                        className="btn btn--accent"
+                        type="button"
+                        onClick={handleDownloadBinding}
+                        disabled={!petition}
+                    >
+                        {t("sign.binding.download")}
+                    </button>
+                </div>
+                {bindingDownloaded ? (
+                    <p className="note" style={{ marginTop: 12 }}>
+                        <span className="tag-ok">✓</span>{" "}
+                        {t("sign.binding.afterDownload")}
+                    </p>
+                ) : null}
+                <p style={{ marginTop: 14 }}>
+                    <button
+                        className="btn--link"
+                        type="button"
+                        onClick={() => setBindingExpanded((v) => !v)}
+                        aria-expanded={bindingExpanded}
+                    >
+                        {bindingExpanded
+                            ? t("sign.binding.whatIsThisHide")
+                            : t("sign.binding.whatIsThis")}
+                    </button>
+                </p>
+                {bindingExpanded ? (
+                    <p className="note">{t("sign.binding.details")}</p>
+                ) : null}
+            </div>
 
             {/* 1. Upload */}
             <div className="panel">

@@ -59,12 +59,21 @@
         "heading": "Signing petition #{{id}}",
         "back": "Back to petitions",
         "steps": {
+            "binding": "0. File to sign in Diia",
             "upload": "1. Upload your Diia QES file",
             "verify": "2. Certificate check",
             "trust": "3. Trust tree",
             "nullifier": "4. Nullifier",
             "prove": "5. Zero-knowledge proof",
             "submit": "6. Submit"
+        },
+        "binding": {
+            "intro": "Download this file and sign it inside the Diia app via «Накласти КЕП». The file pins your signature to this petition's id and text hash, so the same .p7s cannot be replayed against any other petition.",
+            "download": "Download file to sign",
+            "afterDownload": "File saved. Open it in Diia: «Documents» → «Накласти КЕП» → pick this file → save the resulting .p7s and drop it into step 1.",
+            "whatIsThis": "What is this file?",
+            "whatIsThisHide": "Hide details",
+            "details": "Exactly 66 bytes: a 32-byte big-endian petition id, two bytes «::», and the 32-byte keccak256 of the petition text. Diia computes sha256 of these bytes and writes the result as the messageDigest attribute inside your QES — and that is the value the circuit verifies."
         },
         "upload": {
             "headline": "Drop your .p7s file here or click to choose",

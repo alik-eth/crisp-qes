@@ -17,14 +17,26 @@ function petitionIdBytes(id: bigint): Uint8Array {
 
 const SEPARATOR = new TextEncoder().encode("::");
 
-export function expectedMessageDigest(petitionId: bigint, textHash: Hex): Uint8Array {
+/**
+ * Build the 66-byte binding the user is meant to sign in Diia:
+ *
+ *   petition_id_be32 (32) || "::" (2) || textHash_keccak256 (32)
+ *
+ * sha256(binding) ≡ messageDigest in signedAttrs. The circuit, the
+ * relayer, and the contract all assume this exact byte layout.
+ */
+export function buildBindingBytes(petitionId: bigint, textHash: Hex): Uint8Array {
     const idBytes = petitionIdBytes(petitionId);
     const textHashBytes = hexToBytes(textHash);
     const buf = new Uint8Array(idBytes.length + SEPARATOR.length + textHashBytes.length);
     buf.set(idBytes, 0);
     buf.set(SEPARATOR, idBytes.length);
     buf.set(textHashBytes, idBytes.length + SEPARATOR.length);
-    return sha256(buf);
+    return buf;
+}
+
+export function expectedMessageDigest(petitionId: bigint, textHash: Hex): Uint8Array {
+    return sha256(buildBindingBytes(petitionId, textHash));
 }
 
 export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {

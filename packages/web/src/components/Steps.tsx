@@ -1,8 +1,23 @@
 import { useTranslation } from "react-i18next";
 
-export type StepKey = "upload" | "verify" | "trust" | "nullifier" | "prove" | "submit";
+export type StepKey =
+    | "binding"
+    | "upload"
+    | "verify"
+    | "trust"
+    | "nullifier"
+    | "prove"
+    | "submit";
 
-const ORDER: StepKey[] = ["upload", "verify", "trust", "nullifier", "prove", "submit"];
+const ORDER: StepKey[] = [
+    "binding",
+    "upload",
+    "verify",
+    "trust",
+    "nullifier",
+    "prove",
+    "submit",
+];
 
 interface Props {
     active: StepKey;
