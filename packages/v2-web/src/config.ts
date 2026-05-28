@@ -47,6 +47,20 @@ export interface AppConfig {
     circuitUrl: string;
     blockExplorerUrl: string;
     walletConnectProjectId: string;
+    /**
+     * Build-time pin of the ristretto255 OPRF server pubkey `K_pub`.
+     *
+     * v2.1 stores neither `K_pub` on-chain nor in any trust anchor the
+     * client can independently verify — so /healthz alone is vulnerable
+     * to a MITM running its own (K_pub*, k*) pair (the DLEQ proof would
+     * still pass against the spoofed pubkey). We pin the expected key
+     * at deploy time via this env var and refuse to consume a
+     * blind-eval response whose `oprfPubkey` doesn't match.
+     *
+     * v2.2 path: add `bytes32 oprfPubkey` to EnrollmentRegistry,
+     * admin-settable, and fetch from chain at app boot.
+     */
+    oprfPubkey: `0x${string}`;
     /** Mirrors PetitionRegistryV2.CREATION_DEPOSIT (0.001 ether). */
     creationDepositWei: bigint;
     /** Mirrors PetitionRegistryV2.MAX_TEXT_BYTES (8 * 1024). */
@@ -69,6 +83,12 @@ export const config: AppConfig = {
         "VITE_WALLETCONNECT_PROJECT_ID",
         "33a263ffda20d72b289cf92b369cfa47",
     ),
+    // Defaults to the OPRF service's current K_pub. Override via fly.toml
+    // build.args at deploy time; the dev fallback is fine for `pnpm dev`.
+    oprfPubkey: req(
+        "VITE_OPRF_PUBKEY",
+        "0xbe42b0024b2e4ee2483021fefbf40a5bec6f51fe08d35237027a667712694456",
+    ) as `0x${string}`,
     creationDepositWei: 1_000_000_000_000_000n,
     maxTextBytes: 8 * 1024,
 };

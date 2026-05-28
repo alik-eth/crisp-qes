@@ -90,10 +90,27 @@ export async function oprfBlindEval(
     blindedElement: Uint8Array,
     p7sBytes: Uint8Array,
 ): Promise<BlindEvalResponse> {
-    return postJson("/oprf/blind-eval", {
+    const resp: BlindEvalResponse = await postJson("/oprf/blind-eval", {
         blindedInput: hex(blindedElement),
         attestation: { p7s: toBase64(p7sBytes) },
     });
+
+    // v2.1: pin the server's K_pub at build time and refuse anything else.
+    // Without this, an MITM could substitute its own (K_pub*, k*) — DLEQ
+    // would still pass against the spoofed pubkey, the server only ever
+    // proves consistency to itself. v2.2 will move K_pub on-chain into
+    // EnrollmentRegistry and the client will read it from there at boot.
+    const expected = config.oprfPubkey.toLowerCase();
+    const observed = resp.oprfPubkey.toLowerCase();
+    if (observed !== expected) {
+        const err = new Error(
+            `oprf-pubkey-mismatch: server returned ${observed}, build pinned ${expected}`,
+        ) as Error & { code: string };
+        err.code = "OprfPubkeyMismatch";
+        throw err;
+    }
+
+    return resp;
 }
 
 export async function oprfRegister(args: {

@@ -91,6 +91,7 @@
             "running": "Blinding RNOKPP and contacting the ciphernode…",
             "verifyingProof": "Verifying the ciphernode's DLEQ proof…",
             "dleqInvalid": "DLEQ proof did not verify — the ciphernode may have returned an incorrect value. Try again.",
+            "pubkeyMismatch": "The OPRF server's public key does not match the one pinned in the client. Possible MITM — enrollment aborted.",
             "commit": "Commitment",
             "secret": "Secret (private)",
             "error": "OPRF error: {{detail}}"
