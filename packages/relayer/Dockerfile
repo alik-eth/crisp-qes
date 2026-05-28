@@ -2,13 +2,13 @@ FROM node:22-alpine AS deps
 WORKDIR /repo
 RUN corepack enable
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY packages/v2-relayer/package.json packages/v2-relayer/package.json
-RUN pnpm install --frozen-lockfile --filter "@crisp-qes/v2-relayer..."
+COPY packages/relayer/package.json packages/relayer/package.json
+RUN pnpm install --frozen-lockfile --filter "@crisp-qes/relayer..."
 
 FROM deps AS build
-COPY packages/v2-relayer packages/v2-relayer
-RUN pnpm --filter @crisp-qes/v2-relayer build
-RUN pnpm --filter @crisp-qes/v2-relayer deploy --legacy --prod /out
+COPY packages/relayer packages/relayer
+RUN pnpm --filter @crisp-qes/relayer build
+RUN pnpm --filter @crisp-qes/relayer deploy --legacy --prod /out
 
 FROM node:22-alpine AS runtime
 WORKDIR /app

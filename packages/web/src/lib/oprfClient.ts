@@ -1,6 +1,6 @@
-// Client for the v2 OPRF service (`packages/v2-oprf`).
+// Client for the v2 OPRF service (`packages/oprf`).
 //
-// Wire shapes, in lock-step with `packages/v2-oprf/src/app.ts`:
+// Wire shapes, in lock-step with `packages/oprf/src/app.ts`:
 //
 //   POST /oprf/blind-eval
 //     body: { blindedInput: hex32, attestation: { p7s: base64 } }

@@ -3,8 +3,8 @@ WORKDIR /repo
 RUN corepack enable
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/sdk/package.json packages/sdk/package.json
-COPY packages/v2-web/package.json packages/v2-web/package.json
-RUN pnpm install --frozen-lockfile --filter "@crisp-qes/v2-web..."
+COPY packages/web/package.json packages/web/package.json
+RUN pnpm install --frozen-lockfile --filter "@crisp-qes/web..."
 
 FROM deps AS build
 ARG VITE_CHAIN_ID
@@ -29,12 +29,12 @@ ENV VITE_CHAIN_ID=$VITE_CHAIN_ID \
     VITE_OPRF_PUBKEY=$VITE_OPRF_PUBKEY
 
 COPY packages/sdk packages/sdk
-COPY packages/v2-web packages/v2-web
+COPY packages/web packages/web
 
 RUN pnpm --filter @crisp-qes/sdk build
-RUN pnpm --filter @crisp-qes/v2-web build
+RUN pnpm --filter @crisp-qes/web build
 
 FROM caddy:2-alpine AS runtime
-COPY --from=build /repo/packages/v2-web/dist /srv
-COPY packages/v2-web/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /repo/packages/web/dist /srv
+COPY packages/web/Caddyfile /etc/caddy/Caddyfile
 EXPOSE 80

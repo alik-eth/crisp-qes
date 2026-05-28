@@ -63,13 +63,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OprfConfig {
     if (env.OPRF_KEY) {
         oprfKey = decodeHex32(env.OPRF_KEY, "OPRF_KEY");
     } else if (isProd) {
-        throw new Error("[v2-oprf] OPRF_KEY is required in production");
+        throw new Error("[oprf] OPRF_KEY is required in production");
     } else {
         const k = randomScalar();
         oprfKey = encodeScalarLE(k);
         // eslint-disable-next-line no-console
         console.warn(
-            `[v2-oprf] OPRF_KEY not set — generated dev key 0x${bytesToHex(oprfKey)}`,
+            `[oprf] OPRF_KEY not set — generated dev key 0x${bytesToHex(oprfKey)}`,
         );
     }
 
@@ -85,14 +85,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OprfConfig {
         attesterKey = norm as `0x${string}`;
     } else if (isProd) {
         throw new Error(
-            "[v2-oprf] OPRF_ATTESTER_KEY is required in production",
+            "[oprf] OPRF_ATTESTER_KEY is required in production",
         );
     } else {
         const raw = randomBytes(32);
         attesterKey = `0x${bytesToHex(raw)}` as `0x${string}`;
         // eslint-disable-next-line no-console
         console.warn(
-            `[v2-oprf] OPRF_ATTESTER_KEY not set — generated dev key ${attesterKey}`,
+            `[oprf] OPRF_ATTESTER_KEY not set — generated dev key ${attesterKey}`,
         );
     }
 
@@ -110,7 +110,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OprfConfig {
     if (rawRegistry) {
         if (!/^0x[0-9a-fA-F]{40}$/.test(rawRegistry)) {
             throw new Error(
-                "[v2-oprf] ENROLLMENT_REGISTRY must be a 20-byte hex address",
+                "[oprf] ENROLLMENT_REGISTRY must be a 20-byte hex address",
             );
         }
         enrollmentRegistry = rawRegistry as `0x${string}`;
@@ -119,7 +119,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OprfConfig {
         // registry, but the service still boots so the client can iterate.
         // eslint-disable-next-line no-console
         console.warn(
-            "[v2-oprf] ENROLLMENT_REGISTRY not set — signing against zero address",
+            "[oprf] ENROLLMENT_REGISTRY not set — signing against zero address",
         );
     }
 

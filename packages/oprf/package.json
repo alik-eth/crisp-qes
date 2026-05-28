@@ -1,5 +1,5 @@
 {
-    "name": "@crisp-qes/v2-oprf",
+    "name": "@crisp-qes/oprf",
     "private": true,
     "version": "0.0.0",
     "type": "module",

@@ -10,7 +10,7 @@
 // v2.1-prod: in the threshold deploy these routes are spoken by every
 // ciphernode; the client Lagrange-combines BlindEvaluate responses and
 // posts the resulting commitment to a *coordinator* that runs `/register`
-// once per fresh commitment. The wire format stays identical so v2-web
+// once per fresh commitment. The wire format stays identical so web
 // doesn't change.
 
 import Fastify, { type FastifyInstance } from "fastify";
@@ -169,7 +169,7 @@ export async function buildApp(
             });
         }
 
-        // Wire shape pinned by v2-web's `oprfClient.ts`:
+        // Wire shape pinned by web's `oprfClient.ts`:
         //   { Y, K, proof: { c, s } }
         // `proof` is the (c, s) Chaum-Pedersen DLEQ pair, each 32-byte
         // scalar (little-endian per RFC 9496). We also keep `oprfPubkey`
@@ -309,7 +309,7 @@ export async function buildApp(
  *
  * Wire format reminder for ops: `OPRF_KEY` env hex is read as a 32-byte
  * little-endian integer, then reduced mod ristretto255 curve order n
- * before being used. v2-web must use the same LE convention if it ever
+ * before being used. web must use the same LE convention if it ever
  * derives a scalar from the same hex.
  */
 function scalarFromLE(bytes: Uint8Array): bigint {
@@ -347,7 +347,7 @@ async function commitmentsToLeaves(
     // walks the path; the path is over commitments.) Demo simplification:
     // we treat the commitment hex as the Merkle leaf field element.
     //
-    // v2-circuit may instead want a derivation `leaf = commitment` (since
+    // circuit may instead want a derivation `leaf = commitment` (since
     // commitment is already `pedersen([N_hi, N_lo], 0)`) — confirmed with
     // team-lead via the pinned formula. If circuit picks a different
     // derivation later, this single function is the seam to update.

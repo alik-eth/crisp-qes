@@ -1,4 +1,4 @@
-// ABIs for the v2 contracts (`packages/v2-contracts/out/...`).
+// ABIs for the v2 contracts (`packages/contracts/out/...`).
 //
 // Shapes are kept in sync with the deployed bytecode by hand-copying the
 // strictly-typed minimal surface the web app uses. Full ABIs live in the

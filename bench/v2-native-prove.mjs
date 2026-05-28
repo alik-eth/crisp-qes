@@ -35,10 +35,10 @@ const LABEL = arg("label", THREADS_RAW === "auto" ? "multi" : `t${THREADS_RAW}`)
 const COMMIT = arg("commit", "");
 const CIRCUIT_PATH = arg(
     "circuit",
-    "/data/Develop/crisp-qes/packages/v2-circuit/target/crisp_qes_v2_circuit.json",
+    "/data/Develop/crisp-qes/packages/circuit/target/crisp_qes_v2_circuit.json",
 );
 
-// TREE_DEPTH = 20 — pinned in packages/v2-circuit/src/main.nr.
+// TREE_DEPTH = 20 — pinned in packages/circuit/src/main.nr.
 // DOMAIN_PETITION_V2 = 0x76322d70656e2d6e6f31 (ASCII "v2-pen-no1").
 const TREE_DEPTH = 20;
 const DOMAIN_PETITION_V2 = 0x76322d70656e2d6e6f31n;

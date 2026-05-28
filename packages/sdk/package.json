@@ -17,14 +17,10 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@aztec/bb.js": "4.0.0-nightly.20260120",
-    "@noir-lang/noir_js": "1.0.0-beta.19",
     "asn1js": "^3.0.5",
-    "pkijs": "^3.2.4",
-    "viem": "^2.21.0"
+    "pkijs": "^3.2.4"
   },
   "devDependencies": {
-    "@crisp-qes/lotl-flattener": "workspace:*",
     "@types/node": "^20.0.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"

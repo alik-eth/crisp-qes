@@ -12,7 +12,7 @@ app.listen({ port: config.port, host: "0.0.0.0" })
                 petitionRegistry: config.petitionRegistry,
                 enrollmentRegistry: config.enrollmentRegistry,
             },
-            "v2-relayer up",
+            "relayer up",
         );
     })
     .catch((err) => {

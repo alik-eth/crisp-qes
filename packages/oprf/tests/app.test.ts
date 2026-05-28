@@ -63,7 +63,7 @@ async function buildTestApp() {
     return { app, config, store, merkle, k };
 }
 
-describe("v2-oprf /healthz", () => {
+describe("oprf /healthz", () => {
     it("reports state snapshot", async () => {
         const { app } = await buildTestApp();
         const res = await app.inject({ method: "GET", url: "/healthz" });
@@ -77,7 +77,7 @@ describe("v2-oprf /healthz", () => {
     });
 });
 
-maybe("v2-oprf /oprf/blind-eval", () => {
+maybe("oprf /oprf/blind-eval", () => {
     const p7sBytes = hasFixture
         ? new Uint8Array(readFileSync(FIXTURE_PATH))
         : new Uint8Array(0);
@@ -145,7 +145,7 @@ maybe("v2-oprf /oprf/blind-eval", () => {
     });
 });
 
-describe("v2-oprf /oprf/register", () => {
+describe("oprf /oprf/register", () => {
     async function fakeEnrollmentCommitment() {
         // Synthesize an unblinded OPRF output N (any 32-byte ristretto255
         // encoding works for the commitment math) and derive the matching

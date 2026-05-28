@@ -14,7 +14,7 @@ export interface RelayerConfig {
     isProd: boolean;
     /**
      * CORS allow-list for the public /v2/submit endpoint. Defaults to the
-     * v2-web origin in prod or `*` in dev. Comma-separated, parsed from
+     * web origin in prod or `*` in dev. Comma-separated, parsed from
      * the `CORS_ALLOWED_ORIGINS` env var.
      */
     corsAllowedOrigins: string[];
@@ -61,21 +61,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RelayerConfig 
     if (isProd) {
         if (!privateKey) {
             throw new Error(
-                "[v2-relayer] RELAYER_PRIVATE_KEY is required in production",
+                "[relayer] RELAYER_PRIVATE_KEY is required in production",
             );
         }
         if (!petitionRegistry) {
             throw new Error(
-                "[v2-relayer] PETITION_REGISTRY_V2 is required in production",
+                "[relayer] PETITION_REGISTRY_V2 is required in production",
             );
         }
         if (!enrollmentRegistry) {
             throw new Error(
-                "[v2-relayer] ENROLLMENT_REGISTRY is required in production",
+                "[relayer] ENROLLMENT_REGISTRY is required in production",
             );
         }
         if (!rpcUrl) {
-            throw new Error("[v2-relayer] RPC_URL is required in production");
+            throw new Error("[relayer] RPC_URL is required in production");
         }
     }
 
@@ -85,19 +85,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RelayerConfig 
     ] as const) {
         if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
             throw new Error(
-                `[v2-relayer] ${name} must be a 20-byte hex address, got ${addr}`,
+                `[relayer] ${name} must be a 20-byte hex address, got ${addr}`,
             );
         }
     }
     if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
         throw new Error(
-            "[v2-relayer] RELAYER_PRIVATE_KEY must be a 32-byte hex string",
+            "[relayer] RELAYER_PRIVATE_KEY must be a 32-byte hex string",
         );
     }
 
     const corsRaw =
         env.CORS_ALLOWED_ORIGINS ??
-        (isProd ? "https://crisp-qes-v2-web.fly.dev" : "*");
+        (isProd ? "https://crisp-qes-web.fly.dev" : "*");
     const corsAllowedOrigins = corsRaw
         .split(",")
         .map((s) => s.trim())

@@ -5,17 +5,17 @@ RUN apk add --no-cache python3 make g++ \
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/sdk/package.json packages/sdk/package.json
 COPY packages/lotl-flattener/package.json packages/lotl-flattener/package.json
-COPY packages/v2-oprf/package.json packages/v2-oprf/package.json
-RUN pnpm install --frozen-lockfile --filter "@crisp-qes/v2-oprf..."
+COPY packages/oprf/package.json packages/oprf/package.json
+RUN pnpm install --frozen-lockfile --filter "@crisp-qes/oprf..."
 
 FROM deps AS build
 COPY packages/sdk packages/sdk
 COPY packages/lotl-flattener packages/lotl-flattener
-COPY packages/v2-oprf packages/v2-oprf
+COPY packages/oprf packages/oprf
 RUN pnpm --filter @crisp-qes/sdk build
 RUN pnpm --filter @crisp-qes/lotl-flattener build
-RUN pnpm --filter @crisp-qes/v2-oprf build
-RUN pnpm --filter @crisp-qes/v2-oprf deploy --legacy --prod /out
+RUN pnpm --filter @crisp-qes/oprf build
+RUN pnpm --filter @crisp-qes/oprf deploy --legacy --prod /out
 
 FROM node:22-alpine AS runtime
 WORKDIR /app

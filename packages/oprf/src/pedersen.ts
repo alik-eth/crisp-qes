@@ -21,7 +21,7 @@
 //   hashIndex 1  — reserved for v2.2's JCJ "fake-credential" branch
 //
 // On the wire, /oprf/register accepts `commitment` (kept for backward
-// compat with what v2-web is already calling it); semantically the value
+// compat with what web is already calling it); semantically the value
 // IS `s`.
 //
 // `packages/circuit` (Noir) consumes the identical formula for the witness.

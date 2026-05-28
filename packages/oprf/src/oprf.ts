@@ -178,7 +178,7 @@ function generateProof(
 
 /**
  * Client-side DLEQ verifier — only used by our own tests today; the real
- * client lives in `packages/v2-web`. Mirrors RFC 9497 § 3.3.2 `VerifyProof`.
+ * client lives in `packages/web`. Mirrors RFC 9497 § 3.3.2 `VerifyProof`.
  */
 export function verifyProof(
     Kpub: Uint8Array,

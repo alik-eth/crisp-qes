@@ -88,7 +88,7 @@ export function Enroll({ onBack, onDone }: Props) {
 
     // Step 0 — Diia binding file. Same UX as the MVP Sign page: download,
     // sign in Diia, upload. The bytes are NOT yet checked against
-    // `signedAttrs.messageDigest` by the v2 OPRF (see v2-oprf/attestation.ts
+    // `signedAttrs.messageDigest` by the v2 OPRF (see oprf/attestation.ts
     // TODO), so this step is currently UX-only but forward-compatible with
     // the v2.1-prod attestation pin.
     const [bindingDownloaded, setBindingDownloaded] = useState(false);

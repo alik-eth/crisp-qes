@@ -11,7 +11,7 @@ import {EnrollmentRegistry} from "./EnrollmentRegistry.sol";
 ///         input UltraHonk proof.
 ///
 ///         See `docs/specs/2026-05-29-crisp-qes-v2-refined.md` sec 3 and
-///         the partner v2 circuit at `packages/v2-circuit/src/main.nr`.
+///         the partner v2 circuit at `packages/circuit/src/main.nr`.
 ///
 ///         Public-input layout (FIXED, asserted in `signPetition`):
 ///           [0]  petition_id

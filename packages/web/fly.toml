@@ -11,7 +11,7 @@ primary_region = "fra"
     VITE_CHAIN_ID = "84532"
     VITE_RPC_URL = "https://sepolia.base.org"
     VITE_OPRF_URL = "https://crisp-qes-v2-oprf.fly.dev"
-    # Addresses from packages/v2-contracts/deployments/base-sepolia.json
+    # Addresses from packages/contracts/deployments/base-sepolia.json
     # (deployer commit 486cb0d, 2026-05-29). The initial 7a78c86 deploy
     # used a bytes24 digest scheme that didn't match the backend signer;
     # superseded contracts are documented in the same JSON file and will

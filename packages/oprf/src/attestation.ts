@@ -20,7 +20,7 @@
 //   * We do NOT bind the .p7s payload to the blinded input. v2.1-prod
 //     additionally requires `messageDigest == sha256(blindedInput ||
 //     enrollment_intent || epoch)`. Wiring that up here means coordinating
-//     with v2-web on the exact payload schema; tracked as a follow-up.
+//     with web on the exact payload schema; tracked as a follow-up.
 
 import { parseP7s, type ParsedP7s } from "@crisp-qes/sdk";
 

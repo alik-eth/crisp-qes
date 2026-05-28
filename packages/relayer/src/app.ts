@@ -40,7 +40,7 @@ const hex32 = z.string().regex(/^0x[0-9a-fA-F]{64}$/, "expected 32-byte hex");
 const hex = z.string().regex(/^0x[0-9a-fA-F]+$/, "expected hex string");
 const decimalUint = z.string().regex(/^\d+$/, "expected decimal integer");
 
-// Body shape pinned by v2-web's submit() — see N4 wire contract:
+// Body shape pinned by web's submit() — see N4 wire contract:
 //   { petitionId, vote, nullifier, proof, publicInputs[] }
 const SubmitBody = z.object({
     petitionId: decimalUint,

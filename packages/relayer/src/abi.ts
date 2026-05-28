@@ -1,9 +1,9 @@
 // v2 PetitionRegistryV2 + EnrollmentRegistry ABI surface.
 //
-// Hand-rolled subset of `packages/v2-contracts/src/PetitionRegistryV2.sol`
+// Hand-rolled subset of `packages/contracts/src/PetitionRegistryV2.sol`
 // and `EnrollmentRegistry.sol`. Mirrors only what the relayer touches:
 // `signPetition` + the view reads + decoded events + custom-error decoder.
-// Full ABIs live in `packages/v2-contracts/out/*.json` (foundry).
+// Full ABIs live in `packages/contracts/out/*.json` (foundry).
 
 export const petitionRegistryV2Abi = [
     {

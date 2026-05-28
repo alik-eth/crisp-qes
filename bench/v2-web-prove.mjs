@@ -42,10 +42,10 @@ const URL_BASE = arg("url", "https://crisp-qes-web.fly.dev");
 const COMMIT = arg("commit", "");
 const CPU_THROTTLE = parseFloat(arg("cpuThrottle", "1"));
 const INTERCEPT_CIRCUIT = arg("interceptCircuit", "true") === "true";
-const V2_CIRCUIT_PATH = arg("v2Circuit", "/data/Develop/crisp-qes/packages/v2-circuit/target/crisp_qes_v2_circuit.json");
+const V2_CIRCUIT_PATH = arg("v2Circuit", "/data/Develop/crisp-qes/packages/circuit/target/crisp_qes_v2_circuit.json");
 const V2_CIRCUIT_URL = "/crisp_qes_v2_circuit.json";
 
-// TREE_DEPTH = 20, DOMAIN_PETITION_V2 — match packages/v2-circuit/src/main.nr.
+// TREE_DEPTH = 20, DOMAIN_PETITION_V2 — match packages/circuit/src/main.nr.
 const TREE_DEPTH = 20;
 const DOMAIN_PETITION_V2 = 0x76322d70656e2d6e6f31n;
 

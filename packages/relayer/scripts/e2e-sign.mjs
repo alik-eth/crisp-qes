@@ -1,9 +1,9 @@
 // End-to-end demo: enrol a citizen via the deployed OPRF service, anchor
 // the new EnrollmentRegistry root on Base Sepolia, generate a real v2
-// UltraHonk proof, and submit it through the deployed v2-relayer.
+// UltraHonk proof, and submit it through the deployed relayer.
 //
 // Run as:
-//   node packages/v2-relayer/scripts/e2e-sign.mjs <petitionId> <vote>
+//   node packages/relayer/scripts/e2e-sign.mjs <petitionId> <vote>
 //
 // Defaults: petitionId=1, vote=0 (the demo petition created by N5).
 //
@@ -19,7 +19,7 @@ import {
     ed25519,
 } from "@noble/curves/ed25519";
 // Compat shim: older noble (1.9.1 in bench) exposes RistrettoPoint
-// directly instead of the `ristretto255.Point` namespace used by v2-oprf
+// directly instead of the `ristretto255.Point` namespace used by oprf
 // (1.9.7). Same point type underneath — just a different surface.
 const ristretto255 = {
     Point: RistrettoPoint,
@@ -45,13 +45,13 @@ import { privateKeyToAccount } from "viem/accounts";
 
 // — Config ─────────────────────────────────────────────────────────────────
 
-const OPRF_URL = "https://crisp-qes-v2-oprf.fly.dev";
-const RELAYER_URL = "https://crisp-qes-v2-relayer.fly.dev";
+const OPRF_URL = "https://crisp-qes-oprf.fly.dev";
+const RELAYER_URL = "https://crisp-qes-relayer.fly.dev";
 const ENROLLMENT_REGISTRY = "0x4A17285f2f3035AD8bB6da86d9aB189cC33c4106";
 const PETITION_REGISTRY_V2 = "0x11561749D669791117592332B8E5373Ff60406EF";
 const RPC = "https://sepolia.base.org";
 const CIRCUIT_PATH =
-    "/data/Develop/crisp-qes/packages/v2-circuit/target/crisp_qes_v2_circuit.json";
+    "/data/Develop/crisp-qes/packages/circuit/target/crisp_qes_v2_circuit.json";
 const P7S_PATH = "/data/Develop/crisp-qes/fixtures/diia/petition-1-binding.bin.p7s";
 
 const TREE_DEPTH = 20;
@@ -118,7 +118,7 @@ function unblind(r, Y) {
     return enc(ristretto255.Point.fromHex(Y).multiply(ristretto255.Fn.inv(r)));
 }
 
-// — Pedersen via bb.js (matches v2-oprf + circuit byte-for-byte) ───────────
+// — Pedersen via bb.js (matches oprf + circuit byte-for-byte) ───────────
 
 const apiSync = await BarretenbergSync.initSingleton();
 function pedersenHash(fields, hashIndex = 0) {
@@ -267,7 +267,7 @@ await api.destroy();
 const proveMs = Date.now() - t0;
 console.log(`        proof bytes: ${proof.length}, public inputs: ${publicInputs.length}, prove time: ${proveMs} ms`);
 
-// — Step 6: Submit through the v2-relayer ──────────────────────────────────
+// — Step 6: Submit through the relayer ──────────────────────────────────
 
 const proofHex = toHex(proof);
 console.log(`[6/6] POST ${RELAYER_URL}/v2/submit`);

@@ -1,6 +1,6 @@
 // RFC 9497 VOPRF client over ristretto255 (`VOPRF-ristretto255-SHA512`).
 //
-// Wire-compatible with the server in `packages/v2-oprf/src/oprf.ts`:
+// Wire-compatible with the server in `packages/oprf/src/oprf.ts`:
 //
 //   contextString = "OPRFV1-" || 0x01 || "-ristretto255-SHA512"
 //   DST_HashToGroup  = "HashToGroup-"  || contextString

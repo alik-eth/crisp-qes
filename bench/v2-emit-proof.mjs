@@ -1,6 +1,7 @@
 // Generate one v2 proof + publicInputs and write them to disk in a form
 // the forge gas-report test can consume. The witness is the same
 // synthetic shape used in v2-native-prove.mjs / v2-web-prove.mjs.
+// (filenames kept verbatim — historical bench artifacts).
 //
 // Output:
 //   bench/v2-proof.bin      raw EVM-flavoured Honk proof bytes
@@ -16,7 +17,7 @@ const ENROLLMENT_SECRET = 0x42n;
 const PETITION_ID = 1n;
 const PATH = Array(TREE_DEPTH).fill(0n);
 const INDICES = Array(TREE_DEPTH).fill(0);
-const CIRCUIT_PATH = "/data/Develop/crisp-qes/packages/v2-circuit/target/crisp_qes_v2_circuit.json";
+const CIRCUIT_PATH = "/data/Develop/crisp-qes/packages/circuit/target/crisp_qes_v2_circuit.json";
 
 function toFieldHex(v) { return "0x" + v.toString(16).padStart(64, "0"); }
 function bigintToBE32(v) {

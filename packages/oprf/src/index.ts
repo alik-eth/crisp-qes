@@ -16,12 +16,12 @@ buildApp({ config: cfg })
                             ? "<<see /healthz>>"
                             : null,
                     },
-                    "v2-oprf up",
+                    "oprf up",
                 ),
             ),
     )
     .catch((err: unknown) => {
         // eslint-disable-next-line no-console
-        console.error("[v2-oprf] fatal:", err);
+        console.error("[oprf] fatal:", err);
         process.exit(1);
     });

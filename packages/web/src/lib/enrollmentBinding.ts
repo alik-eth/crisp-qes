@@ -10,7 +10,7 @@
 // Diia («Накласти КЕП»). The signed .p7s the user uploads back is parsed
 // for the RNOKPP (from subjectSerial); the binding bytes themselves are
 // currently NOT checked against `signedAttrs.messageDigest` by the v2
-// OPRF service — see `packages/v2-oprf/src/attestation.ts` for the TODO
+// OPRF service — see `packages/oprf/src/attestation.ts` for the TODO
 // flagging that as v2.1-prod follow-up work. The mirrored MVP pattern
 // (commit J/L on the Sign page) lives in `packages/web/src/lib/messageDigest.ts`.
 //
