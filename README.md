@@ -49,6 +49,32 @@ the ZK circuit** — they run once at enrollment (via OPRF + Diia QES
 check), not per signature. The circuit shrinks from ~100 k constraints
 to ~28 k and from 15 to 3 public inputs.
 
+## v2.1 — live demo
+
+Three-layer architecture: enrol once via OPRF + Diia QES, sign petitions in
+2 s via Noir ZK, optional FHE tally. Spec:
+[`docs/specs/2026-05-29-crisp-qes-v2-refined.md`](docs/specs/2026-05-29-crisp-qes-v2-refined.md).
+
+| Layer        | Component               | URL                                                                                  |
+| ------------ | ----------------------- | ------------------------------------------------------------------------------------ |
+| Web (UI)     | `packages/v2-web`       | [crisp-qes-v2-web.fly.dev](https://crisp-qes-v2-web.fly.dev)                         |
+| OPRF service | `packages/v2-oprf`      | [crisp-qes-v2-oprf.fly.dev](https://crisp-qes-v2-oprf.fly.dev/healthz)               |
+| Relayer      | `packages/v2-relayer`   | [crisp-qes-v2-relayer.fly.dev](https://crisp-qes-v2-relayer.fly.dev/healthz)         |
+
+Contracts (Base Sepolia, chain 84532):
+
+| Contract              | Address                                                                                                                            |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `EnrollmentRegistry`  | [`0x66573066C9e5f87cF63c9607BD1e75d9831850aA`](https://sepolia.basescan.org/address/0x66573066c9e5f87cf63c9607bd1e75d9831850aa)     |
+| `PetitionRegistryV2`  | [`0xe7cC90F3E4d70e47D1d35DCDF820C3B1c27aE8Cd`](https://sepolia.basescan.org/address/0xe7cc90f3e4d70e47d1d35dcdf820c3b1c27ae8cd)     |
+| `UltraVerifierV2`     | [`0xe761daE1E69Acf9A72534605b8eaFe7bd38F76d2`](https://sepolia.basescan.org/address/0xe761dae1e69acf9a72534605b8eafe7bd38f76d2)     |
+
+Demo signature, end-to-end on Base Sepolia (full enrol + ZK sign + relay):
+[`0x7991b0b8…6d6a`](https://sepolia.basescan.org/tx/0x7991b0b8e22be06be8af48f75658d07030ee074158279b1e0cd05ff5776d6d6a)
+— native prove time 626 ms.
+
 ## Status
 
-MVP scaffolding in progress. See spec §5 for in-scope items.
+MVP shipped; v2.1 testnet demo live (Base Sepolia). See spec §5 for the
+in-scope items. v2.2 hardening (threshold OPRF + FHE tally) tracked
+separately.
