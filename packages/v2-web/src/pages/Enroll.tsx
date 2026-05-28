@@ -777,45 +777,45 @@ export function Enroll({ onBack, onDone }: Props) {
                 </div>
             ) : null}
 
-            {/* 6. Backup — reframed as future-compat (v3) capture, gated
-                behind an explicit reveal toggle (#48 / codex audit). In
-                v2.1 the mnemonic is HKDF(N), which is one-way relative to
-                `s = pedersen([N_hi, N_lo], 0)`, so it CANNOT recover an
-                account. Citizens can finish enrollment without revealing.
-                See `lib/bip39Recovery.ts` for the v3 anchor.  */}
+            {/* 6. Backup — reframed as future-compat (v3) capture per
+                #48 / codex audit. Mnemonic is HKDF(N), one-way relative
+                to `s = pedersen([N_hi, N_lo], 0)`, so it CANNOT recover
+                an account in v2.1 — only in v3 once the inverse-friendly
+                rotation lands. Following team-lead's recommendation of
+                fix (a) ("strengthen copy"): keep capture as the default
+                outcome (so citizens who write the words now benefit from
+                v3 auto-migration) but make the limitation impossible to
+                miss with a ⚠ Important-tier prefix on the disclosure.
+                See `lib/bip39Recovery.ts` for the v3 anchor. */}
             {passkey && mnemonic ? (
                 <div className="panel">
                     <p className="panel__title">{t("enroll.backup.title")}</p>
+                    <p className="note text-warn">
+                        <strong>{t("enroll.backup.disclosure")}</strong>
+                    </p>
                     <p className="note">{t("enroll.backup.intro")}</p>
-                    <p className="note text-warn">{t("enroll.backup.warning")}</p>
                     {mnemonicRevealed ? (
-                        <>
-                            <p className="mono" style={{ fontSize: 15, lineHeight: 1.7 }}>
-                                {mnemonic}
-                            </p>
-                            <p className="note">{t("enroll.backup.disclosure")}</p>
-                        </>
-                    ) : (
-                        <p className="note">{t("enroll.backup.gateExplain")}</p>
-                    )}
+                        <p className="mono" style={{ fontSize: 15, lineHeight: 1.7 }}>
+                            {mnemonic}
+                        </p>
+                    ) : null}
+                    <p className="note">{t("enroll.backup.warning")}</p>
                     <div className="actions">
-                        {!mnemonicRevealed ? (
-                            <button
-                                className="btn btn--ghost"
-                                type="button"
-                                onClick={() => setMnemonicRevealed(true)}
-                            >
-                                {t("enroll.backup.reveal")}
-                            </button>
-                        ) : null}
+                        <button
+                            className="btn btn--ghost"
+                            type="button"
+                            onClick={() => setMnemonicRevealed((v) => !v)}
+                        >
+                            {mnemonicRevealed
+                                ? t("enroll.backup.hide")
+                                : t("enroll.backup.show")}
+                        </button>
                         <button
                             className="btn btn--accent"
                             type="button"
                             onClick={onDone}
                         >
-                            {mnemonicRevealed
-                                ? t("enroll.backup.saved")
-                                : t("enroll.backup.finishSkip")}
+                            {t("enroll.backup.saved")}
                         </button>
                     </div>
                 </div>

@@ -145,13 +145,12 @@
         },
         "backup": {
             "title": "Future-compat backup (v3)",
-            "intro": "In v2.1, the only working recovery path is your Passkey's cloud sync (iCloud, Google Password Manager, or Microsoft). The 24-word mnemonic below is a forward-compat artifact: writing it down NOW lets the v3 release recover your account seamlessly on a new device, but on v2.1 these words alone cannot restore an account — they're HKDF-derived from your OPRF output and cannot re-produce the on-chain commitment by themselves.",
-            "gateExplain": "You can finish enrollment now without ever seeing these words. Reveal them only if you want to capture a v3 backup on paper today.",
-            "reveal": "Reveal v3 backup words",
+            "disclosure": "⚠ Important: in v2 these 24 words are NOT a standalone recovery path. Without Passkey cloud sync you will need to re-enroll. The mnemonic only activates seamless cross-device recovery in v3.",
+            "intro": "Today's working recovery is your Passkey's cloud sync (iCloud, Google Password Manager, or Microsoft). Writing these words down NOW is purely a future-compat capture — once v3 ships, the same 24 words will recover your account on a new device with no further action. There is no v2.1 path where these words alone restore an account.",
+            "show": "Reveal v3 backup words",
+            "hide": "Hide words",
             "saved": "I've written them down — finish enrollment",
-            "finishSkip": "Skip backup — finish enrollment",
-            "warning": "Never share these words. No representative of Diia, the ciphernode, or this app will ever ask for them.",
-            "disclosure": "Reminder: in v2.1 these words alone CANNOT recover your account — that path goes live in v3. Today's working recovery is your Passkey cloud sync."
+            "warning": "Never share these words. No representative of Diia, the ciphernode, or this app will ever ask for them."
         },
         "done": {
             "title": "Enrollment complete",
