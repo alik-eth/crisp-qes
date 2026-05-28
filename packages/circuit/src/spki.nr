@@ -1,8 +1,11 @@
 // In-circuit SPKI commitment.
 //
-// The trust-list builder (`packages/lotl-flattener`) and the SDK witness
-// builder MUST mirror this construction byte-for-byte so circuit-side and
-// witness-side leaf commits agree:
+// Trust-root anchor for CRISP-QES D-v2: the trust-list builder
+// (`packages/lotl-flattener`) commits each trusted *intermediate* CA's SPKI
+// DER as a Pedersen-Merkle leaf. The Noir circuit recomputes that leaf
+// commit inside the proof, then walks the Merkle path up to `trust_root`.
+//
+// Both sides MUST mirror this construction byte-for-byte:
 //
 //   1. Zero-pad the SPKI DER to exactly `SPKI_MAX_BYTES` (1024) bytes.
 //   2. Split the buffer into 34 chunks: 33 chunks of 31 contiguous bytes,
@@ -20,7 +23,7 @@
 use std::hash::pedersen_hash_with_separator;
 
 pub global SPKI_COMMIT_DOMAIN: u32 = 1;
-pub global SPKI_MAX_BYTES: u32 = 1024;
+pub global INTERMEDIATE_SPKI_MAX_BYTES: u32 = 1024;
 
 global SPKI_NUM_CHUNKS: u32 = 34;
 global SPKI_FULL_CHUNKS: u32 = 33;
@@ -36,8 +39,8 @@ fn pack31_be(chunk: [u8; 31]) -> Field {
 }
 
 /// Compute the canonical SPKI commitment for the fixed-size, zero-padded
-/// SPKI buffer. See module-level doc for the exact algorithm.
-pub fn spki_commit(spki_bytes: [u8; SPKI_MAX_BYTES]) -> Field {
+/// intermediate CA SPKI buffer. See module-level doc for the exact algorithm.
+pub fn intermediate_spki_commit(spki_bytes: [u8; INTERMEDIATE_SPKI_MAX_BYTES]) -> Field {
     let mut fields: [Field; SPKI_NUM_CHUNKS] = [0; SPKI_NUM_CHUNKS];
     for c in 0..SPKI_FULL_CHUNKS {
         let mut chunk: [u8; 31] = [0; 31];

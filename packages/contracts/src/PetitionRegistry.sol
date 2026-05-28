@@ -60,6 +60,7 @@ contract PetitionRegistry {
     error InvalidProof();
     error InvalidTrustRoot();
     error InvalidSignature();
+    error InvalidCertChain();
     error WrongDeposit();
     error NotCreator();
     error DepositAlreadyRefunded();
@@ -124,81 +125,124 @@ contract PetitionRegistry {
 
     // ---------- signer API ----------
 
-    /// @notice Submit a privacy-preserving signature for `petitionId`.
+    /// @notice Parameters for `signPetition`. Grouped into a struct so the
+    ///         function signature stays under Solidity's stack-depth limit
+    ///         (we'd otherwise have 12 positional uint256/bytes32 args).
+    struct SignCalldata {
+        uint256 petitionId;
+        bytes32 nullifier;
+        uint256 leafPubkeyX;
+        uint256 leafPubkeyY;
+        uint256 leafSigR;
+        uint256 leafSigS;
+        uint256 intermediatePubkeyX;
+        uint256 intermediatePubkeyY;
+        uint256 intermediateSigR;
+        uint256 intermediateSigS;
+    }
+
+    /// @notice Submit a privacy-preserving signature for a petition.
     ///
-    ///         Public-signal layout (asserted below) — see spec §2.1:
-    ///           [0] petition_id
-    ///           [1] nullifier
-    ///           [2] trust_root
-    ///           [3] pubkey_x
-    ///           [4] pubkey_y
-    ///           [5] signedAttrsSha256_hi (high 16 bytes, BE)
-    ///           [6] signedAttrsSha256_lo (low  16 bytes, BE)
+    ///         Public-signal layout (asserted below) — see spec §2.1 (D-v2):
+    ///           [0]  petition_id
+    ///           [1]  nullifier
+    ///           [2]  trust_root
+    ///           [3]  leaf_pubkey_x
+    ///           [4]  leaf_pubkey_y
+    ///           [5]  intermediate_pubkey_x
+    ///           [6]  intermediate_pubkey_y
+    ///           [7]  leaf_tbs_sha256_hi      (high 16 bytes, BE)
+    ///           [8]  leaf_tbs_sha256_lo      (low  16 bytes, BE)
+    ///           [9]  signed_attrs_sha256_hi  (high 16 bytes, BE)
+    ///           [10] signed_attrs_sha256_lo  (low  16 bytes, BE)
     ///
-    ///         The hi/lo split is required because BN254's prime is below
-    ///         2^254, so a single Field cannot losslessly carry the full
-    ///         256-bit SHA-256 output. Each 128-bit limb is safely inside
-    ///         the field, and we reconstruct the raw `bytes32 msgHash`
-    ///         here before feeding the RIP-7212 P-256 precompile.
+    ///         The 4 hi/lo limbs are required because BN254's prime is
+    ///         below 2^254, so a single Field cannot losslessly carry a
+    ///         full 256-bit SHA-256 output. Each 128-bit limb is bounded
+    ///         on-chain too, then concatenated back into the bytes32 each
+    ///         precompile call needs.
     ///
-    ///         The Noir proof attests that `(pubkey_x, pubkey_y,
-    ///         signedAttrsSha256)` is bound to a Diia cert under the pinned
-    ///         trust root and to the petition. The RIP-7212 precompile then
-    ///         attests that those exact values constitute a valid P-256 ECDSA
-    ///         signature.
-    /// @param petitionId target petition.
-    /// @param nullifier  Poseidon(pubkey.x, pubkey.y, petitionId, DOMAIN).
-    /// @param pubkeyX    P-256 public key affine X — must equal publicInputs[3].
-    /// @param pubkeyY    P-256 public key affine Y — must equal publicInputs[4].
-    /// @param sigR       P-256 signature scalar r.
-    /// @param sigS       P-256 signature scalar s.
-    /// @param proof      Barretenberg proof bytes.
-    /// @param publicInputs ordered public signals expected by the verifier.
+    ///         Two RIP-7212 P-256 verifications run here:
+    ///           1. intermediate -> leaf TBS  (proves the leaf cert was
+    ///              issued by a trust-rooted intermediate; failure reverts
+    ///              with `InvalidCertChain`).
+    ///           2. leaf -> signedAttrs       (the citizen signature over
+    ///              the petition-bound `messageDigest`; failure reverts
+    ///              with `InvalidSignature`).
+    /// @param p           Grouped calldata, see `SignCalldata`.
+    /// @param proof       Barretenberg proof bytes.
+    /// @param publicInputs ordered public signals expected by the verifier (length 11).
     function signPetition(
-        uint256 petitionId,
-        bytes32 nullifier,
-        uint256 pubkeyX,
-        uint256 pubkeyY,
-        uint256 sigR,
-        uint256 sigS,
+        SignCalldata calldata p,
         bytes calldata proof,
         bytes32[] calldata publicInputs
     ) external {
-        Petition storage p = _petitions[petitionId];
-        if (p.creator == address(0)) revert UnknownPetition();
-        if (block.timestamp > p.deadline) revert PetitionClosed();
-        if (hasNullifier[petitionId][nullifier]) revert NullifierAlreadyUsed();
+        Petition storage pet = _petitions[p.petitionId];
+        if (pet.creator == address(0)) revert UnknownPetition();
+        if (block.timestamp > pet.deadline) revert PetitionClosed();
+        if (hasNullifier[p.petitionId][p.nullifier]) revert NullifierAlreadyUsed();
 
-        if (publicInputs.length != 7) revert InvalidProof();
-        if (uint256(publicInputs[0]) != petitionId) revert InvalidProof();
-        if (publicInputs[1] != nullifier) revert InvalidProof();
+        if (publicInputs.length != 11) revert InvalidProof();
+        if (uint256(publicInputs[0]) != p.petitionId) revert InvalidProof();
+        if (publicInputs[1] != p.nullifier) revert InvalidProof();
         if (publicInputs[2] != trustRoot) revert InvalidTrustRoot();
-        if (uint256(publicInputs[3]) != pubkeyX) revert InvalidProof();
-        if (uint256(publicInputs[4]) != pubkeyY) revert InvalidProof();
-        // Each limb must fit in 128 bits so the reconstruction below is
-        // lossless. The circuit guarantees this (be_bytes16_to_field never
-        // sees more than 16 input bytes), but we double-check on-chain so
-        // a buggy or malicious witness cannot smuggle high bits past the
-        // verifier.
-        if (uint256(publicInputs[5]) >> 128 != 0) revert InvalidProof();
-        if (uint256(publicInputs[6]) >> 128 != 0) revert InvalidProof();
+        if (uint256(publicInputs[3]) != p.leafPubkeyX) revert InvalidProof();
+        if (uint256(publicInputs[4]) != p.leafPubkeyY) revert InvalidProof();
+        if (uint256(publicInputs[5]) != p.intermediatePubkeyX) revert InvalidProof();
+        if (uint256(publicInputs[6]) != p.intermediatePubkeyY) revert InvalidProof();
+        // Each of the 4 limbs must fit in 128 bits so the bytes32
+        // reconstructions below are lossless. The circuit guarantees this
+        // (be_bytes16_to_field never sees more than 16 input bytes); the
+        // belt-and-braces check on-chain blocks a buggy / malicious
+        // witness from smuggling high bits past the verifier.
+        if (uint256(publicInputs[7]) >> 128 != 0) revert InvalidProof();
+        if (uint256(publicInputs[8]) >> 128 != 0) revert InvalidProof();
+        if (uint256(publicInputs[9]) >> 128 != 0) revert InvalidProof();
+        if (uint256(publicInputs[10]) >> 128 != 0) revert InvalidProof();
 
         if (!verifier.verify(proof, publicInputs)) revert InvalidProof();
 
-        bytes32 msgHash = bytes32(
-            (uint256(publicInputs[5]) << 128) | uint256(publicInputs[6])
+        bytes32 leafTbsHash = bytes32(
+            (uint256(publicInputs[7]) << 128) | uint256(publicInputs[8])
         );
-        if (!P256.verify(msgHash, sigR, sigS, pubkeyX, pubkeyY)) {
+        bytes32 signedAttrsHash = bytes32(
+            (uint256(publicInputs[9]) << 128) | uint256(publicInputs[10])
+        );
+
+        // 1. Intermediate signed the leaf TBSCertificate.
+        if (
+            !P256.verify(
+                leafTbsHash,
+                p.intermediateSigR,
+                p.intermediateSigS,
+                p.intermediatePubkeyX,
+                p.intermediatePubkeyY
+            )
+        ) {
+            revert InvalidCertChain();
+        }
+
+        // 2. Leaf signed the signedAttrs (which the circuit pinned to this
+        //    petition via the messageDigest binding).
+        if (
+            !P256.verify(
+                signedAttrsHash,
+                p.leafSigR,
+                p.leafSigS,
+                p.leafPubkeyX,
+                p.leafPubkeyY
+            )
+        ) {
             revert InvalidSignature();
         }
 
-        hasNullifier[petitionId][nullifier] = true;
-        uint32 newCount = ++p.signatureCount;
-        emit PetitionSigned(petitionId, nullifier, newCount);
+        hasNullifier[p.petitionId][p.nullifier] = true;
+        uint32 newCount = ++pet.signatureCount;
+        emit PetitionSigned(p.petitionId, p.nullifier, newCount);
 
-        if (!p.thresholdReached && newCount >= p.threshold) {
-            p.thresholdReached = true;
-            emit ThresholdReached(petitionId, p.threshold, uint64(block.timestamp));
+        if (!pet.thresholdReached && newCount >= pet.threshold) {
+            pet.thresholdReached = true;
+            emit ThresholdReached(p.petitionId, pet.threshold, uint64(block.timestamp));
         }
     }
 
