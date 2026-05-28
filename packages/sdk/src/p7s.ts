@@ -37,10 +37,24 @@ export interface ParsedP7s {
     signedAttrsSha256: Uint8Array;
     /** Inner messageDigest attribute extracted from signedAttrs. */
     messageDigest: Uint8Array;
+    /**
+     * Byte offset within `signedAttrs` where the 32-byte `messageDigest`
+     * OCTET STRING **value** begins. The Noir circuit copies
+     * `signedAttrs[messageDigestOffset .. messageDigestOffset + 32]` and
+     * binds it to `sha256(petition_id || "::" || petition_text_hash)`.
+     */
+    messageDigestOffset: number;
     /** Signer cert subject serial bytes. Must start with "TINUA-" for Diia. */
     subjectSerial: Uint8Array;
     /** Leaf cert DER bytes. */
     leafCertDer: Uint8Array;
+    /**
+     * Canonical SubjectPublicKeyInfo DER bytes of the leaf cert. The Noir
+     * circuit hashes a zero-padded 1024-byte version of this to derive
+     * `spki_commit`, which must equal the corresponding leaf entry in the
+     * LOTL Pedersen-Merkle trust tree.
+     */
+    leafSpkiDer: Uint8Array;
     /** Intermediate cert DER (if present in SignedData certificates set). */
     intermediateCertDer: Uint8Array | null;
     /** P-256 pubkey affine coords from the leaf cert SPKI. */
@@ -90,6 +104,7 @@ export function parseP7s(bytes: Uint8Array): ParsedP7s {
     // (3) Inner messageDigest attribute value (32 bytes — SHA-256 of the
     //     detached payload, e.g. SHA-256(petition_id || "::" || textHash)).
     const messageDigest = extractMessageDigest(signer);
+    const messageDigestOffset = locateMessageDigestOffset(signedAttrs, messageDigest);
 
     // (4, 5, 6) Cert chain. Identify the leaf via SID, fall back to first
     //           cert if SID matching is ambiguous (shouldn't happen for
@@ -99,6 +114,9 @@ export function parseP7s(bytes: Uint8Array): ParsedP7s {
     const leafCertDer = new Uint8Array(leafCert.toSchema().toBER(false));
     const subjectSerial = extractSubjectSerial(leafCertDer);
     const pubkey = extractP256Pubkey(leafCert);
+    const leafSpkiDer = new Uint8Array(
+        leafCert.subjectPublicKeyInfo.toSchema().toBER(false),
+    );
 
     // Intermediate: when more than one cert is present, return the issuer of
     // the leaf (matched by DN equality) — that's the cert PetitionRegistry's
@@ -117,12 +135,47 @@ export function parseP7s(bytes: Uint8Array): ParsedP7s {
         signedAttrs,
         signedAttrsSha256,
         messageDigest,
+        messageDigestOffset,
         subjectSerial,
         leafCertDer,
+        leafSpkiDer,
         intermediateCertDer,
         pubkey,
         signature,
     };
+}
+
+/**
+ * Find the byte offset of the 32-byte `messageDigest` OCTET STRING **value**
+ * within `signedAttrs`. The encoding is always `04 20 <32 bytes>` (OCTET
+ * STRING tag, length 32, then payload) nested inside the messageDigest
+ * Attribute's SET-OF-AttributeValue wrapper. We scan for `04 20` followed
+ * by the exact `messageDigest` payload to pin the value position without
+ * re-walking the full ASN.1 tree.
+ */
+function locateMessageDigestOffset(
+    signedAttrs: Uint8Array,
+    messageDigest: Uint8Array,
+): number {
+    if (messageDigest.length !== 32) {
+        throw new Error(
+            `parseP7s: messageDigest must be 32 bytes (got ${messageDigest.length})`,
+        );
+    }
+    for (let i = 0; i + 2 + 32 <= signedAttrs.length; i++) {
+        if (signedAttrs[i] !== 0x04 || signedAttrs[i + 1] !== 0x20) continue;
+        let match = true;
+        for (let j = 0; j < 32; j++) {
+            if (signedAttrs[i + 2 + j] !== messageDigest[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) return i + 2;
+    }
+    throw new Error(
+        "parseP7s: could not locate messageDigest OCTET STRING value inside signedAttrs",
+    );
 }
 
 // ----- helpers ---------------------------------------------------------------
