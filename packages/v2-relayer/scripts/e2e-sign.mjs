@@ -47,8 +47,8 @@ import { privateKeyToAccount } from "viem/accounts";
 
 const OPRF_URL = "https://crisp-qes-v2-oprf.fly.dev";
 const RELAYER_URL = "https://crisp-qes-v2-relayer.fly.dev";
-const ENROLLMENT_REGISTRY = "0x66573066C9e5f87cF63c9607BD1e75d9831850aA";
-const PETITION_REGISTRY_V2 = "0xe7cC90F3E4d70e47D1d35DCDF820C3B1c27aE8Cd";
+const ENROLLMENT_REGISTRY = "0x4A17285f2f3035AD8bB6da86d9aB189cC33c4106";
+const PETITION_REGISTRY_V2 = "0x11561749D669791117592332B8E5373Ff60406EF";
 const RPC = "https://sepolia.base.org";
 const CIRCUIT_PATH =
     "/data/Develop/crisp-qes/packages/v2-circuit/target/crisp_qes_v2_circuit.json";
@@ -192,34 +192,47 @@ const account = privateKeyToAccount(PRIVATE_KEY);
 const publicClient = createPublicClient({ chain: baseSepolia, transport: http(RPC) });
 const walletClient = createWalletClient({ account, chain: baseSepolia, transport: http(RPC) });
 
-// EnrollmentRegistry ABI surface we need.
+// EnrollmentRegistry ABI surface we need. New EIP-191 contract takes the
+// commitments array; leafCount advances by `newCommitments.length`
+// internally — backend never passes a leafIndex.
 const enrollmentAbi = parseAbi([
-    "function updateRoot(bytes32 newRoot, uint256 leafIndex, bytes signature) external",
+    "function updateRoot(bytes32 newRoot, bytes32[] newCommitments, bytes signature) external",
     "function enrollmentRoot() view returns (bytes32)",
     "function leafCount() view returns (uint256)",
-    "function previewDigest(bytes32 newRoot, uint256 leafIndex) view returns (bytes32)",
+    "function previewDigest(bytes32 newRoot, bytes32[] newCommitments) view returns (bytes32 inner, bytes32 ethSigned)",
 ]);
 
-console.log(`[4/6] EnrollmentRegistry.updateRoot(newRoot, leafIndex=${reg.leafIndex}, sig)`);
+console.log(`[4/6] EnrollmentRegistry.updateRoot(newRoot, [commitment], sig)`);
 const updateTx = await walletClient.writeContract({
     address: ENROLLMENT_REGISTRY,
     abi: enrollmentAbi,
     functionName: "updateRoot",
-    args: [reg.newRoot, BigInt(reg.leafIndex), reg.attesterSig],
+    args: [reg.newRoot, reg.newCommitments, reg.attesterSig],
 });
 console.log(`        tx: ${updateTx}`);
-const updateReceipt = await publicClient.waitForTransactionReceipt({ hash: updateTx });
+const updateReceipt = await publicClient.waitForTransactionReceipt({
+    hash: updateTx,
+    confirmations: 1,
+});
 console.log(`        status=${updateReceipt.status}  gasUsed=${updateReceipt.gasUsed}`);
 if (updateReceipt.status !== "success") {
     console.error("updateRoot reverted; bailing");
     process.exit(1);
 }
 
-const liveRoot = await publicClient.readContract({
-    address: ENROLLMENT_REGISTRY,
-    abi: enrollmentAbi,
-    functionName: "enrollmentRoot",
-});
+// The public RPC sometimes round-robins to a node that hasn't ingested the
+// newly-mined block yet; poll briefly until the storage read matches the
+// receipt-confirmed newRoot.
+let liveRoot;
+for (let attempt = 0; attempt < 10; attempt++) {
+    liveRoot = await publicClient.readContract({
+        address: ENROLLMENT_REGISTRY,
+        abi: enrollmentAbi,
+        functionName: "enrollmentRoot",
+    });
+    if (liveRoot.toLowerCase() === reg.newRoot.toLowerCase()) break;
+    await new Promise((r) => setTimeout(r, 1500));
+}
 console.log(`        on-chain enrollmentRoot = ${liveRoot.slice(0, 18)}…`);
 if (liveRoot.toLowerCase() !== reg.newRoot.toLowerCase()) {
     console.error("on-chain root != /oprf/register newRoot — wire mismatch");

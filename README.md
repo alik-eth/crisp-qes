@@ -65,13 +65,13 @@ Contracts (Base Sepolia, chain 84532):
 
 | Contract              | Address                                                                                                                            |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `EnrollmentRegistry`  | [`0x66573066C9e5f87cF63c9607BD1e75d9831850aA`](https://sepolia.basescan.org/address/0x66573066c9e5f87cf63c9607bd1e75d9831850aa)     |
-| `PetitionRegistryV2`  | [`0xe7cC90F3E4d70e47D1d35DCDF820C3B1c27aE8Cd`](https://sepolia.basescan.org/address/0xe7cc90f3e4d70e47d1d35dcdf820c3b1c27ae8cd)     |
-| `UltraVerifierV2`     | [`0xe761daE1E69Acf9A72534605b8eaFe7bd38F76d2`](https://sepolia.basescan.org/address/0xe761dae1e69acf9a72534605b8eafe7bd38f76d2)     |
+| `EnrollmentRegistry`  | [`0x4A17285f2f3035AD8bB6da86d9aB189cC33c4106`](https://sepolia.basescan.org/address/0x4a17285f2f3035ad8bb6da86d9ab189cc33c4106)     |
+| `PetitionRegistryV2`  | [`0x11561749D669791117592332B8E5373Ff60406EF`](https://sepolia.basescan.org/address/0x11561749d669791117592332b8e5373ff60406ef)     |
+| `UltraVerifierV2`     | [`0x173F7BB534C7589d3f6D11DF3BE8Efee07312577`](https://sepolia.basescan.org/address/0x173f7bb534c7589d3f6d11df3be8efee07312577)     |
 
 Demo signature, end-to-end on Base Sepolia (full enrol + ZK sign + relay):
-[`0x7991b0b8…6d6a`](https://sepolia.basescan.org/tx/0x7991b0b8e22be06be8af48f75658d07030ee074158279b1e0cd05ff5776d6d6a)
-— native prove time 626 ms.
+[`0xc80557d7…2dfb`](https://sepolia.basescan.org/tx/0xc80557d7c25c9c5b8ae4b770d4eda8690566092bd412d33e372a69526ec42dfb)
+— native prove time 823 ms.
 
 ## Status
 
