@@ -1,27 +1,22 @@
 {
   "network": "base-sepolia",
   "chainId": 84532,
-  "deployedAt": "2026-05-29T01:24:11Z",
-  "deployerCommit": "5a0b03e",
+  "deployedAt": "2026-05-29T01:42:00Z",
+  "deployerCommit": "486cb0d",
   "blockExplorer": "https://sepolia.basescan.org",
   "deployer": "0xB8d121CD0B2D0AB3df2aFF0B45B2fD354FF4c1f7",
   "contracts": {
     "enrollmentRegistry": {
-      "address": "0x66573066C9e5f87cF63c9607BD1e75d9831850aA",
-      "txHash": "0x7b1063b734d0b6870441d2f04cba571cfa7c105389a27b81b89b24694ea96e74"
+      "address": "0x4a17285F2F3035AD8bB6Da86d9aB189Cc33C4106",
+      "txHash": "0xff8df911dc4611339d7ef4366d912ad7452a05c819e288922707ed8b8fca6ffc"
     },
     "ultraVerifierV2": {
-      "address": "0xe761daE1E69Acf9A72534605b8eaFe7bd38F76d2",
-      "txHash": "0x1b6bd627009528e6745b1c4e87769cb1a3e72dce5ca34f97f243b782e33b98a0"
+      "address": "0x173F7BB534C7589d3f6D11DF3BE8Efee07312577",
+      "txHash": "0x78f08e085e73d5ece717ac2f5b930c2e83d0a07b5d6f17e40bebd9f3aa826fac"
     },
     "petitionRegistryV2": {
-      "address": "0xe7cC90F3E4d70e47D1d35DCDF820C3B1c27aE8Cd",
-      "txHash": "0x5567ac8c65773a9e80b25fef4d27e6a4f81cdbae6cc0ad6fbd4a325acff7f938"
-    },
-    "zkTranscriptLib": {
-      "address": "0xb7770c8E36f7eA2A66Be48C8096997E3071258FF",
-      "txHash": "0x993efdb7138f91ebf0b4cf56bdefc52b274f6758c8093ec477ddc58bd93b8b89",
-      "note": "Internal library deployed by UltraVerifierV2 — not consumed directly."
+      "address": "0x11561749D669791117592332B8E5373Ff60406EF",
+      "txHash": "0x069db03ede5d1b3ee216c1a47d2af07c84a8657a1fb43c83a60e9f2b443ba1ed"
     }
   },
   "params": {
@@ -29,21 +24,43 @@
     "admin": "0xB8d121CD0B2D0AB3df2aFF0B45B2fD354FF4c1f7",
     "genesisRoot": "0x1b49e706af69da35927cdf2b28b02fb2647245ac0ccbc376d062031185d3cd84",
     "genesisLeafCount": 0,
-    "creationDepositWei": "1000000000000000",
-    "domainOprfRoot": "0x43524953505f5145535f4f5052465f524f4f545f56322e31",
-    "domainOprfRootAscii": "CRISP_QES_OPRF_ROOT_V2.1"
+    "creationDepositWei": "1000000000000000"
   },
   "verification": {
     "enrollmentRoot": "0x1b49e706af69da35927cdf2b28b02fb2647245ac0ccbc376d062031185d3cd84",
     "leafCount": 0,
     "oprfAttester": "0x876E995c6f4f158ED5D746B5e10A00329df1E246",
-    "admin": "0xB8d121CD0B2D0AB3df2aFF0B45B2fD354FF4c1f7",
-    "verifiedAtBlock": 42119091
+    "verifiedAtBlock": 42119311,
+    "previewDigestRoundTrip": {
+      "input": {
+        "newRoot": "0x000000000000000000000000000000000000000000000000000000000000beef",
+        "newCommitments": ["0x0000000000000000000000000000000000000000000000000000000000000001"]
+      },
+      "expectedInner":     "0xabb94c93ea440d2adb902d1d7c43133fa64f5c5ef065544a2c44abe3ba4bc3d4",
+      "expectedEthSigned": "0xfd171213cf168dd84640f7bc7970c3f4d26b5b35078c7dcd03ffdd3d91689c23",
+      "verified": true,
+      "notes": "previewDigest(0x...beef, [0x...01]) returned both values matching an independent Python keccak256 reference; backend's viem-style EIP-191 signatures will verify on-chain."
+    }
+  },
+  "supersedes": {
+    "enrollmentRegistry": "0x66573066C9e5f87cF63c9607BD1e75d9831850aA",
+    "ultraVerifierV2":    "0xe761daE1E69Acf9A72534605b8eaFe7bd38F76d2",
+    "petitionRegistryV2": "0xe7cC90F3E4d70e47D1d35DCDF820C3B1c27aE8Cd",
+    "reason": "Initial 7a78c86 deploy used a bytes24 DOMAIN_OPRF_ROOT digest scheme that didn't match backend's live signer. Replaced with the team-lead-pinned EIP-191 + chainid + address(this) scheme in commit 486cb0d. Old addresses remain on-chain but are unusable — backend signatures will never verify against them."
+  },
+  "digestScheme": {
+    "inner": "keccak256(abi.encode(oldRoot, newRoot, keccak256(abi.encodePacked(newCommitments)), block.chainid, address(this)))",
+    "ethSigned": "keccak256(abi.encodePacked('\\x19Ethereum Signed Message:\\n32', inner))",
+    "signature": "secp256k1 (r, s, v) over ethSigned, 65 bytes, low-s",
+    "matches": [
+      "viem: walletClient.signMessage({ message: { raw: inner }, account: attester })",
+      "ethers: wallet.signMessage(arrayify(inner))",
+      "OZ ECDSA.recover(MessageHashUtils.toEthSignedMessageHash(inner), sig)"
+    ]
   },
   "notes": [
-    "EnrollmentRegistry's genesisRoot matches the OPRF service's currentRoot at deploy time.",
-    "genesisLeafCount=0 assumes backend's tree was empty (depth-20 zero tree) at deploy. If backend's tree had N>0 commitments, the registry will reject backend's first updateRoot(leafIndex=N) until corrected via redeploy. Verify with backend before any enrollment flow goes live.",
-    "Replay-protection caveat (v2.2 mainnet TODO): signed digest omits chainid + address(this). Acceptable for the single-Fly + single-chain testnet deployment.",
-    "DOMAIN_OPRF_ROOT is the 24-byte ASCII string 'CRISP_QES_OPRF_ROOT_V2.1' baked into every updateRoot signature."
+    "EnrollmentRegistry's genesisRoot matches the OPRF service's currentRoot at deploy time (canonical depth-20 zero-tree root confirmed by backend).",
+    "genesisLeafCount=0 confirmed by backend (enrolledCount=0 at deploy).",
+    "Replay protection: chainid + address(this) in the digest body prevent cross-chain and cross-instance replay even if the attester key is reused across deploys."
   ]
 }
