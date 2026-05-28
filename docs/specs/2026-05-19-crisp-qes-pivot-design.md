@@ -43,6 +43,13 @@ No login, no wallet for signers. Petition creators need a wallet (gas). Signers 
 
 ### 2.1 Eligibility (Noir ZK over CAdES)
 
+Signature verification is split across circuit and chain:
+
+- **Off-chain (Noir circuit):** structural validity, trust-chain membership,
+  subject pattern, petition binding, nullifier derivation.
+- **On-chain (Solidity):** the P-256 ECDSA check itself, via the RIP-7212
+  precompile at `0x0000…0100` (live on Base Sepolia and Base mainnet).
+
 A Noir circuit proves, for a signature submission:
 
 1. Citizen's `.p7s` (CAdES detached signature) is structurally valid.
@@ -50,24 +57,37 @@ A Noir circuit proves, for a signature submission:
    on-chain).
 3. The signer cert's subject serial matches the `TINUA-<tax-id>` pattern (proves it's a
    real Ukrainian QES, not a generic cert).
-4. The signature is a valid P-256 ECDSA signature over the CAdES `signedAttrs`.
-5. The `signedAttrs` `messageDigest` matches `SHA-256(petition_id || "::" || petition_text_hash)`
+4. The `signedAttrs` `messageDigest` matches `SHA-256(petition_id || "::" || petition_text_hash)`
    — binding the signature to a specific petition.
+5. `signedAttrsSha256` (a public input) equals `SHA-256(signedAttrs)` — the value the
+   contract will feed to the P-256 precompile.
 6. The emitted **nullifier** equals `Pedersen(cert_pubkey_x, cert_pubkey_y, petition_id, DOMAIN)`.
 
-**Public signals (minimal):**
+The actual ECDSA verification — that `(sigR, sigS)` is a valid P-256 signature on
+`signedAttrsSha256` under `(pubkey_x, pubkey_y)` — is performed by `PetitionRegistry`
+via a `staticcall` to `0x0000…0100`. This is sound because the circuit binds the
+public `pubkey_x, pubkey_y, signedAttrsSha256` to a cert that chains to the pinned
+trust root and to the specific petition; the precompile then attests that those
+public values are a real signature.
+
+**Public signals:**
 - `petition_id` (uint256)
 - `nullifier` (Field)
 - `trustRoot` (Field) — pinned input, contract checks equality
+- `pubkey_x`, `pubkey_y` (Field, Field) — fed to the P-256 precompile
+- `signedAttrsSha256` (Field) — fed to the P-256 precompile as `msg_hash`
 - `chainBindings` — `keccak256(petition_id, msg.sender)` to prevent proof-grinding /
   meta-tx relay-binding (optional; relayer flow may make this `address(0)`)
 
 **Private signals:**
 - `.p7s` bytes, leaf cert bytes, intermediate cert bytes
-- Cert pubkey (x, y) — used in nullifier, then discarded
+- `signedAttrs` bytes (hashed publicly as `signedAttrsSha256`)
 - Subject serial bytes (asserted to start with `TINUA-`)
-- ECDSA signature `(r, s)`
 - Merkle path from leaf-cert-commit to `trustRoot`
+
+The ECDSA signature `(r, s)` is **not** a circuit input — it is supplied directly to
+the contract in `signPetition` calldata, alongside `pubkey_x, pubkey_y` (also in
+calldata, and bound to the proof via the public-input check).
 
 ### 2.2 Nullifier — the design choice that matters
 
@@ -110,15 +130,24 @@ pubkey-nullifier scheme (toward FHE-enrolled per-citizen secrets, §6).
 | Property | MVP | v2 (CRISP) |
 |---|---|---|
 | Per-petition Sybil resistance | ✓ within cert lifetime | ✓ per real citizen |
-| Cross-petition unlinkability | ✓ | ✓ |
+| Cross-petition unlinkability | ✗ within cert lifetime, ✓ across cert renewals | ✓ |
 | Cert-renewal Sybil resistance | ✗ (new cert → new pubkey → can re-sign) | ✓ (FHE-checked tax-ID at enrollment) |
 | Coercion resistance | ✗ (coercer can force re-sign with same cert, match on-chain nullifier) | ✓ (JCJ fake credentials) |
 | Tax ID privacy | ✓ (never emitted) | ✓ |
 | No third party | ✓ | Distributed 3rd party (ciphernode committee) |
 
+Cross-petition unlinkability is the regression we accept in exchange for shipping
+without `noir-ecdsa` for P-256. Because the contract calls the RIP-7212 precompile,
+`pubkey_x, pubkey_y, sigR, sigS, signedAttrsSha256` are all in calldata and therefore
+on-chain forever. Two signatures from the same cert are linkable by a Basescan reader
+who pulls `pubkey_x, pubkey_y` from both transactions. The link breaks at cert
+renewal (Diia issues a new cert with a new keypair).
+
 Cert renewals during a petition window are rare in practice — Diia certs are 1–2 year
-validity, petition windows are typically <90 days. The collision rate at MVP scale is
-acceptable. v2 closes both gaps via CRISP composition.
+validity, petition windows are typically <90 days. The collision rate (and the
+linkability window) at MVP scale is acceptable. v2 closes the linkability gap by
+moving the per-citizen secret out of the cert pubkey (FHE-enrolled secret bound at
+enrollment) so signatures stop carrying a stable identifier.
 
 ## 3. Stack
 
@@ -179,7 +208,9 @@ crisp-qes/
 ## 5. MVP scope (12 days to grant)
 
 ### In scope
-- [ ] Noir circuit (CAdES walk, P-256 verify, Merkle trust check, pubkey-nullifier)
+- [ ] Noir circuit (CAdES walk, Merkle trust check, signedAttrs digest binding,
+      `signedAttrsSha256` public output, pubkey-nullifier). ECDSA verification is **not**
+      done in-circuit — the contract calls the RIP-7212 P-256 precompile.
 - [ ] UltraVerifier deployment on Base Sepolia
 - [ ] `PetitionRegistry.sol`: `createPetition`, `signPetition`, `getPetition`,
       `signatureCount`, `hasNullifier`, `petitionStatus`
@@ -220,22 +251,18 @@ circuit, contract, or web flow.
 The v2 work becomes the fundable phase 2 grant: concrete roadmap, partner asks
 (CRISP/Interfold team for ciphernode infra), genuine cypherpunk story.
 
-## 7. Open questions (resolve before implementation)
+## 7. Resolved decisions
 
-1. **Petition id derivation.** Sequential `uint256` (cheap, indexable) or
-   `keccak256(text || creator || nonce)` (collision-free, content-addressed)?
-   Recommendation: sequential — text hash lives in the struct anyway.
-2. **Petition text size cap.** Gas-bounded. Recommendation: 8 KB cap (~1500 words,
-   covers UA petition format), enforced at create-time.
-3. **Threshold semantics.** Does the registry emit an `OnchainThresholdReached` event
-   at the moment `signatureCount == threshold`, or do consumers poll? Event is cheap +
-   indexable — recommendation: emit.
-4. **Relayer trust model.** MVP self-runs the relayer. Should signers be able to
-   submit directly (paying gas themselves) as a fallback? Recommendation: yes — the
-   contract entrypoint is permissionless; the relayer is just a convenience.
-5. **Petition creator deposit / spam control.** Without any deposit, anyone can spam
-   petitions. Recommendation: small refundable creation deposit (returned at
-   deadline regardless of outcome), or just rely on gas costs for MVP.
+1. **Petition id.** Sequential `uint256` (cheap, indexable). Text hash lives in the
+   struct so content-addressing is redundant.
+2. **Petition text cap.** 8 KB at create-time (~1500 words, covers UA format).
+3. **Threshold event.** Contract emits `ThresholdReached(id, threshold, ts)` once,
+   the first time the count crosses; consumers index, don't poll.
+4. **Relayer trust.** Contract entrypoint is permissionless. Relayer is a convenience
+   that pays gas; signers can also submit directly with their own EOA.
+5. **Spam control.** Refundable creation deposit, default 0.001 ETH on Base
+   (~$2–3 at deploy time), returned to creator at deadline regardless of outcome.
+   Configurable in the registry constructor.
 
 ## 8. Non-goals
 
