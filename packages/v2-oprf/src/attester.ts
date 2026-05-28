@@ -1,35 +1,43 @@
 // secp256k1 root-update attester for EnrollmentRegistry.
 //
-// Digest format pinned by team-lead 2026-05-29 — must match the verifier
-// inside EnrollmentRegistry.updateRoot byte-for-byte:
+// Digest format — matches the deployed contract on Base Sepolia 84532
+// (EnrollmentRegistry 0x66573066…50aA, deployed by `circuit` in §31):
 //
-//   newCommitmentsHash = keccak256(abi.encodePacked(bytes32[]))
-//   innerDigest = keccak256(abi.encode(
-//       bytes32  oldRoot,
-//       bytes32  newRoot,
-//       bytes32  newCommitmentsHash,
-//       uint256  chainId,
-//       address  enrollmentRegistry
-//   ))
-//   ethSigned   = keccak256("\x19Ethereum Signed Message:\n32" || innerDigest)
-//   sig         = secp256k1.sign(ethSigned, attesterKey)    // 65 B: r||s||v
+//   tag    = "CRISP_QES_OPRF_ROOT_V2.1"            // exactly 24 ASCII bytes
+//   body   = abi.encodePacked(
+//              bytes24(tag),                       // 24 bytes
+//              bytes32(oldRoot),                   // 32
+//              bytes32(newRoot),                   // 32
+//              uint256(leafIndex)                  // 32
+//            )
+//   digest = keccak256(body)
+//   sig    = secp256k1.sign(digest, attesterKey)   // 65 B: r||s||v ∈ {27,28}
 //
-// The EIP-191 wrap lets viem's `walletClient.signMessage({ message: { raw }})`
-// produce the identical signature client-side. EIP-2 low-s is enforced by
-// `@noble/curves` already (sign() returns a low-s sig by default).
+// The contract recovers DIRECTLY from `digest` — there is NO EIP-191
+// `"\x19Ethereum Signed Message:\n32"` wrap. The view function
+// `EnrollmentRegistry.previewDigest(newRoot, leafIndex)` returns this
+// digest off-chain for self-check; we use it in integration tests.
 //
-// Replay protection:
-//   * `chainId` and `enrollmentRegistry` pin to a single deployment.
-//   * `oldRoot` linearises the root timeline — a captured sig can't be
-//     replayed against a different "previous" root.
+// Notes for v2.2 (mainnet hardening) — flagged by team-lead's later pin
+// + circuit's deploy memo, deferred for the testnet demo:
+//
+//   * Add `block.chainid` and `address(this)` to the digest. Without
+//     them, the SAME attester key signing on Sepolia produces signatures
+//     that would replay against a mainnet registry that re-uses the
+//     key. We're single-key single-chain on the testnet demo so this
+//     doesn't bite, but it's the right shape for production.
+//   * Wrap with EIP-191 `personal_sign` so viem's
+//     `walletClient.signMessage({ message: { raw } })` produces the
+//     identical signature client-side. Today we keep raw-ecrecover for
+//     symmetry with the contract.
+//
+// Both items are 2-line changes either side and intentionally NOT done
+// here — the contract is the immutable source of truth.
 
-import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import {
     type Hex,
     bytesToHex,
-    concat,
-    encodeAbiParameters,
     encodePacked,
     hexToBytes,
     keccak256,
@@ -38,17 +46,17 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
+/** 24-byte ASCII tag — must match the contract's bytes24 literal. */
+export const ROOT_TAG = new TextEncoder().encode("CRISP_QES_OPRF_ROOT_V2.1");
+if (ROOT_TAG.length !== 24) {
+    throw new Error("ROOT_TAG must be exactly 24 bytes");
+}
+
 export interface RootUpdate {
     oldRoot: bigint;
     newRoot: bigint;
-    /** Commitments appended in this update (always length 1 for the demo). */
-    newCommitments: bigint[];
-    chainId: number;
-    /** EnrollmentRegistry deployment address. */
-    enrollmentRegistry: `0x${string}`;
+    leafIndex: number;
 }
-
-const ETH_PREFIX = new TextEncoder().encode("\x19Ethereum Signed Message:\n32");
 
 function bigintToHex32(v: bigint): `0x${string}` {
     if (v < 0n) throw new Error("bigintToHex32: negative");
@@ -58,49 +66,24 @@ function bigintToHex32(v: bigint): `0x${string}` {
 }
 
 /**
- * Hash the per-update commitments list exactly as the registry will.
+ * Reconstruct the 32-byte digest the contract's `ecrecover` will see.
  *
- *   keccak256(abi.encodePacked(newCommitments))   // tight, no length prefix
- *
- * Tight packing matches Solidity `keccak256(abi.encodePacked(bytes32[]))`,
- * which is what the team-lead spec uses; the registry implementation
- * computes the same hash from calldata.
+ * Implemented with viem's `encodePacked` so the byte layout matches
+ * `abi.encodePacked(bytes24, bytes32, bytes32, uint256)` exactly — we
+ * sanity-test this against the contract's `previewDigest` view in the
+ * integration step.
  */
-export function hashCommitmentList(newCommitments: bigint[]): `0x${string}` {
-    const items = newCommitments.map(bigintToHex32);
-    // encodePacked with a bytes32[] is just byte concatenation.
-    return keccak256(
-        encodePacked(["bytes32[]"], [items as readonly `0x${string}`[]]),
-    );
-}
-
-/** Compute the inner ABI-encoded digest the citizen / registry verify. */
-export function innerDigest(u: RootUpdate): `0x${string}` {
-    const commitmentsHash = hashCommitmentList(u.newCommitments);
-    const encoded = encodeAbiParameters(
+export function rootUpdateDigest(u: RootUpdate): Uint8Array {
+    const packed = encodePacked(
+        ["bytes24", "bytes32", "bytes32", "uint256"],
         [
-            { type: "bytes32" },
-            { type: "bytes32" },
-            { type: "bytes32" },
-            { type: "uint256" },
-            { type: "address" },
-        ],
-        [
+            bytesToHex(ROOT_TAG) as `0x${string}`,
             bigintToHex32(u.oldRoot),
             bigintToHex32(u.newRoot),
-            commitmentsHash,
-            BigInt(u.chainId),
-            u.enrollmentRegistry,
+            BigInt(u.leafIndex),
         ],
     );
-    return keccak256(encoded);
-}
-
-/** Apply EIP-191 personal_sign wrapping. */
-export function ethSignedDigest(inner: `0x${string}`): Uint8Array {
-    const innerBytes = hexToBytes(inner);
-    const wrapped = concat([ETH_PREFIX, innerBytes]);
-    return keccak_256(wrapped);
+    return hexToBytes(keccak256(packed));
 }
 
 export class Attester {
@@ -124,20 +107,16 @@ export class Attester {
     }
 
     /**
-     * Produce the 65-byte EIP-191-wrapped signature
-     * `r (32) || s (32) || v (1 ∈ {27, 28})`.
+     * Produce the 65-byte recoverable signature
+     * `r (32) || s (32) || v (1 ∈ {27, 28})` the contract expects.
      *
-     * Also returns the inner digest so the client can submit it to the
-     * registry directly without recomputing.
+     * Returns the inner digest alongside so the client can submit it to
+     * the registry without recomputing.
      */
-    sign(u: RootUpdate): {
-        sig: `0x${string}`;
-        innerDigest: `0x${string}`;
-    } {
-        const inner = innerDigest(u);
-        const ethDigest = ethSignedDigest(inner);
+    sign(u: RootUpdate): { sig: `0x${string}`; digest: `0x${string}` } {
+        const d = rootUpdateDigest(u);
         // @noble/curves returns low-s by default (EIP-2 compliant).
-        const sig = secp256k1.sign(ethDigest, this.privateKey);
+        const sig = secp256k1.sign(d, this.privateKey);
         const r = pad(toHex(sig.r), { size: 32 });
         const s = pad(toHex(sig.s), { size: 32 });
         const recovery =
@@ -146,7 +125,7 @@ export class Attester {
         const vHex = v.toString(16).padStart(2, "0");
         return {
             sig: `${r}${s.slice(2)}${vHex}` as `0x${string}`,
-            innerDigest: inner,
+            digest: bytesToHex(d) as `0x${string}`,
         };
     }
 }

@@ -238,12 +238,10 @@ export async function buildApp(
                 .send({ error: "AlreadyEnrolled", commitment });
         }
 
-        const { sig: attesterSig, innerDigest: digest } = attester.sign({
+        const { sig: attesterSig, digest } = attester.sign({
             oldRoot: append.oldRoot,
             newRoot: append.newRoot,
-            newCommitments: [observed],
-            chainId: cfg.chainId,
-            enrollmentRegistry: cfg.enrollmentRegistry,
+            leafIndex: append.leafIndex,
         });
         store.kvSet("current_root", bigintToHex32(append.newRoot));
 
@@ -253,12 +251,11 @@ export async function buildApp(
             merklePathIndices: append.indices,
             oldRoot: bigintToHex32(append.oldRoot),
             newRoot: bigintToHex32(append.newRoot),
-            // Exactly the calldata the client passes to
-            // EnrollmentRegistry.updateRoot(newRoot, newCommitments, sig).
-            newCommitments: [commitment],
+            // Calldata for `EnrollmentRegistry.updateRoot(newRoot, leafIndex, sig)`.
             attesterSig,
             attesterAddr: attester.address,
             attesterDigest: digest,
+            // Diagnostic / UX extras — not consumed by the contract call.
             chainId: cfg.chainId,
             enrollmentRegistry: cfg.enrollmentRegistry,
         });
