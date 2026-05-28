@@ -1,0 +1,31 @@
+app = "crisp-qes-v2-web"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+  # NOTE: addresses + URLs marked TBD are filled in by tasks N2/N3/N5.
+  # The build still succeeds with the placeholders — they just produce a
+  # non-functional integration until the deps land.
+  [build.args]
+    VITE_CHAIN_ID = "84532"
+    VITE_RPC_URL = "https://sepolia.base.org"
+    VITE_OPRF_URL = "https://crisp-qes-v2-oprf.fly.dev"
+    VITE_ENROLLMENT_REGISTRY = "0x0000000000000000000000000000000000000000"
+    VITE_PETITION_REGISTRY_V2 = "0x0000000000000000000000000000000000000000"
+    VITE_RELAYER_URL = "https://crisp-qes-v2-relayer.fly.dev"
+    VITE_CIRCUIT_URL = "/crisp_qes_v2_circuit.json"
+    VITE_BLOCK_EXPLORER = "https://sepolia.basescan.org"
+    VITE_WALLETCONNECT_PROJECT_ID = "33a263ffda20d72b289cf92b369cfa47"
+
+[http_service]
+  internal_port = 80
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

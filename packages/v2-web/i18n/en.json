@@ -1,0 +1,210 @@
+{
+    "meta": {
+        "lang": "en",
+        "languageName": "English",
+        "languageNameOther": "Українська"
+    },
+    "app": {
+        "name": "CRISP-QES v2",
+        "tagline": "Enroll once, sign in seconds. No re-issuing your QES on every click, no RNOKPP on-chain.",
+        "issue": "v2.1 prototype",
+        "footnote": "Independent open-source client. Not an official Diia service. Demo runs a single-node ciphernode; not production."
+    },
+    "nav": {
+        "petitions": "Petitions",
+        "enroll": "Enroll",
+        "recover": "Recover"
+    },
+    "landing": {
+        "lede": "v2.1 splits identification from signing. Enrollment with a Diia QES + Passkey happens once. After that, every petition signature is just a Passkey tap — no fresh QES, no identity reveal. The chain sees a commitment, never an RNOKPP; the guarantee is still 'one RNOKPP, one vote'.",
+        "sectionGuarantees": "What v2 guarantees",
+        "sectionLimits": "What this demo does not yet guarantee",
+        "guarantees": [
+            "The Diia QES handshake is a one-time event. All subsequent signing is a single Passkey tap — no per-document KEP re-issue.",
+            "Your Diia certificate and RNOKPP are seen only by your browser and the ciphernode committee. The blockchain stores a 32-byte commitment with no link to your identity.",
+            "One RNOKPP yields one commitment. Re-enrolling the same RNOKPP is rejected by the ciphernode committee before the chain even sees it.",
+            "Each signature emits a deterministic nullifier over (commitment, petition). One vote per petition is guaranteed by construction."
+        ],
+        "limits": [
+            "This demo runs the ciphernode as a single server, not a 5-of-7 committee. A compromised admin of that single server could mount a Sybil attack. In production this trust is split across seven independent operators via TSS.",
+            "Proof generation runs in your browser in ~5–10 seconds (target). A modern device with SharedArrayBuffer and WebAuthn PRF support is required.",
+            "The BIP-39 mnemonic is shown once at enrollment. Save it — without it and without a synced Passkey, recovery is only possible after the next epoch.",
+            "Vote tallying is transparent in this demo. v2.2 will add FHE-aggregated ciphertexts: per-vote counts will be encrypted, and only the final result will be revealed after the deadline."
+        ],
+        "cta": "Browse petitions"
+    },
+    "list": {
+        "heading": "Open petitions",
+        "empty": "No petitions yet.",
+        "loading": "Loading petitions…",
+        "error": "Could not read the petition registry.",
+        "card": {
+            "id": "Petition #{{id}}",
+            "deadline": "Deadline",
+            "threshold": "Threshold",
+            "count": "Votes",
+            "yesNo": "Yes / No",
+            "yesNoAbstain": "Yes / No / Abstain",
+            "signature": "Signature",
+            "mode": "Mode",
+            "of": "of",
+            "creator": "Created by",
+            "sign": "Vote"
+        },
+        "status": {
+            "Open": "Open",
+            "Closed": "Closed",
+            "ThresholdReached": "Threshold reached",
+            "Unknown": "Unknown"
+        }
+    },
+    "enroll": {
+        "heading": "v2 enrollment",
+        "intro": "Done once. You prove your identity with a Diia QES, bind it to a Passkey on this device, and from then on every signature is a sub-second tap — no fresh KEP.",
+        "back": "Back to petitions",
+        "steps": {
+            "upload": "1. Upload Diia QES",
+            "passkey": "2. Create Passkey",
+            "oprf": "3. OPRF + commitment",
+            "register": "4. Register with committee",
+            "backup": "5. Recovery mnemonic"
+        },
+        "upload": {
+            "title": "Diia QES (.p7s)",
+            "intro": "Upload the file the Diia app produced under «Накласти КЕП». The file is needed for one thing: to prove to the ciphernode committee that you hold a valid RNOKPP. The RNOKPP itself never leaves your browser in the clear.",
+            "wrongPrefix": "Not a Diia QES — subjectSerial does not start with TINUA-.",
+            "parseError": "Failed to parse .p7s: {{detail}}",
+            "parsed": "File parsed successfully"
+        },
+        "passkey": {
+            "title": "Passkey on this device",
+            "intro": "We'll create a Passkey with the PRF extension. The authenticator (Face ID, Touch ID, security key) syncs via iCloud / Google / Microsoft, so losing this device doesn't lose your Passkey.",
+            "create": "Create Passkey",
+            "creating": "Waiting for the authenticator…",
+            "created": "Passkey created. PRF extension is active.",
+            "error": "Passkey creation failed: {{detail}}",
+            "unsupported": "This browser or device doesn't support WebAuthn PRF. Try Chrome, Safari, Firefox, or Edge."
+        },
+        "oprf": {
+            "title": "Compute the commitment via the ciphernode",
+            "intro": "Your browser hashes the RNOKPP into a ristretto255 point, blinds it with a random scalar, and sends it to the ciphernode. The committee returns its share plus a DLEQ proof; the browser unblinds and obtains the deterministic 32-byte commitment.",
+            "running": "Blinding RNOKPP and contacting the ciphernode…",
+            "verifyingProof": "Verifying the ciphernode's DLEQ proof…",
+            "dleqInvalid": "DLEQ proof did not verify — the ciphernode may have returned an incorrect value. Try again.",
+            "commit": "Commitment",
+            "secret": "Secret (private)",
+            "error": "OPRF error: {{detail}}"
+        },
+        "register": {
+            "title": "Register in the Merkle commitment",
+            "intro": "The ciphernode appends your commitment to the Merkle tree and signs the new root. You then submit that signature to EnrollmentRegistry — for the demo via WalletConnect; in production a relayer does it without your wallet.",
+            "running": "Waiting for the ciphernode response…",
+            "alreadyEnrolled": "This RNOKPP is already enrolled. v2 forbids Sybil — that's the whole point.",
+            "submit": "Confirm the transaction in your wallet",
+            "submitting": "Signing in wallet…",
+            "mining": "Waiting for confirmation…",
+            "newRoot": "New root",
+            "leafIndex": "Position in the tree",
+            "error": "Registration error: {{detail}}"
+        },
+        "backup": {
+            "title": "Recovery mnemonic (BIP-39)",
+            "intro": "These 24 words let you recover your identity on a different device — even without your Passkey. Write them down and store them safely. We do NOT store this mnemonic: lose it and lose your Passkey, and you'll have to wait for the next epoch to re-enroll.",
+            "show": "Reveal mnemonic",
+            "hide": "Hide",
+            "saved": "I've written it down — finish enrollment",
+            "warning": "Never share these words. No representative of Diia, the ciphernode, or this app will ever ask for them."
+        },
+        "done": {
+            "title": "Enrollment complete",
+            "body": "Your commitment is in the tree and the mnemonic is saved. You can now sign any open petition in seconds.",
+            "goto": "To petitions"
+        }
+    },
+    "sign": {
+        "heading": "Signing petition #{{id}}",
+        "back": "Back to petitions",
+        "steps": {
+            "select": "1. Pick a vote",
+            "unlock": "2. Unlock Passkey",
+            "prove": "3. Zero-knowledge proof",
+            "submit": "4. Submit"
+        },
+        "vote": {
+            "title": "How do you vote?",
+            "intro": "Ballot mode: {{mode}}.",
+            "yes": "Yes",
+            "no": "No",
+            "abstain": "Abstain",
+            "signOnly": "Sign",
+            "missingEnrollment": "No enrollment on this device. Run «Enroll» or recover from your mnemonic."
+        },
+        "unlock": {
+            "title": "Unlock your Passkey",
+            "intro": "The authenticator returns a PRF output we use to decrypt the OPRF output and the Merkle membership proof from local storage. This is the only moment your browser handles sensitive material.",
+            "start": "Confirm Passkey",
+            "running": "Waiting for the authenticator…",
+            "error": "Unlock failed: {{detail}}",
+            "ok": "Unlocked — continue."
+        },
+        "prove": {
+            "title": "Generate the proof",
+            "intro": "Your browser computes the ZK proof in ~5–10 seconds. Unlike v1, there's no 30-second RSA check inside the circuit — only a small Merkle membership and a nullifier.",
+            "start": "Generate proof",
+            "waiting": "Waiting for the preceding steps.",
+            "needs": {
+                "vote": "Vote chosen",
+                "unlock": "Passkey unlocked",
+                "root": "Current root loaded"
+            },
+            "stages": {
+                "initWorker": "Initialising worker…",
+                "loadingCircuit": "Loading circuit…",
+                "buildWitness": "Building witness…",
+                "proving": "Generating proof…",
+                "done": "Proof ready"
+            },
+            "error": "Error during proof generation: {{detail}}"
+        },
+        "submit": {
+            "intro": "Proof is ready. Submit your vote via the v2 relayer.",
+            "send": "Submit vote",
+            "sending": "Submitting…",
+            "errors": {
+                "NullifierAlreadyUsed": "You have already voted on this petition.",
+                "PetitionClosed": "The petition's deadline has passed.",
+                "InvalidProof": "ZK proof did not verify.",
+                "InvalidTrustRoot": "enrollment-root mismatch versus contract state.",
+                "InvalidVote": "This vote value is not allowed for the petition's mode.",
+                "Network": "Network error contacting the relayer.",
+                "Unknown": "Unknown relayer error."
+            }
+        }
+    },
+    "recover": {
+        "heading": "Account recovery",
+        "intro": "Enter the 24-word BIP-39 mnemonic you saved at enrollment. We'll recompute your commitment, ask the ciphernode for an up-to-date Merkle path, and bind the result to a fresh Passkey on this device.",
+        "back": "Back to list",
+        "mnemonic": "Mnemonic (24 words, space-separated)",
+        "invalidMnemonic": "Mnemonic is invalid. Check word order and typos.",
+        "restore": "Restore",
+        "restoring": "Looking up your commitment in the committee…",
+        "notFound": "No commitment matches this mnemonic in the ciphernode. It may have been rolled into a new epoch.",
+        "ok": "Access restored. Create a new Passkey to finish.",
+        "newPasskey": "Create a new Passkey",
+        "error": "Error: {{detail}}"
+    },
+    "done": {
+        "heading": "Vote counted",
+        "lede": "Your vote on petition #{{id}} is in the contract.",
+        "tx": "Transaction",
+        "viewOnExplorer": "View on Basescan",
+        "signAnother": "Vote on another petition"
+    },
+    "common": {
+        "copy": "Copy",
+        "copied": "Copied",
+        "cancel": "Cancel",
+        "continue": "Continue"
+    }
+}

@@ -19,5 +19,10 @@
     "relayer:dev": "pnpm --filter @crisp-qes/relayer dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   }
 }

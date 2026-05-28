@@ -1,0 +1,5 @@
+{
+  "_note": "Placeholder. The real ACIR artifact from packages/v2-circuit/target/ replaces this file at integration time (see task #30 deliverable list).",
+  "bytecode": "",
+  "abi": { "parameters": [], "return_type": null, "error_types": {} }
+}
