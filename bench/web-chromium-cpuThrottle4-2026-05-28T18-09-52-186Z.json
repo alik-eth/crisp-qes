@@ -1,0 +1,98 @@
+{
+  "commit": "72add5b",
+  "host": {
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.7827.3 Safari/537.36",
+    "hardwareConcurrency": 16,
+    "crossOriginIsolated": true,
+    "deviceMemory": 32
+  },
+  "target": "browser",
+  "browser": "chromium",
+  "device": null,
+  "cpuThrottle": 4,
+  "variant": "chromium",
+  "n": 2,
+  "runs": [
+    {
+      "run": 1,
+      "totalMs": 70363.56999999285,
+      "circuitFetchMs": 483.39500001072884,
+      "proveMs": 69880.17499998212,
+      "proofBytes": 10176,
+      "memory": {
+        "jsHeapSizeLimitMb": 3760,
+        "totalJSHeapSizeMb": 10,
+        "usedJSHeapSizeMb": 10
+      },
+      "events": [
+        {
+          "at": 1583.3700000047684,
+          "stage": "loadingCircuit"
+        },
+        {
+          "at": 1981.8600000143051,
+          "stage": "proving"
+        },
+        {
+          "at": 71862.03499999642,
+          "stage": "done"
+        }
+      ],
+      "procMem": {
+        "jsHeapUsedMb": 3.5,
+        "jsHeapTotalMb": 4.3,
+        "processMemMb": null
+      }
+    },
+    {
+      "run": 2,
+      "totalMs": 70265.21999999881,
+      "circuitFetchMs": 433.5300000011921,
+      "proveMs": 69831.68999999762,
+      "proofBytes": 10176,
+      "memory": {
+        "jsHeapSizeLimitMb": 3760,
+        "totalJSHeapSizeMb": 10,
+        "usedJSHeapSizeMb": 10
+      },
+      "events": [
+        {
+          "at": 2870.089999973774,
+          "stage": "loadingCircuit"
+        },
+        {
+          "at": 3002.435000002384,
+          "stage": "proving"
+        },
+        {
+          "at": 72834.125,
+          "stage": "done"
+        }
+      ],
+      "procMem": {
+        "jsHeapUsedMb": 3.4,
+        "jsHeapTotalMb": 4.3,
+        "processMemMb": null
+      }
+    }
+  ],
+  "proveMs": {
+    "n": 2,
+    "mean": 69855.93,
+    "median": 69855.93,
+    "min": 69831.69,
+    "max": 69880.17,
+    "stddev": 24.24
+  },
+  "totalMs": {
+    "n": 2,
+    "mean": 70314.39,
+    "median": 70314.39,
+    "min": 70265.22,
+    "max": 70363.57,
+    "stddev": 49.17
+  },
+  "peakUsedJSHeapMb": 10,
+  "proofBytes": 10176,
+  "timestamp": "2026-05-28T18:09:52.186Z"
+}

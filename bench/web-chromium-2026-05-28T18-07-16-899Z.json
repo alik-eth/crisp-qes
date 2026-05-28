@@ -1,0 +1,129 @@
+{
+  "commit": "72add5b",
+  "host": {
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.7827.3 Safari/537.36",
+    "hardwareConcurrency": 16,
+    "crossOriginIsolated": true,
+    "deviceMemory": 32
+  },
+  "target": "browser",
+  "browser": "chromium",
+  "device": null,
+  "cpuThrottle": 1,
+  "variant": "chromium",
+  "n": 3,
+  "runs": [
+    {
+      "run": 1,
+      "totalMs": 80334.03499999642,
+      "circuitFetchMs": 605.330000013113,
+      "proveMs": 79728.70499998331,
+      "proofBytes": 10176,
+      "memory": {
+        "jsHeapSizeLimitMb": 3760,
+        "totalJSHeapSizeMb": 10,
+        "usedJSHeapSizeMb": 10
+      },
+      "events": [
+        {
+          "at": 3007.189999997616,
+          "stage": "loadingCircuit"
+        },
+        {
+          "at": 3367.939999997616,
+          "stage": "proving"
+        },
+        {
+          "at": 83096.64499998093,
+          "stage": "done"
+        }
+      ],
+      "procMem": {
+        "jsHeapUsedMb": 3.4,
+        "jsHeapTotalMb": 4.3,
+        "processMemMb": null
+      }
+    },
+    {
+      "run": 2,
+      "totalMs": 85134.58500000834,
+      "circuitFetchMs": 723.3350000083447,
+      "proveMs": 84411.25,
+      "proofBytes": 10176,
+      "memory": {
+        "jsHeapSizeLimitMb": 3760,
+        "totalJSHeapSizeMb": 10,
+        "usedJSHeapSizeMb": 10
+      },
+      "events": [
+        {
+          "at": 1504.6099999845028,
+          "stage": "loadingCircuit"
+        },
+        {
+          "at": 1766.905000001192,
+          "stage": "proving"
+        },
+        {
+          "at": 86178.15500000119,
+          "stage": "done"
+        }
+      ],
+      "procMem": {
+        "jsHeapUsedMb": 4.9,
+        "jsHeapTotalMb": 5.8,
+        "processMemMb": null
+      }
+    },
+    {
+      "run": 3,
+      "totalMs": 66844.13000002503,
+      "circuitFetchMs": 99.40000000596046,
+      "proveMs": 66744.73000001907,
+      "proofBytes": 10176,
+      "memory": {
+        "jsHeapSizeLimitMb": 3760,
+        "totalJSHeapSizeMb": 10,
+        "usedJSHeapSizeMb": 10
+      },
+      "events": [
+        {
+          "at": 259.0450000166893,
+          "stage": "loadingCircuit"
+        },
+        {
+          "at": 312.2199999988079,
+          "stage": "proving"
+        },
+        {
+          "at": 67056.95000001788,
+          "stage": "done"
+        }
+      ],
+      "procMem": {
+        "jsHeapUsedMb": 4.7,
+        "jsHeapTotalMb": 5.8,
+        "processMemMb": null
+      }
+    }
+  ],
+  "proveMs": {
+    "n": 3,
+    "mean": 76961.56,
+    "median": 79728.7,
+    "min": 66744.73,
+    "max": 84411.25,
+    "stddev": 7473.03
+  },
+  "totalMs": {
+    "n": 3,
+    "mean": 77437.58,
+    "median": 80334.03,
+    "min": 66844.13,
+    "max": 85134.59,
+    "stddev": 7742.84
+  },
+  "peakUsedJSHeapMb": 10,
+  "proofBytes": 10176,
+  "timestamp": "2026-05-28T18:07:16.899Z"
+}

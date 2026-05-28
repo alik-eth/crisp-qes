@@ -29,6 +29,16 @@ pnpm circuit:check
 pnpm contracts:build
 ```
 
+## Performance
+
+Measured 2026-05-28 on a 16-vCPU Linux box; full methodology + tables in
+[`bench/results-2026-05-28.md`](bench/results-2026-05-28.md).
+
+- Proof generation, **desktop Chromium WASM** (live web app, n=3): **~80 s** median (76,962 ± 7,473 ms)
+- Proof generation, **native Node + bb.js** (threads=auto, n=5): **~14.5 s** median, peak RSS ~350 MB
+- Proof size on the wire: **10,176 bytes**, constant per signature
+- **On-chain signature cost on Base Sepolia: 4,242,422 gas ≈ $0.09 per signature** at ETH = $3,500 (verifier 63 %, calldata 4.4 %, two RIP-7212 P-256 verifies + storage < 1 %)
+
 ## Status
 
 MVP scaffolding in progress. See spec §5 for in-scope items.

@@ -40,3 +40,7 @@ fixtures/diia/
 # Ad-hoc screenshots taken during reviews
 review-*.png
 live-*.png
+
+# Bench dir local install
+bench/node_modules/
+bench/package-lock.json

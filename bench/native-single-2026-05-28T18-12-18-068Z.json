@@ -1,0 +1,69 @@
+{
+  "commit": "72add5b",
+  "host": {
+    "node": "v24.13.0",
+    "platform": "linux",
+    "cpus": 16,
+    "memGb": 67.3
+  },
+  "target": "node",
+  "variant": "single",
+  "threads": "1",
+  "n": 5,
+  "runs": [
+    {
+      "run": 1,
+      "witnessMs": 1453.922606,
+      "proveMs": 23178.286483,
+      "proofBytes": 10176,
+      "rssMb": 245.592064
+    },
+    {
+      "run": 2,
+      "witnessMs": 636.96104,
+      "proveMs": 21542.994676,
+      "proofBytes": 10176,
+      "rssMb": 300.752896
+    },
+    {
+      "run": 3,
+      "witnessMs": 617.871984,
+      "proveMs": 19401.743377,
+      "proofBytes": 10176,
+      "rssMb": 320.876544
+    },
+    {
+      "run": 4,
+      "witnessMs": 506.265242,
+      "proveMs": 19447.605968,
+      "proofBytes": 10176,
+      "rssMb": 332.140544
+    },
+    {
+      "run": 5,
+      "witnessMs": 525.010702,
+      "proveMs": 26161.257402,
+      "proofBytes": 10176,
+      "rssMb": 289.85344
+    }
+  ],
+  "peakRssMb": 369.5,
+  "witnessMs": {
+    "n": 5,
+    "mean": 748.01,
+    "median": 617.87,
+    "min": 506.27,
+    "max": 1453.92,
+    "stddev": 356.58
+  },
+  "proveMs": {
+    "n": 5,
+    "mean": 21946.38,
+    "median": 21542.99,
+    "min": 19401.74,
+    "max": 26161.26,
+    "stddev": 2536.32
+  },
+  "proofBytes": 10176,
+  "timestamp": "2026-05-28T18:12:18.068Z"
+}
