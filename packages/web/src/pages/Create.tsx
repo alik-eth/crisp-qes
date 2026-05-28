@@ -176,9 +176,14 @@ export function Create({ onBack, onCreated }: Props) {
             setPhase({ kind: "submitting" });
             const fullText = toHex(stringToBytes(text));
 
-            const txHash = await session.client.writeContract({
+            // Simulate first against our public RPC. This (a) validates the
+            // call and surfaces named reverts before the wallet popup, and
+            // (b) produces a proper gas estimate so MetaMask doesn't fall
+            // back to a too-low default when its built-in Base Sepolia RPC
+            // can't simulate (which fails with "gas provided is too low").
+            const { publicClient } = await import("../lib/chain");
+            const { request } = await publicClient.simulateContract({
                 account: session.address,
-                chain: config.chain,
                 address: config.registry,
                 abi: petitionRegistryAbi,
                 functionName: "createPetition",
@@ -186,12 +191,32 @@ export function Create({ onBack, onCreated }: Props) {
                 value: config.creationDepositWei,
             });
 
+            // Compute a gas estimate with headroom. `request.gas` is set by
+            // simulateContract when the chain supports `eth_estimateGas`; if
+            // it isn't, we fall back to an explicit estimate. Add a 25%
+            // buffer to absorb fullText-size variance and event topic costs.
+            let gas: bigint | undefined = request.gas;
+            if (!gas) {
+                gas = await publicClient.estimateContractGas({
+                    account: session.address,
+                    address: config.registry,
+                    abi: petitionRegistryAbi,
+                    functionName: "createPetition",
+                    args: [fullText, BigInt(deadlineEpoch), thresholdNum],
+                    value: config.creationDepositWei,
+                });
+            }
+            const gasWithBuffer = (gas * 125n) / 100n;
+
+            const txHash = await session.client.writeContract({
+                ...request,
+                gas: gasWithBuffer,
+                account: session.address,
+                chain: config.chain,
+            });
+
             setPhase({ kind: "mining", txHash });
 
-            // Wait for the receipt via the public RPC so we get parsed logs.
-            // We import lazily to avoid pulling waitForTransactionReceipt into
-            // the landing bundle.
-            const { publicClient } = await import("../lib/chain");
             const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
             if (receipt.status !== "success") {
                 setPhase({ kind: "error", message: t("create.errors.txReverted") });
