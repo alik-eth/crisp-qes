@@ -132,13 +132,27 @@ it to `S_i` and to the on-chain enrollment Merkle tree.
 
 ### 2.4 Threat model
 
-| Actor          | Sees                                | Does not see              |
-| -------------- | ----------------------------------- | ------------------------- |
-| Ciphernode i   | blinded input `M`, Diia QES         | RNOKPP, commitment        |
-| Threshold (≥t) | Aggregate count, collision evidence | RNOKPP                    |
-| On-chain       | `commitment`, `enrollment_root`     | RNOKPP, Diia cert, mapping commitment ↔ citizen |
-| Citizen        | own `enrollment_secret`             | k, k_i, others' RNOKPPs   |
-| Eavesdropper   | OPRF transcript                     | Anything plaintext        |
+Note: there is an implicit identity throughout this document —
+`s ≡ commitment ≡ enrollment_secret` — all three names refer to the
+same field element `s = pedersen([N_hi, N_lo], hashIndex=0)`. The
+"enrollment_secret" name is used citizen-side, "commitment" is used
+when referring to the on-chain Merkle leaf, "s" is used in the
+protocol math; they are one value.
+
+The threat surface differs materially between the **v2.1 single-node
+demo** (what ships at grant time) and the **v2.2 threshold rollout**
+(what the grant funds). The table below covers both; see §2.5 for the
+single-node-specific brute-force exposure that the threshold variant
+closes.
+
+| Actor                                | Sees                                | Does not see              |
+| ------------------------------------ | ----------------------------------- | ------------------------- |
+| Ciphernode i (v2.2 threshold)        | blinded input `M`, Diia QES         | RNOKPP, commitment, `N`   |
+| **OPRF service (v2.1 single-node)**  | **`M`, Diia QES, `N`, `commitment`, `k`** | **RNOKPP (but see §2.5: brute-forceable from `N` + `k`)** |
+| Threshold (≥t, v2.2)                 | Aggregate count, collision evidence | RNOKPP                    |
+| On-chain                             | `commitment`, `enrollment_root`     | RNOKPP, Diia cert, mapping commitment ↔ citizen |
+| Citizen                              | own `enrollment_secret`             | k, k_i, others' RNOKPPs   |
+| Eavesdropper                         | OPRF transcript                     | Anything plaintext        |
 
 ### 2.5 Service-key binding (defence against MITM substitution)
 
@@ -158,6 +172,51 @@ Bundle-pinning is the right v2.1 answer because the trust anchor is
 already the Fly deploy — the same boundary that delivers the rest of
 the client. Moving to an on-chain registry is part of the same
 ciphernode-productionisation increment as threshold-OPRF rollout.
+
+#### 2.5.1 v2.1 single-node brute-force exposure (honest disclosure)
+
+The shipping v2.1 demo runs a **single** OPRF node — that node holds
+`k` directly (no Shamir share), and the `/oprf/register` endpoint
+accepts the unblinded OPRF output `N` from the citizen so the service
+can sanity-check `s = pedersen([N_hi, N_lo], 0)` before appending to
+the enrollment tree. The check defends against rogue clients posting
+arbitrary tree leaves, but it has a real privacy cost:
+
+> A malicious single-node operator who holds `k` and observes `N`
+> can recover the citizen's RNOKPP by offline brute force.
+> `N = k · Hash_to_curve(RNOKPP)`; the operator enumerates the
+> ~10¹⁰ RNOKPP space, computes `k · Hash_to_curve(candidate)` for
+> each, and matches against stored `N`. On commodity GPU hardware
+> this is hours-to-days for the full UA citizen base, and fully
+> parallelisable.
+
+**This exposure is intrinsic to single-node OPRF, not a defect of
+the v2.1 implementation.** It is the reason v2.2 ships threshold-OPRF
+with `k` distributed as Shamir shares across a 5-of-7 ciphernode
+committee — no single operator ever holds `k`, so no single operator
+can run the brute-force. The grant scope (§9) funds exactly this
+transition.
+
+Operational mitigations in the v2.1 demo window:
+
+- the OPRF service is operated by the project team only, on a single
+  Fly app, with no third-party access to `k`;
+- the service is explicitly framed in the README and proposal as a
+  **demo of the protocol**, not a production deployment;
+- pilot deployments before v2.2 ships SHOULD restrict `/oprf/register`
+  to a closed cohort and disclose this property to participants.
+
+#### 2.5.2 v2.2 architectural fix (preferred, deferred)
+
+The cleaner long-term fix is to **drop `N` from the `/oprf/register`
+payload entirely** and replace the server-side `s = pedersen([N_hi,
+N_lo], 0)` consistency check with a **citizen-side ZK proof** that
+`s` is consistent with the OPRF transcript `(M, Y, K_pub)` — i.e. that
+the citizen knows an `N` such that `M = N · h(RNOKPP)⁻¹ · G`,
+`Y = k · M` (verified by DLEQ), and `s = pedersen([N_hi, N_lo], 0)`,
+without revealing `N`. Combined with threshold-OPRF, this gives a
+service that learns **only** `(M, Diia QES, s)` — never `N`, never
+`k` in the clear. Scoped for v2.2 alongside threshold rollout.
 
 ### 2.6 Performance budget
 
