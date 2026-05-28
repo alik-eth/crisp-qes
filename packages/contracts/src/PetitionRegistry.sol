@@ -132,7 +132,14 @@ contract PetitionRegistry {
     ///           [2] trust_root
     ///           [3] pubkey_x
     ///           [4] pubkey_y
-    ///           [5] signedAttrsSha256 (also used as the P-256 msg_hash)
+    ///           [5] signedAttrsSha256_hi (high 16 bytes, BE)
+    ///           [6] signedAttrsSha256_lo (low  16 bytes, BE)
+    ///
+    ///         The hi/lo split is required because BN254's prime is below
+    ///         2^254, so a single Field cannot losslessly carry the full
+    ///         256-bit SHA-256 output. Each 128-bit limb is safely inside
+    ///         the field, and we reconstruct the raw `bytes32 msgHash`
+    ///         here before feeding the RIP-7212 P-256 precompile.
     ///
     ///         The Noir proof attests that `(pubkey_x, pubkey_y,
     ///         signedAttrsSha256)` is bound to a Diia cert under the pinned
@@ -162,16 +169,25 @@ contract PetitionRegistry {
         if (block.timestamp > p.deadline) revert PetitionClosed();
         if (hasNullifier[petitionId][nullifier]) revert NullifierAlreadyUsed();
 
-        if (publicInputs.length != 6) revert InvalidProof();
+        if (publicInputs.length != 7) revert InvalidProof();
         if (uint256(publicInputs[0]) != petitionId) revert InvalidProof();
         if (publicInputs[1] != nullifier) revert InvalidProof();
         if (publicInputs[2] != trustRoot) revert InvalidTrustRoot();
         if (uint256(publicInputs[3]) != pubkeyX) revert InvalidProof();
         if (uint256(publicInputs[4]) != pubkeyY) revert InvalidProof();
+        // Each limb must fit in 128 bits so the reconstruction below is
+        // lossless. The circuit guarantees this (be_bytes16_to_field never
+        // sees more than 16 input bytes), but we double-check on-chain so
+        // a buggy or malicious witness cannot smuggle high bits past the
+        // verifier.
+        if (uint256(publicInputs[5]) >> 128 != 0) revert InvalidProof();
+        if (uint256(publicInputs[6]) >> 128 != 0) revert InvalidProof();
 
         if (!verifier.verify(proof, publicInputs)) revert InvalidProof();
 
-        bytes32 msgHash = publicInputs[5];
+        bytes32 msgHash = bytes32(
+            (uint256(publicInputs[5]) << 128) | uint256(publicInputs[6])
+        );
         if (!P256.verify(msgHash, sigR, sigS, pubkeyX, pubkeyY)) {
             revert InvalidSignature();
         }

@@ -1,4 +1,4 @@
-// CAdES `signedAttrs` helpers: SHA-256 binding to the public input slot and
+// CAdES `signedAttrs` helpers: SHA-256 binding to the public input slots and
 // `messageDigest` extraction + petition-binding.
 //
 // The SDK parser surfaces `signedAttrs_bytes` (the canonical `SET` re-tag
@@ -6,9 +6,16 @@
 // the embedded `messageDigest` OCTET STRING *value*. The circuit:
 //
 //   - hashes the first `signed_attrs_len` bytes via SHA-256 and asserts the
-//     result matches the public `signed_attrs_sha256` slot;
+//     128-bit hi/lo limbs match public input slots 5 and 6;
 //   - copies 32 bytes from `signed_attrs_bytes[message_digest_offset..]` and
 //     asserts they equal `sha256(petition_id_be32 || "::" || petition_text_hash)`.
+//
+// The hi/lo split is a workaround for BN254's < 2^254 capacity: a single
+// `Field` cannot losslessly carry a 256-bit SHA-256 output, so the contract
+// would read a mod-p reduced value (~25% bad outcomes). Splitting at 128
+// bits keeps each limb strictly < 2^128 << field modulus, and the contract
+// reconstructs the raw bytes32 by concatenation before feeding the
+// RIP-7212 precompile.
 
 use sha256::sha256_var;
 
@@ -51,16 +58,17 @@ pub fn signed_attrs_hash(
     sha256_var(signed_attrs_bytes, signed_attrs_len)
 }
 
-/// Big-endian byte-array -> Field. Used to convert the SHA-256 digest output
-/// (32 bytes) into the field-typed public-input slot. NOTE: SHA-256 produces
-/// up to 256 bits but BN254 has ~254-bit capacity - values >= field modulus
-/// are reduced mod p both circuit-side and verifier-side, so the equality
-/// check is well-defined inside the circuit. The on-chain P-256 precompile
-/// reads the raw bytes32 (no reduction); see spec note in sec 2.1.
-pub fn be_bytes32_to_field(b: [u8; 32]) -> Field {
+/// Big-endian 16-byte slice -> Field. Each output is strictly < 2^128 and
+/// therefore always strictly less than the BN254 field modulus, so the
+/// circuit / verifier / contract all agree on the same numeric value (no
+/// implicit mod-p reduction).
+///
+/// `offset` indexes into the 32-byte SHA-256 digest; pass 0 for the high
+/// limb and 16 for the low limb.
+pub fn be_bytes16_to_field(b: [u8; 32], offset: u32) -> Field {
     let mut acc: Field = 0;
-    for i in 0..32 {
-        acc = acc * 256 + (b[i] as Field);
+    for i in 0..16 {
+        acc = acc * 256 + (b[offset + i] as Field);
     }
     acc
 }

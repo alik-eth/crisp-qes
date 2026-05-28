@@ -8,9 +8,12 @@
 //   1. The signer's subject_serial begins with the ASCII prefix "TINUA-".
 //   2. The leaf cert's SPKI commits to a value (`spki_commit`) that lies in
 //      the pinned Diia Pedersen-Merkle trust root.
-//   3. SHA-256 of the canonical `signedAttrs` bytes equals the public input
-//      slot 5 (which the contract also feeds to the RIP-7212 P-256
-//      precompile as `msg_hash`).
+//   3. SHA-256 of the canonical `signedAttrs` bytes, split into 128-bit hi
+//      and lo limbs, equals public input slots 5 and 6 (which the contract
+//      concatenates back into the bytes32 it feeds to the RIP-7212 P-256
+//      precompile as `msg_hash`). Splitting at 128 bits keeps each limb
+//      strictly inside the BN254 field range so no implicit mod-p
+//      reduction can desync the circuit from the contract.
 //   4. The `messageDigest` attribute embedded inside `signedAttrs` equals
 //      sha256(petition_id_be32 || "::" || petition_text_hash), pinning the
 //      signature to *this* petition.
@@ -34,7 +37,8 @@
 //   [2] trust_root
 //   [3] pubkey_x
 //   [4] pubkey_y
-//   [5] signedAttrsSha256 (also the P-256 msg_hash)
+//   [5] signedAttrsSha256_hi  (high 16 bytes of sha256, BE-packed)
+//   [6] signedAttrsSha256_lo  (low  16 bytes of sha256, BE-packed)
 
 mod cades;
 mod merkle;
@@ -43,7 +47,7 @@ mod spki;
 use std::hash::pedersen_hash;
 
 use cades::{
-    be_bytes32_to_field, extract_digest, inner_message_digest, signed_attrs_hash,
+    be_bytes16_to_field, extract_digest, inner_message_digest, signed_attrs_hash,
     SIGNED_ATTRS_MAX_BYTES,
 };
 use merkle::compute_root;
@@ -65,7 +69,8 @@ fn main(
     trust_root: pub Field,
     pubkey_x: pub Field,
     pubkey_y: pub Field,
-    signed_attrs_sha256: pub Field,
+    signed_attrs_sha256_hi: pub Field,
+    signed_attrs_sha256_lo: pub Field,
 
     // ---- private ----
     subject_serial: [u8; SUBJECT_SERIAL_LEN],
@@ -89,10 +94,11 @@ fn main(
     let computed_root = compute_root::<MERKLE_DEPTH>(leaf, merkle_path, merkle_path_indices);
     assert(computed_root == trust_root);
 
-    // 4. SHA-256 of signedAttrs == public input slot 5.
+    // 4. SHA-256 of signedAttrs == public input slots 5 (hi) and 6 (lo).
     assert(signed_attrs_len <= SIGNED_ATTRS_MAX_BYTES);
     let sa_digest = signed_attrs_hash(signed_attrs_bytes, signed_attrs_len);
-    assert(be_bytes32_to_field(sa_digest) == signed_attrs_sha256);
+    assert(be_bytes16_to_field(sa_digest, 0) == signed_attrs_sha256_hi);
+    assert(be_bytes16_to_field(sa_digest, 16) == signed_attrs_sha256_lo);
 
     // 5. messageDigest binding to (petition_id, petition_text_hash).
     //    The 32-byte OCTET STRING value lives at `message_digest_offset` in

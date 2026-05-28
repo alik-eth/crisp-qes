@@ -30,6 +30,11 @@ contract PetitionRegistryTest is Test {
     uint256 constant SIG_S    = uint256(0xDECAF);
     bytes32 constant MSG_HASH = bytes32(uint256(0xFEED));
 
+    function _splitHash(bytes32 h) internal pure returns (bytes32 hi, bytes32 lo) {
+        hi = bytes32(uint256(h) >> 128);
+        lo = bytes32(uint256(h) & ((uint256(1) << 128) - 1));
+    }
+
     address creator = address(0xC0DE);
 
     function setUp() public {
@@ -70,13 +75,23 @@ contract PetitionRegistryTest is Test {
         pure
         returns (bytes32[] memory pi)
     {
-        pi = new bytes32[](6);
+        return _publicInputsFor(id, nullifier, MSG_HASH);
+    }
+
+    function _publicInputsFor(uint256 id, bytes32 nullifier, bytes32 msgHash)
+        internal
+        pure
+        returns (bytes32[] memory pi)
+    {
+        (bytes32 hi, bytes32 lo) = _splitHash(msgHash);
+        pi = new bytes32[](7);
         pi[0] = bytes32(id);
         pi[1] = nullifier;
         pi[2] = TRUST_ROOT;
         pi[3] = bytes32(PUBKEY_X);
         pi[4] = bytes32(PUBKEY_Y);
-        pi[5] = MSG_HASH;
+        pi[5] = hi;
+        pi[6] = lo;
     }
 
     function _sign(uint256 id, bytes32 nul) internal {
@@ -223,5 +238,47 @@ contract PetitionRegistryTest is Test {
         vm.prank(creator);
         vm.expectRevert(PetitionRegistry.UnknownPetition.selector);
         registry.withdrawDeposit(999);
+    }
+
+    // ---------- hi/lo limb reconstruction ----------
+
+    /// @dev Exercises the failure mode that motivated the split: a SHA-256
+    ///      digest whose top bit is set is larger than the BN254 prime and
+    ///      would have round-tripped to a different value through a single
+    ///      Field public input. With the hi/lo split, slot 5 carries the
+    ///      raw high 128 bits and slot 6 the raw low 128 bits, both well
+    ///      under 2^128 << field modulus. The contract must reassemble the
+    ///      original bytes32 byte-for-byte and feed it to the precompile.
+    function test_hi_lo_roundtrip_with_top_bit_set() public {
+        bytes32 highMsgHash = bytes32(
+            0xFFEEDDCCBBAA99887766554433221100FFEEDDCCBBAA99887766554433221100
+        );
+        uint256 id = _create(3);
+        bytes32 nul = bytes32(uint256(42));
+
+        // The precompile mock must see the *reassembled* msgHash, not the
+        // truncated/limb form.
+        _mockP256(highMsgHash, SIG_R, SIG_S, PUBKEY_X, PUBKEY_Y, true);
+
+        registry.signPetition(
+            id,
+            nul,
+            PUBKEY_X,
+            PUBKEY_Y,
+            SIG_R,
+            SIG_S,
+            "",
+            _publicInputsFor(id, nul, highMsgHash)
+        );
+        assertEq(registry.signatureCount(id), 1);
+
+        // Sanity: confirm the round-trip identity actually held.
+        (bytes32 hi, bytes32 lo) = _splitHash(highMsgHash);
+        bytes32 rebuilt =
+            bytes32((uint256(hi) << 128) | uint256(lo));
+        assertEq(rebuilt, highMsgHash);
+        // Each limb fits in 128 bits.
+        assertEq(uint256(hi) >> 128, 0);
+        assertEq(uint256(lo) >> 128, 0);
     }
 }
