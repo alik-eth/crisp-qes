@@ -21,17 +21,44 @@ export const enrollmentRegistryAbi = [
     },
     {
         type: "function",
+        name: "leafCount",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [{ name: "", type: "uint256" }],
+    },
+    {
+        type: "function",
+        name: "isCommitmentUsed",
+        stateMutability: "view",
+        inputs: [{ name: "commitment", type: "bytes32" }],
+        outputs: [{ name: "", type: "bool" }],
+    },
+    {
+        type: "function",
+        name: "previewDigest",
+        stateMutability: "view",
+        inputs: [
+            { name: "newRoot", type: "bytes32" },
+            { name: "newCommitments", type: "bytes32[]" },
+        ],
+        outputs: [
+            { name: "inner", type: "bytes32" },
+            { name: "ethSigned", type: "bytes32" },
+        ],
+    },
+    {
+        type: "function",
         name: "updateRoot",
         stateMutability: "nonpayable",
         inputs: [
             { name: "newRoot", type: "bytes32" },
-            { name: "leafIndex", type: "uint256" },
+            { name: "newCommitments", type: "bytes32[]" },
             { name: "signature", type: "bytes" },
         ],
         outputs: [],
     },
     { type: "error", name: "BadSignature", inputs: [] },
-    { type: "error", name: "IndexMismatch", inputs: [] },
+    { type: "error", name: "EmptyBatch", inputs: [] },
     { type: "error", name: "NotAdmin", inputs: [] },
     { type: "error", name: "ZeroAddress", inputs: [] },
 ] as const;

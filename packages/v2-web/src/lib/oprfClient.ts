@@ -11,9 +11,15 @@
 //   POST /oprf/register
 //     body: { commitment: hex32, blindedInputUsed: hex32, unblindedOutput: hex32 }
 //     200:  { leafIndex, merklePath: hex32[20], merklePathIndices: 0|1[20],
-//             oldRoot: hex32, newRoot: hex32, attesterSig: hex, attesterAddr: hex }
+//             oldRoot: hex32, newRoot: hex32, newCommitments: hex32[],
+//             attesterSig: hex, attesterAddr: hex }
 //     400: BadRequest | CommitmentMismatch
 //     409: AlreadyEnrolled
+//
+// `newCommitments` is passed through verbatim to
+// `EnrollmentRegistry.updateRoot(newRoot, newCommitments, signature)`;
+// the attester signs `keccak256(abi.encode(oldRoot, newRoot,
+// keccak256(packed(newCommitments)), chainId, address(this)))`.
 //
 //   GET /enrollment/:commitment/path
 //     200: { leafIndex, merklePath, merklePathIndices, root }
@@ -38,6 +44,12 @@ export interface RegisterResponse {
     merklePathIndices: (0 | 1)[];
     oldRoot: `0x${string}`;
     newRoot: `0x${string}`;
+    /**
+     * Batch passed verbatim to `EnrollmentRegistry.updateRoot`. For a single
+     * enrollment this is `[commitment]`, but we never assume — the OPRF
+     * service decides batch shape and pre-signs `attesterSig` over it.
+     */
+    newCommitments: `0x${string}`[];
     attesterSig: `0x${string}`;
     attesterAddr: `0x${string}`;
 }

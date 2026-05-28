@@ -110,7 +110,7 @@
         },
         "chain": {
             "title": "Confirm the on-chain root update",
-            "intro": "Last step: sign `EnrollmentRegistry.updateRoot(newRoot, leafIndex, attesterSig)` with your own wallet. This updates the tree root in the contract — a one-time action per enrollment. You pay the gas yourself: enrollment is the one moment in the protocol where the audit story is cleaner if the citizen is the on-chain sender (not the relayer).",
+            "intro": "Last step: sign `EnrollmentRegistry.updateRoot(newRoot, newCommitments, attesterSig)` with your own wallet. This updates the tree root in the contract — a one-time action per enrollment. You pay the gas yourself: enrollment is the one moment in the protocol where the audit story is cleaner if the citizen is the on-chain sender (not the relayer).",
             "injectedHint": "Browser extension",
             "walletConnect": "WalletConnect",
             "walletConnectHint": "QR code for a mobile wallet",
@@ -126,7 +126,7 @@
             "error": "On-chain step error: {{detail}}",
             "errors": {
                 "badSignature": "Attester signature does not match the current root.",
-                "indexMismatch": "leafIndex does not match current tree state — someone else likely enrolled in parallel. Try again.",
+                "emptyBatch": "Commitment batch is empty — the ciphernode returned no commitments.",
                 "notAdmin": "Only the admin can perform this action.",
                 "zeroAddress": "Parameter has a zero address.",
                 "userRejected": "Transaction cancelled in the wallet.",

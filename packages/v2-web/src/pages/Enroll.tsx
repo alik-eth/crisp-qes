@@ -95,6 +95,7 @@ export function Enroll({ onBack, onDone }: Props) {
         merklePathIndices: (0 | 1)[];
         leafIndex: number;
         newRoot: `0x${string}`;
+        newCommitments: `0x${string}`[];
         attesterSig: `0x${string}`;
     } | null>(null);
     const [registerBusy, setRegisterBusy] = useState(false);
@@ -169,9 +170,16 @@ export function Enroll({ onBack, onDone }: Props) {
     }
 
     /**
-     * Submit `EnrollmentRegistry.updateRoot(newRoot, leafIndex, attesterSig)`
+     * Submit `EnrollmentRegistry.updateRoot(newRoot, newCommitments, attesterSig)`
      * via the user's wallet. The relayer is intentionally not on this path —
      * enrollment is a one-time, audit-cleaner action signed by the citizen.
+     *
+     * The attester pre-signs the EIP-191-wrapped digest
+     *   inner = keccak256(abi.encode(oldRoot, newRoot,
+     *                                keccak256(packed(newCommitments)),
+     *                                chainId, address(this)))
+     * server-side, so we pass `newCommitments` (and the resulting sig)
+     * through verbatim.
      */
     async function handleChainSubmit() {
         if (!session || !registerResult || !oprfResult || !passkey) return;
@@ -199,7 +207,7 @@ export function Enroll({ onBack, onDone }: Props) {
                 functionName: "updateRoot",
                 args: [
                     registerResult.newRoot,
-                    BigInt(registerResult.leafIndex),
+                    registerResult.newCommitments,
                     registerResult.attesterSig,
                 ],
             });
@@ -212,7 +220,7 @@ export function Enroll({ onBack, onDone }: Props) {
                     functionName: "updateRoot",
                     args: [
                         registerResult.newRoot,
-                        BigInt(registerResult.leafIndex),
+                        registerResult.newCommitments,
                         registerResult.attesterSig,
                     ],
                 });
@@ -359,6 +367,7 @@ export function Enroll({ onBack, onDone }: Props) {
                 merklePathIndices: r.merklePathIndices,
                 leafIndex: r.leafIndex,
                 newRoot: r.newRoot,
+                newCommitments: r.newCommitments,
                 attesterSig: r.attesterSig,
             });
         } catch (e) {
@@ -711,8 +720,8 @@ function friendlyChainError(err: unknown, t: (k: string) => string): string {
             switch (name) {
                 case "BadSignature":
                     return t("enroll.chain.errors.badSignature");
-                case "IndexMismatch":
-                    return t("enroll.chain.errors.indexMismatch");
+                case "EmptyBatch":
+                    return t("enroll.chain.errors.emptyBatch");
                 case "NotAdmin":
                     return t("enroll.chain.errors.notAdmin");
                 case "ZeroAddress":
