@@ -1,0 +1,32 @@
+{
+    "name": "@crisp-qes/v2-oprf",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "main": "dist/index.js",
+    "scripts": {
+        "dev": "tsx watch src/index.ts",
+        "build": "tsc -p tsconfig.json",
+        "start": "node dist/index.js",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@aztec/bb.js": "4.0.0-nightly.20260120",
+        "@crisp-qes/lotl-flattener": "workspace:*",
+        "@crisp-qes/sdk": "workspace:*",
+        "@fastify/cors": "^10.1.0",
+        "@noble/curves": "^1.9.7",
+        "@noble/hashes": "^1.8.0",
+        "better-sqlite3": "^11.5.0",
+        "fastify": "^5.0.0",
+        "viem": "^2.21.0",
+        "zod": "^3.23.0"
+    },
+    "devDependencies": {
+        "@types/better-sqlite3": "^7.6.11",
+        "@types/node": "^22.0.0",
+        "tsx": "^4.19.0",
+        "typescript": "^5.6.0",
+        "vitest": "^2.1.0"
+    }
+}
