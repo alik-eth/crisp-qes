@@ -84,7 +84,6 @@
             "intro": "Upload the file the Diia app produced under «Накласти КЕП». The file is needed for one thing: to prove to the ciphernode committee that you hold a valid RNOKPP. The RNOKPP itself never leaves your browser in the clear.",
             "headline": "Drop your signed .p7s here",
             "hint": "or click to choose a file",
-            "browse": "Choose file",
             "parsing": "Parsing…",
             "wrongPrefix": "Not a Diia QES — subjectSerial does not start with TINUA-.",
             "parseError": "Failed to parse .p7s: {{detail}}",

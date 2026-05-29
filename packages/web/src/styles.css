@@ -149,6 +149,36 @@ button:disabled {
     border-color: var(--accent);
 }
 
+/* Narrow-mobile (iPhone SE 375 px) compression — see R3-2 in
+ * benchmarker's round-2 report. The default masthead wraps to ~165 px
+ * on SE = 25 % of the 667 px viewport gone before any content. Hiding
+ * the tagline + issue-label and dropping the nav font reclaims ~70 px
+ * vertical. Mid-range mobile (≥420 px) and the entire iPhone-14 class
+ * are unaffected. */
+@media (max-width: 419px) {
+    .masthead {
+        gap: 4px;
+        padding-bottom: 12px;
+        margin-bottom: 24px;
+    }
+    .masthead__brand {
+        font-size: 24px;
+    }
+    .masthead__tagline {
+        display: none;
+    }
+    .masthead__meta {
+        font-size: 10px;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    /* The "v2.1 prototype" issue label is metadata, not actionable —
+     * first <span> inside .masthead__meta. Hide on very narrow widths. */
+    .masthead__meta > span:first-child {
+        display: none;
+    }
+}
+
 /* -------------------- section + rules -------------------- */
 
 .rule {

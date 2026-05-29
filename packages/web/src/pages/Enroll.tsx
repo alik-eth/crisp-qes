@@ -463,6 +463,28 @@ export function Enroll({ onBack, onDone }: Props) {
                 {t("enroll.intro")}
             </p>
 
+            {/*
+             * Hoisted primary CTA — same pattern as Landing's RED-3 fix.
+             * The enrollment flow's first user action is downloading the
+             * binding file; without this hoist the action sits at y≈974 px
+             * on iPhone SE (offscreen by 1.46 screens). See R3-1 in
+             * benchmarker's round-2 report.
+             * Auto-hides once downloaded so the user's next signal becomes
+             * "scroll to the upload zone" rather than "this button is still
+             * here, do I tap it again?".
+             */}
+            {!bindingDownloaded ? (
+                <div className="cta-row cta-row--hoisted">
+                    <button
+                        className="btn btn--accent"
+                        type="button"
+                        onClick={handleDownloadBinding}
+                    >
+                        {t("enroll.binding.download")}
+                    </button>
+                </div>
+            ) : null}
+
             <ol className="steps">
                 {(
                     [
