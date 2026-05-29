@@ -21,7 +21,9 @@ bracket_spacing = true
 [rpc_endpoints]
 base_sepolia = "${BASE_SEPOLIA_RPC_URL}"
 base         = "${BASE_RPC_URL}"
+sepolia      = "${SEPOLIA_RPC_URL}"
 
 [etherscan]
 base_sepolia = { key = "${BASESCAN_API_KEY}", chain = 84532 }
 base         = { key = "${BASESCAN_API_KEY}", chain = 8453 }
+sepolia      = { key = "${ETHERSCAN_API_KEY}", chain = 11155111 }

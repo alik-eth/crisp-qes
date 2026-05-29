@@ -23,7 +23,8 @@ export interface OprfConfig {
     /**
      * Chain ID the EnrollmentRegistry is deployed on. Baked into the
      * attester signature digest so a captured sig can't cross forks /
-     * chains. Base Sepolia = 84532 (the v2.1 demo target).
+     * chains. Sepolia = 11155111 (current demo target post Base-Sepolia
+     * retirement); Base Sepolia = 84532 (historical).
      */
     chainId: number;
     /**

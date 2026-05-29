@@ -5,7 +5,7 @@
 // placeholders so `pnpm dev` and `vite build` still succeed; the actual
 // deploy fills these in via `fly.toml [build.args]`.
 
-import { baseSepolia, foundry } from "viem/chains";
+import { baseSepolia, foundry, sepolia } from "viem/chains";
 import type { Chain } from "viem";
 
 const env = import.meta.env;
@@ -22,6 +22,8 @@ function pickChain(id: number): Chain {
     switch (id) {
         case baseSepolia.id:
             return baseSepolia;
+        case sepolia.id:
+            return sepolia;
         case foundry.id:
             return foundry;
         default:
