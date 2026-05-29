@@ -131,7 +131,7 @@
             "wallet": "Wallet",
             "chain": "Network",
             "disconnect": "Disconnect",
-            "wrongChain": "Switch your wallet to Base Sepolia.",
+            "wrongChain": "Switch your wallet to Ethereum Sepolia.",
             "submit": "Sign updateRoot in wallet",
             "signing": "Signing in wallet…",
             "mining": "Waiting for confirmation…",
@@ -233,7 +233,7 @@
         "heading": "Vote counted",
         "lede": "Your vote on petition #{{id}} is in the contract.",
         "tx": "Transaction",
-        "viewOnExplorer": "View on Basescan",
+        "viewOnExplorer": "View on Etherscan",
         "signAnother": "Vote on another petition"
     },
     "common": {

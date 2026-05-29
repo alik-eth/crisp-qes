@@ -72,7 +72,10 @@ export async function submitSignature(
     };
 }
 
-export function basescanTxUrl(txHash: string): string {
+// Renamed from `basescanTxUrl` post-#61 cutover (Base Sepolia →
+// Ethereum Sepolia). The body always read `config.blockExplorerUrl`
+// dynamically — only the symbol was brand-leaking.
+export function explorerTxUrl(txHash: string): string {
     if (!config.blockExplorerUrl) return "";
     const base = config.blockExplorerUrl.replace(/\/$/, "");
     return `${base}/tx/${txHash}`;

@@ -131,7 +131,7 @@
             "wallet": "Гаманець",
             "chain": "Мережа",
             "disconnect": "Від'єднати",
-            "wrongChain": "Перемкніться у Base Sepolia.",
+            "wrongChain": "Перемкніться у Ethereum Sepolia.",
             "submit": "Підписати updateRoot у гаманці",
             "signing": "Підписання у гаманці…",
             "mining": "Очікуємо підтвердження транзакції…",
@@ -233,7 +233,7 @@
         "heading": "Голос зараховано",
         "lede": "Ваш голос за петицією №{{id}} додано до смартконтракту.",
         "tx": "Транзакція",
-        "viewOnExplorer": "Переглянути на Basescan",
+        "viewOnExplorer": "Переглянути на Etherscan",
         "signAnother": "Голосувати за іншу петицію"
     },
     "common": {

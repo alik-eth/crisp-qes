@@ -16,7 +16,11 @@ function req(name: string, fallback: string): string {
     return fallback;
 }
 
-const CHAIN_ID = Number(req("VITE_CHAIN_ID", "84532"));
+// Default chain is Ethereum Sepolia (#61 cutover, 2026-05-29). Base
+// Sepolia (84532) is kept in the switch case below so dev branches
+// still building against the old config compile cleanly until they
+// finish migrating.
+const CHAIN_ID = Number(req("VITE_CHAIN_ID", "11155111"));
 
 function pickChain(id: number): Chain {
     switch (id) {
@@ -74,13 +78,13 @@ const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as const;
 export const config: AppConfig = {
     chain: pickChain(CHAIN_ID),
     chainId: CHAIN_ID,
-    rpcUrl: req("VITE_RPC_URL", "https://sepolia.base.org"),
+    rpcUrl: req("VITE_RPC_URL", "https://ethereum-sepolia.publicnode.com"),
     oprfUrl: req("VITE_OPRF_URL", "http://127.0.0.1:8788"),
     enrollmentRegistry: req("VITE_ENROLLMENT_REGISTRY", ZERO_ADDR) as `0x${string}`,
     petitionRegistryV2: req("VITE_PETITION_REGISTRY_V2", ZERO_ADDR) as `0x${string}`,
     relayerUrl: req("VITE_RELAYER_URL", "http://127.0.0.1:8787"),
     circuitUrl: req("VITE_CIRCUIT_URL", "/crisp_qes_v2_circuit.json"),
-    blockExplorerUrl: req("VITE_BLOCK_EXPLORER", "https://sepolia.basescan.org"),
+    blockExplorerUrl: req("VITE_BLOCK_EXPLORER", "https://sepolia.etherscan.io"),
     walletConnectProjectId: req(
         "VITE_WALLETCONNECT_PROJECT_ID",
         "33a263ffda20d72b289cf92b369cfa47",

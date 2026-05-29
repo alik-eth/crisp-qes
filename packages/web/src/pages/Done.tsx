@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { basescanTxUrl } from "../lib/relayer";
+import { explorerTxUrl } from "../lib/relayer";
 
 interface Props {
     petitionId: bigint;
@@ -26,7 +26,7 @@ export function Done({ petitionId, txHash, onReturn }: Props) {
             <div className="actions">
                 <a
                     className="btn btn--ghost"
-                    href={basescanTxUrl(txHash)}
+                    href={explorerTxUrl(txHash)}
                     target="_blank"
                     rel="noreferrer"
                 >

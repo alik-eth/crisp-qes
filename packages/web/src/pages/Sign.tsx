@@ -20,7 +20,7 @@ import {
     hex as encHex,
 } from "../lib/encryptedStore";
 import { pedersenNullifier } from "../lib/pedersen";
-import { submitSignature, basescanTxUrl } from "../lib/relayer";
+import { submitSignature, explorerTxUrl } from "../lib/relayer";
 import { config } from "../config";
 
 interface Props {
@@ -411,7 +411,7 @@ export function Sign({ petitionId, onBack, onRecover, onDone }: Props) {
                     </div>
                     {submittedTx ? (
                         <p className="note mono">
-                            <a href={basescanTxUrl(submittedTx)} target="_blank">
+                            <a href={explorerTxUrl(submittedTx)} target="_blank">
                                 {submittedTx}
                             </a>
                         </p>
