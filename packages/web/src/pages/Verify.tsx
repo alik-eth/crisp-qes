@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import { parseP7s, type ParsedP7s } from "@crisp-qes/sdk";
 import { extractRnokpp, tinuaPrefixOk } from "../lib/rnokpp.js";
 import { blind, unblind, verifyBlindEval } from "../lib/voprf.js";
@@ -24,17 +25,6 @@ interface Props {
     onDone: () => Promise<void>;
 }
 
-// Substages of the v2.1 verify flow, in order:
-//
-//   identify     — Citizen types their RNOKPP. We blind it locally; the
-//                  cert in their .p7s will be cross-checked against it.
-//   challenge    — We've generated and downloaded the JSON binding file
-//                  the citizen must sign in Diia. Drop zone awaits the
-//                  resulting .p7s.
-//   verifying    — POST blindedInput + .p7s → OPRF → unblind → enroll.
-//   verified     — On-chain enrollment confirmed; awaiting Passkey wrap.
-//   saving       — Passkey PRF gesture in flight, writing the encrypted vault.
-//   saved        — Done; redirect to /petitions.
 type Substage =
     | "identify"
     | "challenge"
@@ -55,11 +45,7 @@ interface OprfArtifacts {
     leafIndex: number;
     merklePath: `0x${string}`[];
     merklePathIndices: (0 | 1)[];
-    // `null` in the recovery path: this Diia identity was already enrolled
-    // on-chain, so no fresh leaf was appended and there's no enrollment tx.
     txHash: `0x${string}` | null;
-    // true => we rebuilt the local vault from the existing on-chain leaf
-    // (device-loss recovery), false => fresh first-time enrollment.
     recovered: boolean;
 }
 
@@ -79,6 +65,7 @@ function hexDecode(h: `0x${string}`): Uint8Array {
 const RNOKPP_RE = /^[0-9]{10}$/;
 
 export function Verify({ onDone }: Props) {
+    const { t } = useTranslation();
     const [, navigate] = useLocation();
     const [stage, setStage] = useState<Substage>("identify");
     const [rnokppInput, setRnokppInput] = useState("");
@@ -187,13 +174,6 @@ export function Verify({ onDone }: Props) {
             const N = unblind(hexDecode(resp.Y), blindState.r);
             const s = await pedersenS(N);
 
-            // Try a fresh enrollment first. If this Diia identity is already
-            // on-chain (same RNOKPP + epoch → same deterministic commitment),
-            // the OPRF returns 409 AlreadyEnrolled — that's the device-loss
-            // recovery case: fetch the existing leaf's Merkle path and rebuild
-            // the local vault, no new leaf, no chain write. The blind-eval
-            // gates (fresh .p7s, age, rate-limit, dedup) already ran above, so
-            // recovery is no easier to abuse than a first enrollment.
             let artifacts: Omit<OprfArtifacts, "N" | "s">;
             try {
                 const reg = await oprfRegister({
@@ -306,10 +286,9 @@ export function Verify({ onDone }: Props) {
     return (
         <section className="verify">
             <header style={{ marginBottom: 32 }}>
-                <h1>Verify with Diia QES</h1>
-                <p className="muted" style={{ marginTop: 8, maxWidth: 560 }}>
-                    Prove you're a verified Ukrainian adult, anonymously.
-                    Your identity never reaches the chain.
+                <h1>{t("verify.heading")}</h1>
+                <p className="muted" style={{ marginTop: 8, maxWidth: 600 }}>
+                    {t("verify.subtitle")}
                 </p>
             </header>
 
@@ -318,9 +297,8 @@ export function Verify({ onDone }: Props) {
             {ageBlocked ? (
                 <div className="notice notice--bad" style={{ marginTop: 24 }}>
                     <div>
-                        <strong>Adults only.</strong> The Diia signature you
-                        uploaded is below the {ageBlocked.min}-year age
-                        threshold (resolved to {ageBlocked.found}).
+                        <strong>{t("verify.adultsOnly")}</strong>{" "}
+                        {t("verify.adultsOnlyDetail", { min: ageBlocked.min, found: ageBlocked.found })}
                     </div>
                 </div>
             ) : null}
@@ -328,7 +306,7 @@ export function Verify({ onDone }: Props) {
             {err ? (
                 <div className="notice notice--bad" style={{ marginTop: 24 }}>
                     <div>
-                        <strong>Verification failed.</strong>
+                        <strong>{t("verify.verifyFailed")}</strong>
                         <br />
                         <span className="small mono">{err}</span>
                     </div>
@@ -378,23 +356,12 @@ export function Verify({ onDone }: Props) {
 }
 
 function StageStrip({ stage }: { stage: Substage }) {
+    const { t } = useTranslation();
     const steps: { key: string; label: string; match: Substage[] }[] = [
-        { key: "identify", label: "Identify", match: ["identify"] },
-        {
-            key: "challenge",
-            label: "Sign challenge",
-            match: ["challenge"],
-        },
-        {
-            key: "verify",
-            label: "Verify anonymously",
-            match: ["verifying"],
-        },
-        {
-            key: "save",
-            label: "Save to device",
-            match: ["verified", "saving"],
-        },
+        { key: "identify", label: t("verify.step1"), match: ["identify"] },
+        { key: "challenge", label: t("verify.step2"), match: ["challenge"] },
+        { key: "verify", label: t("verify.step3"), match: ["verifying"] },
+        { key: "save", label: t("verify.step4"), match: ["verified", "saving"] },
     ];
     return (
         <ol className="strip" aria-label="Progress">
@@ -408,7 +375,7 @@ function StageStrip({ stage }: { stage: Substage }) {
                       : "strip__step";
                 return (
                     <li key={s.key} className={cls}>
-                        <span className="strip__n">{i + 1}</span>
+                        <span className="strip__n"><span>{i + 1}</span></span>
                         <span className="strip__label">{s.label}</span>
                     </li>
                 );
@@ -443,16 +410,12 @@ function IdentifyPanel({
     onChange: (s: string) => void;
     onGenerate: () => void;
 }) {
+    const { t } = useTranslation();
     return (
         <div className="card">
-            <h3>Enter your RNOKPP</h3>
-            <p
-                className="muted small"
-                style={{ marginTop: 8, marginBottom: 16 }}
-            >
-                We use this to compute your anonymous identity locally and to
-                cross-check the certificate in your .p7s. Find it in the
-                Diia app under Documents → РНОКПП. 10 digits, all numeric.
+            <h3>{t("verify.identifyTitle")}</h3>
+            <p className="muted small" style={{ marginTop: 8, marginBottom: 16 }}>
+                {t("verify.identifyBody")}
             </p>
             <label>
                 RNOKPP
@@ -471,8 +434,7 @@ function IdentifyPanel({
                 />
             </label>
             <p className="muted small" style={{ marginTop: 12 }}>
-                Your RNOKPP never reaches the chain. It's hashed and blinded
-                locally; only the blinded value is sent to the OPRF service.
+                {t("verify.identifyPrivacy")}
             </p>
             <button
                 type="button"
@@ -481,7 +443,7 @@ function IdentifyPanel({
                 onClick={onGenerate}
                 disabled={!RNOKPP_RE.test(rnokppInput)}
             >
-                Generate challenge
+                {t("verify.identifyBtn")}
             </button>
         </div>
     );
@@ -502,34 +464,30 @@ function ChallengePanel({
     onRegenerate: () => void;
     onReset: () => void;
 }) {
+    const { t } = useTranslation();
     return (
         <div className="card">
-            <h3>Sign the challenge in Diia</h3>
-            <p className="muted small" style={{ marginTop: 8 }}>
-                A file <span className="mono">crisp-qes-challenge.txt</span>{" "}
-                was downloaded to this device. It contains the exact bytes
-                you must sign with your Diia QES — this binds your signature
-                to THIS enrollment.
+            <h3>{t("verify.challengeTitle")}</h3>
+            <p className="muted small" style={{ marginTop: 8, marginBottom: 16 }}>
+                {t("verify.challengeIntro")}
             </p>
             <ol
-                className="muted small"
-                style={{ marginTop: 12, paddingLeft: 18, marginBottom: 16 }}
+                className="challenge-steps"
+                style={{ marginBottom: 16 }}
             >
-                <li>Open the Diia app.</li>
-                <li>Go to "Sign documents" (Підписати документ).</li>
-                <li>Select the downloaded <span className="mono">crisp-qes-challenge.txt</span>.</li>
-                <li>Enter your Diia PIN to sign.</li>
-                <li>Save the resulting <span className="mono">.p7s</span> file and upload it here.</li>
+                {(t("verify.challengeSteps", { returnObjects: true }) as string[]).map(
+                    (step, i) => (
+                        <li key={i} dangerouslySetInnerHTML={{ __html: step }} />
+                    ),
+                )}
             </ol>
             <p className="muted small" style={{ marginBottom: 16 }}>
-                RNOKPP being verified:{" "}
+                {t("verify.rnokppLabel")}{" "}
                 <span className="mono">{blindState.rnokpp}</span>
             </p>
             <label
                 className="dropzone"
-                onDragOver={(e) => {
-                    e.preventDefault();
-                }}
+                onDragOver={(e) => { e.preventDefault(); }}
                 onDrop={(e) => {
                     e.preventDefault();
                     const f = e.dataTransfer?.files[0];
@@ -538,12 +496,6 @@ function ChallengePanel({
             >
                 <input
                     type="file"
-                    // No `accept` filter on purpose: mobile pickers (iOS
-                    // Files, Android) grey out files whose extension/UTI they
-                    // don't recognise, and `.p7s` has no standard mobile UTI —
-                    // so a filter makes the signed file unselectable. We
-                    // validate contents in onFile (parseP7s + RNOKPP cross-
-                    // check) regardless, so an unfiltered picker is safe.
                     onChange={(e) => {
                         const f = e.target.files?.[0];
                         if (f) void onFile(f);
@@ -551,17 +503,15 @@ function ChallengePanel({
                     style={{ display: "none" }}
                 />
                 <span className="dropzone__label">
-                    Drop the signed .p7s here, or click to choose
+                    {t("verify.dropLabel")}
                 </span>
                 <span className="dropzone__hint muted small">
-                    Must be the .p7s produced by signing the file above
+                    {t("verify.dropHint")}
                 </span>
             </label>
             {parsed ? (
                 <div className="notice notice--ok" style={{ marginTop: 16 }}>
-                    <div>
-                        Diia QES recognised and RNOKPP matches.
-                    </div>
+                    <div>{t("verify.parsed")}</div>
                 </div>
             ) : null}
             <div className="row" style={{ marginTop: 20 }}>
@@ -571,21 +521,21 @@ function ChallengePanel({
                     onClick={onVerify}
                     disabled={!parsed}
                 >
-                    Verify
+                    {t("verify.verifyBtn")}
                 </button>
                 <button
                     type="button"
                     className="btn btn--ghost"
                     onClick={onRegenerate}
                 >
-                    Re-download challenge
+                    {t("verify.redownload")}
                 </button>
                 <button
                     type="button"
                     className="btn btn--link"
                     onClick={onReset}
                 >
-                    Start over
+                    {t("verify.startOver")}
                 </button>
             </div>
         </div>
@@ -593,19 +543,17 @@ function ChallengePanel({
 }
 
 function VerifyingPanel() {
+    const { t } = useTranslation();
     return (
         <div className="card">
-            <h3>Verifying anonymously…</h3>
+            <h3>{t("verify.verifyingTitle")}</h3>
             <p className="muted small" style={{ marginTop: 8 }}>
-                Contacting OPRF · verifying DLEQ · unblinding · submitting to
-                chain.
+                {t("verify.verifyingBody")}
             </p>
-            <p
-                className="muted small"
-                style={{ marginTop: 16, fontFamily: "var(--mono)" }}
-            >
-                This can take 10–20 seconds. Don't close this tab.
-            </p>
+            <div className="progress-band" style={{ marginTop: 16 }}>
+                <span className="spinner" aria-hidden="true" />
+                <span className="small mono">{t("verify.verifyingWait")}</span>
+            </div>
         </div>
     );
 }
@@ -617,60 +565,57 @@ function VerifiedPanel({
     oprfResult: OprfArtifacts;
     onSave: () => void;
 }) {
+    const { t } = useTranslation();
     return (
         <div className="card">
-            <h3>{oprfResult.recovered ? "Welcome back." : "Verified on chain."}</h3>
-            {oprfResult.recovered ? (
-                <p className="muted small" style={{ marginTop: 8 }}>
-                    This Diia identity is already enrolled this epoch — no new
-                    commitment was created. We re-derived your existing
-                    anonymous identity from your Diia signature.
-                </p>
-            ) : (
-                <p className="muted small" style={{ marginTop: 8 }}>
-                    Your anonymous commitment is now on Sepolia.{" "}
-                    {oprfResult.txHash ? (
-                        <a
-                            href={explorerTxUrl(oprfResult.txHash)}
-                            target="_blank"
-                            rel="noreferrer"
-                        >
-                            View transaction →
-                        </a>
-                    ) : null}
-                </p>
-            )}
-            <p style={{ marginTop: 20, marginBottom: 16 }}>
-                Last step: encrypt your private signing material with your
-                Passkey and save it to this device.
+            <h3>{oprfResult.recovered ? t("verify.verifiedRecoveredTitle") : t("verify.verifiedTitle")}</h3>
+            <p className="muted small" style={{ marginTop: 8 }}>
+                {oprfResult.recovered
+                    ? t("verify.verifiedRecoveredBody")
+                    : t("verify.verifiedBody")}
             </p>
+            {oprfResult.txHash ? (
+                <p className="small" style={{ marginTop: 12 }}>
+                    <a
+                        href={explorerTxUrl(oprfResult.txHash)}
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        {t("verify.viewTx")}
+                    </a>
+                </p>
+            ) : null}
             <button
                 type="button"
                 className="btn btn--primary"
+                style={{ marginTop: 20 }}
                 onClick={onSave}
             >
-                {oprfResult.recovered ? "Restore on this device" : "Encrypt and save"}
+                {oprfResult.recovered ? t("verify.restoreBtn") : t("verify.saveBtn")}
             </button>
         </div>
     );
 }
 
 function SavingPanel() {
+    const { t } = useTranslation();
     return (
         <div className="card">
-            <h3>Saving…</h3>
-            <p className="muted small" style={{ marginTop: 8 }}>
-                Waiting for the Passkey prompt, then encrypting.
-            </p>
+            <h3>{t("verify.savingTitle")}</h3>
+            <div className="progress-band" style={{ marginTop: 12 }}>
+                <span className="spinner" aria-hidden="true" />
+                <span className="small">{t("verify.savingBody")}</span>
+            </div>
         </div>
     );
 }
 
 function SavedPanel({ onContinue }: { onContinue: () => void }) {
+    const { t } = useTranslation();
     return (
         <div className="card">
             <div className="notice notice--ok">
-                <div>You're verified. You can sign and create petitions now.</div>
+                <div>{t("verify.savedOk")}</div>
             </div>
             <button
                 type="button"
@@ -678,7 +623,7 @@ function SavedPanel({ onContinue }: { onContinue: () => void }) {
                 style={{ marginTop: 20 }}
                 onClick={onContinue}
             >
-                Browse petitions
+                {t("verify.savedBtn")}
             </button>
         </div>
     );
