@@ -65,7 +65,13 @@ contract PetitionRegistryV2 {
 
     uint256 public nextPetitionId = 1;
     mapping(uint256 => Petition) internal _petitions;
-    mapping(uint256 => mapping(bytes32 => bool)) public hasNullifier;
+    /// @notice Per-(petition, nullifier) vote slot.
+    ///         Encoding: `0` = unsigned. Otherwise `1 + vote` is stored
+    ///         (vote=0 -> 1, vote=1 -> 2, vote=2 -> 3). Lets us atomically
+    ///         track "has this nullifier signed?" and "what did they vote?"
+    ///         in a single slot, so `revokeVote` can decrement the right
+    ///         bin without trusting an off-chain hint.
+    mapping(uint256 => mapping(bytes32 => uint8)) public voteByNullifier;
 
     // ---------- events ----------
 
@@ -83,6 +89,11 @@ contract PetitionRegistryV2 {
         bytes32 indexed nullifier,
         uint32 newCount
     );
+    /// @notice Emitted when a citizen revokes a previously-recorded
+    ///         signature/vote. `newCount` mirrors the field emitted by
+    ///         `PetitionSigned`/`PetitionVoted` (the post-decrement
+    ///         `signatureCount`).
+    event PetitionRevoked(uint256 indexed id, bytes32 indexed nullifier, uint32 newCount);
     event ThresholdReached(uint256 indexed id, uint32 threshold, uint64 reachedAt);
     event DepositLocked(uint256 indexed id, uint256 amount);
     event DepositRefunded(uint256 indexed id, uint256 amount);
@@ -95,6 +106,7 @@ contract PetitionRegistryV2 {
     error UnknownPetition();
     error PetitionClosed();
     error NullifierAlreadyUsed();
+    error NullifierNotUsed();
     error InvalidProof();
     error InvalidEnrollmentRoot();
     error InvalidVote();
@@ -199,7 +211,7 @@ contract PetitionRegistryV2 {
         Petition storage pet = _petitions[petitionId];
         if (pet.creator == address(0)) revert UnknownPetition();
         if (block.timestamp > pet.deadline) revert PetitionClosed();
-        if (hasNullifier[petitionId][nullifier]) revert NullifierAlreadyUsed();
+        if (voteByNullifier[petitionId][nullifier] != 0) revert NullifierAlreadyUsed();
 
         // Public-input shape check.
         if (publicInputs.length != 3) revert InvalidProof();
@@ -215,7 +227,9 @@ contract PetitionRegistryV2 {
 
         if (!verifier.verify(proof, publicInputs)) revert InvalidProof();
 
-        hasNullifier[petitionId][nullifier] = true;
+        // Store `1 + vote` so the slot also functions as a "signed?" bit:
+        // `0` = unsigned, anything else = signed-with-vote-(slot-1).
+        voteByNullifier[petitionId][nullifier] = vote + 1;
         uint32 newCount = ++pet.signatureCount;
 
         // Bump the mode-specific counter.
@@ -241,7 +255,81 @@ contract PetitionRegistryV2 {
         }
     }
 
+    /// @notice Revoke a previously-recorded signature/vote. Frees the
+    ///         `(petitionId, nullifier)` slot so the citizen can re-sign
+    ///         later (possibly with a different vote).
+    ///
+    ///         Requires a fresh proof against the current enrollment root —
+    ///         identical shape to `signPetition`, no zk changes — to make
+    ///         sure only the slot's owner can revoke it (the nullifier in
+    ///         `publicInputs[2]` is bound to the signer's secret by the
+    ///         circuit).
+    ///
+    /// @dev Counter decrements are explicit per ballot mode. `thresholdReached`
+    ///      is intentionally NOT cleared: once a petition has crossed its
+    ///      threshold, the political fact is "logged" and revocations cannot
+    ///      retroactively un-cross it. This matches the spec's sticky-threshold
+    ///      invariant.
+    ///
+    /// @param petitionId   Target petition id.
+    /// @param nullifier    The same nullifier used in the prior
+    ///                     `signPetition` call.
+    /// @param proof        UltraHonk proof bytes from the v2 circuit.
+    /// @param publicInputs Length-3 array: `[petition_id, enrollment_root,
+    ///                     nullifier]`.
+    function revokeVote(
+        uint256 petitionId,
+        bytes32 nullifier,
+        bytes calldata proof,
+        bytes32[] calldata publicInputs
+    ) external {
+        Petition storage pet = _petitions[petitionId];
+        if (pet.creator == address(0)) revert UnknownPetition();
+        if (block.timestamp > pet.deadline) revert PetitionClosed();
+        if (pet.thresholdReached) revert PetitionClosed();
+
+        uint8 slot = voteByNullifier[petitionId][nullifier];
+        if (slot == 0) revert NullifierNotUsed();
+
+        // Same public-input shape check as signPetition.
+        if (publicInputs.length != 3) revert InvalidProof();
+        if (uint256(publicInputs[0]) != petitionId) revert InvalidProof();
+        if (publicInputs[2] != nullifier) revert InvalidProof();
+        if (publicInputs[1] != enrollmentRegistry.enrollmentRoot()) {
+            revert InvalidEnrollmentRoot();
+        }
+
+        if (!verifier.verify(proof, publicInputs)) revert InvalidProof();
+
+        // Decode and clear the slot before touching counters, so even if
+        // a future refactor adds reentrant hooks the storage flag is gone.
+        uint8 vote = slot - 1;
+        voteByNullifier[petitionId][nullifier] = 0;
+
+        uint32 newCount = --pet.signatureCount;
+
+        if (pet.mode == BallotMode.YesNo) {
+            if (vote == 0) pet.noCount -= 1;
+            else pet.yesCount -= 1;
+        } else if (pet.mode == BallotMode.YesNoAbstain) {
+            if (vote == 0) pet.noCount -= 1;
+            else if (vote == 1) pet.yesCount -= 1;
+            else pet.abstainCount -= 1;
+        }
+        // Signature mode: only signatureCount, already decremented above.
+
+        emit PetitionRevoked(petitionId, nullifier, newCount);
+    }
+
     // ---------- views ----------
+
+    /// @notice Backward-compat shim. Older readers (web's
+    ///         `readHasNullifier`) treat the slot as a boolean "has signed"
+    ///         flag; under the new encoding that's equivalent to "slot is
+    ///         non-zero".
+    function hasNullifier(uint256 id, bytes32 nf) external view returns (bool) {
+        return voteByNullifier[id][nf] > 0;
+    }
 
     function getPetition(uint256 id) external view returns (Petition memory) {
         if (_petitions[id].creator == address(0)) revert UnknownPetition();

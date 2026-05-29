@@ -78,6 +78,10 @@ contract PetitionRegistryV2Test is Test {
         registry.signPetition(id, vote, nul, "", _publicInputs(id, nul));
     }
 
+    function _revoke(uint256 id, bytes32 nul) internal {
+        registry.revokeVote(id, nul, "", _publicInputs(id, nul));
+    }
+
     // ---------- creation ----------
 
     function test_create_petition_records_mode_and_emits() public {
@@ -248,6 +252,204 @@ contract PetitionRegistryV2Test is Test {
         // YesNoAbstain accepts 0/1/2; 3 is out of range.
         vm.expectRevert(PetitionRegistryV2.InvalidVote.selector);
         _sign(id, 3, bytes32(uint256(1)));
+    }
+
+    // ---------- revocation ----------
+
+    function test_revokeVote_signatureMode_decrementsCount() public {
+        uint256 id = _create(5, PetitionRegistryV2.BallotMode.Signature);
+        bytes32 nul = bytes32(uint256(0xA1));
+        _sign(id, 0, nul);
+        _sign(id, 0, bytes32(uint256(0xA2)));
+        assertEq(registry.signatureCount(id), 2);
+
+        vm.expectEmit(true, true, false, true);
+        emit PetitionRegistryV2.PetitionRevoked(id, nul, 1);
+        _revoke(id, nul);
+
+        assertEq(registry.signatureCount(id), 1);
+        assertFalse(registry.hasNullifier(id, nul));
+        assertTrue(registry.hasNullifier(id, bytes32(uint256(0xA2))));
+    }
+
+    function test_revokeVote_yesNoMode_decrementsTheRightCounter() public {
+        uint256 id = _create(99, PetitionRegistryV2.BallotMode.YesNo);
+        bytes32 nulYes = bytes32(uint256(0xB1));
+        bytes32 nulNo = bytes32(uint256(0xB2));
+        _sign(id, 1, nulYes);
+        _sign(id, 0, nulNo);
+        (uint32 y, uint32 n,) = registry.voteCounts(id);
+        assertEq(y, 1);
+        assertEq(n, 1);
+
+        _revoke(id, nulYes);
+        (y, n,) = registry.voteCounts(id);
+        assertEq(y, 0);
+        assertEq(n, 1);
+        assertEq(registry.signatureCount(id), 1);
+
+        _revoke(id, nulNo);
+        (y, n,) = registry.voteCounts(id);
+        assertEq(y, 0);
+        assertEq(n, 0);
+        assertEq(registry.signatureCount(id), 0);
+    }
+
+    function test_revokeVote_yesNoAbstainMode_decrementsAllThree() public {
+        uint256 id = _create(99, PetitionRegistryV2.BallotMode.YesNoAbstain);
+        bytes32 nulNo = bytes32(uint256(0xC1));
+        bytes32 nulYes = bytes32(uint256(0xC2));
+        bytes32 nulAbs = bytes32(uint256(0xC3));
+        _sign(id, 0, nulNo);
+        _sign(id, 1, nulYes);
+        _sign(id, 2, nulAbs);
+        (uint32 y, uint32 n, uint32 a) = registry.voteCounts(id);
+        assertEq(y, 1);
+        assertEq(n, 1);
+        assertEq(a, 1);
+
+        _revoke(id, nulNo);
+        (y, n, a) = registry.voteCounts(id);
+        assertEq(y, 1);
+        assertEq(n, 0);
+        assertEq(a, 1);
+
+        _revoke(id, nulYes);
+        (y, n, a) = registry.voteCounts(id);
+        assertEq(y, 0);
+        assertEq(n, 0);
+        assertEq(a, 1);
+
+        _revoke(id, nulAbs);
+        (y, n, a) = registry.voteCounts(id);
+        assertEq(y, 0);
+        assertEq(n, 0);
+        assertEq(a, 0);
+        assertEq(registry.signatureCount(id), 0);
+    }
+
+    function test_revokeVote_clearsNullifierSlot() public {
+        uint256 id = _create(5, PetitionRegistryV2.BallotMode.YesNoAbstain);
+        bytes32 nul = bytes32(uint256(0xD1));
+        _sign(id, 2, nul);
+        assertTrue(registry.hasNullifier(id, nul));
+        assertEq(registry.voteByNullifier(id, nul), 3); // 1 + 2
+
+        _revoke(id, nul);
+        assertFalse(registry.hasNullifier(id, nul));
+        assertEq(registry.voteByNullifier(id, nul), 0);
+    }
+
+    function test_revokeVote_thresholdReachedStaysSticky() public {
+        // Threshold=1: a single signature flips `thresholdReached`. Per
+        // spec, revoke must NOT clear that bit — the political fact is
+        // logged. Once threshold is reached the petition leaves the Open
+        // state, so revoke must revert with PetitionClosed.
+        uint256 id = _create(1, PetitionRegistryV2.BallotMode.Signature);
+        bytes32 nul = bytes32(uint256(0xE1));
+        _sign(id, 0, nul);
+        assertEq(
+            uint8(registry.petitionStatus(id)),
+            uint8(PetitionRegistryV2.PetitionStatus.ThresholdReached)
+        );
+
+        vm.expectRevert(PetitionRegistryV2.PetitionClosed.selector);
+        _revoke(id, nul);
+
+        // And the bit is still set.
+        PetitionRegistryV2.Petition memory p = registry.getPetition(id);
+        assertTrue(p.thresholdReached);
+    }
+
+    function test_revokeVote_revertsWhenNotSigned() public {
+        uint256 id = _create(5, PetitionRegistryV2.BallotMode.Signature);
+        bytes32 nul = bytes32(uint256(0xF1));
+        vm.expectRevert(PetitionRegistryV2.NullifierNotUsed.selector);
+        _revoke(id, nul);
+    }
+
+    function test_revokeVote_revertsWhenPetitionClosed() public {
+        uint256 id = _create(5, PetitionRegistryV2.BallotMode.Signature);
+        bytes32 nul = bytes32(uint256(0xF2));
+        _sign(id, 0, nul);
+        vm.warp(block.timestamp + 30 days);
+        vm.expectRevert(PetitionRegistryV2.PetitionClosed.selector);
+        _revoke(id, nul);
+    }
+
+    function test_revokeVote_revertsWhenInvalidProof() public {
+        uint256 id = _create(5, PetitionRegistryV2.BallotMode.Signature);
+        bytes32 nul = bytes32(uint256(0xF3));
+        _sign(id, 0, nul);
+        verifier.setAccept(false);
+        vm.expectRevert(PetitionRegistryV2.InvalidProof.selector);
+        _revoke(id, nul);
+    }
+
+    function test_revokeVote_revertsWhenUnknownPetition() public {
+        vm.expectRevert(PetitionRegistryV2.UnknownPetition.selector);
+        _revoke(999, bytes32(uint256(0xF4)));
+    }
+
+    function test_revokeVote_revertsWhenPublicInputsWrongLength() public {
+        uint256 id = _create(5, PetitionRegistryV2.BallotMode.Signature);
+        bytes32 nul = bytes32(uint256(0xF5));
+        _sign(id, 0, nul);
+        bytes32[] memory pi = new bytes32[](2);
+        pi[0] = bytes32(id);
+        pi[1] = nul;
+        vm.expectRevert(PetitionRegistryV2.InvalidProof.selector);
+        registry.revokeVote(id, nul, "", pi);
+    }
+
+    function test_resign_afterRevoke_allowed_andCanChangeVote() public {
+        // Sign Yes, revoke, then re-sign No with the same nullifier.
+        uint256 id = _create(99, PetitionRegistryV2.BallotMode.YesNo);
+        bytes32 nul = bytes32(uint256(0x101));
+        _sign(id, 1, nul);
+        (uint32 y, uint32 n,) = registry.voteCounts(id);
+        assertEq(y, 1);
+        assertEq(n, 0);
+
+        _revoke(id, nul);
+        (y, n,) = registry.voteCounts(id);
+        assertEq(y, 0);
+        assertEq(n, 0);
+        assertEq(registry.signatureCount(id), 0);
+
+        // Re-sign with same nullifier — the clean slot allows it.
+        _sign(id, 0, nul);
+        (y, n,) = registry.voteCounts(id);
+        assertEq(y, 0);
+        assertEq(n, 1);
+        assertEq(registry.signatureCount(id), 1);
+        assertEq(registry.voteByNullifier(id, nul), 1); // 1 + 0
+    }
+
+    function test_hasNullifier_viewReturnsCorrectBool_afterSignAndRevoke() public {
+        uint256 id = _create(5, PetitionRegistryV2.BallotMode.Signature);
+        bytes32 nul = bytes32(uint256(0x202));
+        assertFalse(registry.hasNullifier(id, nul));
+        _sign(id, 0, nul);
+        assertTrue(registry.hasNullifier(id, nul));
+        _revoke(id, nul);
+        assertFalse(registry.hasNullifier(id, nul));
+    }
+
+    function test_voteByNullifier_storesEncodedValue() public {
+        // Encoding is `1 + vote`, so vote=0/1/2 -> 1/2/3.
+        uint256 id = _create(99, PetitionRegistryV2.BallotMode.YesNoAbstain);
+        bytes32 n0 = bytes32(uint256(0x301));
+        bytes32 n1 = bytes32(uint256(0x302));
+        bytes32 n2 = bytes32(uint256(0x303));
+        _sign(id, 0, n0);
+        _sign(id, 1, n1);
+        _sign(id, 2, n2);
+        assertEq(registry.voteByNullifier(id, n0), 1);
+        assertEq(registry.voteByNullifier(id, n1), 2);
+        assertEq(registry.voteByNullifier(id, n2), 3);
+        // Unset slot reads 0.
+        assertEq(registry.voteByNullifier(id, bytes32(uint256(0x304))), 0);
     }
 
     // ---------- deposit refund ----------
