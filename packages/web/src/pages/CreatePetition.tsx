@@ -7,7 +7,7 @@ import {
     toHex,
 } from "viem";
 import { config } from "../config.js";
-import { petitionRegistryV2Abi, BallotModeLabel } from "../lib/abi.js";
+import { petitionRegistryV2Abi } from "../lib/abi.js";
 import { publicClient } from "../lib/chain.js";
 import { readCreationDeposit } from "../lib/registry.js";
 import { useWallet } from "../lib/walletContext.js";
@@ -19,8 +19,6 @@ import {
     ensureChain,
     type WalletSession,
 } from "../lib/wallet.js";
-
-type Mode = 0 | 1 | 2;
 
 const DURATION_OPTIONS = [
     { key: "7", label: "7 days", days: 7 },
@@ -37,7 +35,6 @@ export function CreatePetition() {
 
     const [title, setTitle] = useState("");
     const [body, setBody] = useState("");
-    const [mode, setMode] = useState<Mode>(0);
     const [durationKey, setDurationKey] = useState("14");
     const [threshold, setThreshold] = useState(100);
 
@@ -122,7 +119,6 @@ export function CreatePetition() {
                         toHex(fullTextBytes),
                         deadline,
                         threshold,
-                        mode,
                     ],
                     value: deposit,
                 });
@@ -172,7 +168,7 @@ export function CreatePetition() {
                 setStage("error");
             }
         },
-        [deposit, fullTextBytes, deadline, threshold, mode, setSession],
+        [deposit, fullTextBytes, deadline, threshold, setSession],
     );
 
     return (
@@ -204,27 +200,6 @@ export function CreatePetition() {
                         <Hint>
                             {fullTextBytes.length.toLocaleString()} bytes / 64 KiB
                         </Hint>
-                    </Field>
-                    <Field label="Ballot mode">
-                        <div className="row">
-                            {(
-                                [
-                                    { v: 0 as Mode, l: "Signature" },
-                                    { v: 1 as Mode, l: "Yes / No" },
-                                    { v: 2 as Mode, l: "Yes / No / Abstain" },
-                                ]
-                            ).map((opt) => (
-                                <label key={opt.v} className="radio">
-                                    <input
-                                        type="radio"
-                                        name="mode"
-                                        checked={mode === opt.v}
-                                        onChange={() => setMode(opt.v)}
-                                    />
-                                    <span>{opt.l}</span>
-                                </label>
-                            ))}
-                        </div>
                     </Field>
                     <Field label="Duration">
                         <div className="row">
@@ -484,5 +459,3 @@ function DonePanel({
         </div>
     );
 }
-
-void BallotModeLabel;

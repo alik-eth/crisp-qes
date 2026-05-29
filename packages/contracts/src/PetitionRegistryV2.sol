@@ -5,10 +5,19 @@ import {IVerifierV2} from "./IVerifierV2.sol";
 import {EnrollmentRegistry} from "./EnrollmentRegistry.sol";
 
 /// @title PetitionRegistryV2
-/// @notice v2 petition registry. The off-chain Diia QES + CAdES walk is
-///         gone; eligibility is now reduced to membership in the
-///         `EnrollmentRegistry`'s Merkle tree, gated by a single 3-public-
-///         input UltraHonk proof.
+/// @notice v2 petition registry. A petition is a one-directional support
+///         instrument: an enrolled citizen *signs* to support it, and may
+///         *revoke* (withdraw) that signature until the deadline. The
+///         threshold counts active (un-revoked) signatures.
+///
+///         There is deliberately NO Yes/No/Abstain ballot. Not signing is
+///         the dissent; a multi-choice vote is a different instrument
+///         (a referendum/poll) with different legitimacy rules and is out
+///         of scope for this contract.
+///
+///         The off-chain Diia QES + CAdES walk is gone; eligibility is now
+///         reduced to membership in the `EnrollmentRegistry`'s Merkle tree,
+///         gated by a single 3-public-input UltraHonk proof.
 ///
 ///         See `docs/specs/2026-05-29-crisp-qes-v2-refined.md` sec 3 and
 ///         the partner v2 circuit at `packages/circuit/src/main.nr`.
@@ -17,42 +26,17 @@ import {EnrollmentRegistry} from "./EnrollmentRegistry.sol";
 ///           [0]  petition_id
 ///           [1]  enrollment_root
 ///           [2]  nullifier
-///
-///         Ballot mode is set at creation time. The chosen mode constrains
-///         which `vote` values are accepted at signing time:
-///           Signature      => vote must be 0 (the "signed it" bit)
-///           YesNo          => vote ∈ {0=No, 1=Yes}
-///           YesNoAbstain   => vote ∈ {0=No, 1=Yes, 2=Abstain}
-///
-///         v2.2: replace transparent vote counters with FHE-aggregated
-///         ciphertexts (spec sec 4). For v2.1 the counts are public so
-///         the demo can show live tallies in the web UI without a
-///         dedicated decryption step.
 contract PetitionRegistryV2 {
     // ---------- types ----------
-
-    enum BallotMode {
-        Signature,
-        YesNo,
-        YesNoAbstain
-    }
 
     struct Petition {
         address creator;
         uint64 createdAt;
         uint64 deadline;
         uint32 threshold;
-        uint32 signatureCount; // total signed/voted, mode-agnostic
+        uint32 signatureCount; // active (un-revoked) signatures
         bool thresholdReached;
         bool depositRefunded;
-        BallotMode mode;
-        // v2.2: replace these three transparent counters with FHE
-        // ciphertexts aggregated under a threshold-FHE key. For the demo
-        // they're public; the privacy guarantee still holds because each
-        // counter is bumped by an anonymous nullifier-bound proof.
-        uint32 yesCount;
-        uint32 noCount;
-        uint32 abstainCount;
         bytes32 textHash; // keccak256(fullText)
         bytes fullText;   // UTF-8, on-chain (gas-bounded; see MVP spec sec 7 Q2)
     }
@@ -65,13 +49,11 @@ contract PetitionRegistryV2 {
 
     uint256 public nextPetitionId = 1;
     mapping(uint256 => Petition) internal _petitions;
-    /// @notice Per-(petition, nullifier) vote slot.
-    ///         Encoding: `0` = unsigned. Otherwise `1 + vote` is stored
-    ///         (vote=0 -> 1, vote=1 -> 2, vote=2 -> 3). Lets us atomically
-    ///         track "has this nullifier signed?" and "what did they vote?"
-    ///         in a single slot, so `revokeVote` can decrement the right
-    ///         bin without trusting an off-chain hint.
-    mapping(uint256 => mapping(bytes32 => uint8)) public voteByNullifier;
+    /// @notice Per-(petition, nullifier) "has this citizen signed?" flag.
+    ///         `false` = not signed (or revoked); `true` = an active
+    ///         signature. `revokeVote` flips it back to `false` so the
+    ///         citizen can re-sign later.
+    mapping(uint256 => mapping(bytes32 => bool)) internal _signed;
 
     // ---------- events ----------
 
@@ -79,20 +61,12 @@ contract PetitionRegistryV2 {
         uint256 indexed id,
         address indexed creator,
         uint64 deadline,
-        uint32 threshold,
-        BallotMode mode
+        uint32 threshold
     );
     event PetitionSigned(uint256 indexed id, bytes32 indexed nullifier, uint32 newCount);
-    event PetitionVoted(
-        uint256 indexed id,
-        uint8 vote,
-        bytes32 indexed nullifier,
-        uint32 newCount
-    );
     /// @notice Emitted when a citizen revokes a previously-recorded
-    ///         signature/vote. `newCount` mirrors the field emitted by
-    ///         `PetitionSigned`/`PetitionVoted` (the post-decrement
-    ///         `signatureCount`).
+    ///         signature. `newCount` mirrors the field emitted by
+    ///         `PetitionSigned` (the post-decrement `signatureCount`).
     event PetitionRevoked(uint256 indexed id, bytes32 indexed nullifier, uint32 newCount);
     event ThresholdReached(uint256 indexed id, uint32 threshold, uint64 reachedAt);
     event DepositLocked(uint256 indexed id, uint256 amount);
@@ -109,7 +83,6 @@ contract PetitionRegistryV2 {
     error NullifierNotUsed();
     error InvalidProof();
     error InvalidEnrollmentRoot();
-    error InvalidVote();
     error WrongDeposit();
     error NotCreator();
     error DepositAlreadyRefunded();
@@ -136,13 +109,11 @@ contract PetitionRegistryV2 {
     /// @notice Create a petition. Caller must attach exactly
     ///         `CREATION_DEPOSIT` wei. The deposit is locked until
     ///         `deadline` passes and is then refundable via
-    ///         `withdrawDeposit`. `mode` chooses the ballot shape and
-    ///         constrains valid `vote` values at signing time.
+    ///         `withdrawDeposit`.
     function createPetition(
         bytes calldata fullText,
         uint64 deadline,
-        uint32 threshold,
-        BallotMode mode
+        uint32 threshold
     ) external payable returns (uint256 id) {
         if (msg.value != CREATION_DEPOSIT) revert WrongDeposit();
         if (fullText.length == 0) revert EmptyText();
@@ -155,11 +126,10 @@ contract PetitionRegistryV2 {
         p.createdAt = uint64(block.timestamp);
         p.deadline = deadline;
         p.threshold = threshold;
-        p.mode = mode;
         p.textHash = keccak256(fullText);
         p.fullText = fullText;
 
-        emit PetitionCreated(id, msg.sender, deadline, threshold, mode);
+        emit PetitionCreated(id, msg.sender, deadline, threshold);
         emit DepositLocked(id, msg.value);
     }
 
@@ -182,19 +152,17 @@ contract PetitionRegistryV2 {
 
     // ---------- signer API ----------
 
-    /// @notice Submit a privacy-preserving signature/vote for a petition.
+    /// @notice Submit a privacy-preserving signature (support) for a
+    ///         petition.
     ///
     ///         The proof binds `(petitionId, enrollmentRoot, nullifier)`.
     ///         The contract additionally enforces:
     ///           - the proof's `enrollmentRoot` slot matches the *current*
     ///             on-chain root (so an enrolled citizen can only sign
     ///             under a root the OPRF service has anchored);
-    ///           - the nullifier hasn't been used for this petition;
-    ///           - the supplied `vote` value fits the petition's ballot
-    ///             mode.
+    ///           - the nullifier hasn't already signed this petition.
     ///
     /// @param petitionId   Target petition id.
-    /// @param vote         Ballot value, mode-dependent (see `BallotMode`).
     /// @param nullifier    Per-(citizen, petition) nullifier, also pinned
     ///                     in `publicInputs[2]`.
     /// @param proof        UltraHonk proof bytes from the v2 circuit.
@@ -203,7 +171,6 @@ contract PetitionRegistryV2 {
     ///                     input order.
     function signPetition(
         uint256 petitionId,
-        uint8 vote,
         bytes32 nullifier,
         bytes calldata proof,
         bytes32[] calldata publicInputs
@@ -211,7 +178,7 @@ contract PetitionRegistryV2 {
         Petition storage pet = _petitions[petitionId];
         if (pet.creator == address(0)) revert UnknownPetition();
         if (block.timestamp > pet.deadline) revert PetitionClosed();
-        if (voteByNullifier[petitionId][nullifier] != 0) revert NullifierAlreadyUsed();
+        if (_signed[petitionId][nullifier]) revert NullifierAlreadyUsed();
 
         // Public-input shape check.
         if (publicInputs.length != 3) revert InvalidProof();
@@ -221,33 +188,12 @@ contract PetitionRegistryV2 {
             revert InvalidEnrollmentRoot();
         }
 
-        // Mode-bound vote validation. Done before the verifier call so a
-        // bogus vote on a valid proof still reverts cheaply.
-        _assertVoteValid(pet.mode, vote);
-
         if (!verifier.verify(proof, publicInputs)) revert InvalidProof();
 
-        // Store `1 + vote` so the slot also functions as a "signed?" bit:
-        // `0` = unsigned, anything else = signed-with-vote-(slot-1).
-        voteByNullifier[petitionId][nullifier] = vote + 1;
+        _signed[petitionId][nullifier] = true;
         uint32 newCount = ++pet.signatureCount;
 
-        // Bump the mode-specific counter.
-        if (pet.mode == BallotMode.Signature) {
-            // Signature mode: only the aggregate count matters; nothing
-            // per-vote-bin to bump.
-            emit PetitionSigned(petitionId, nullifier, newCount);
-        } else if (pet.mode == BallotMode.YesNo) {
-            if (vote == 0) pet.noCount += 1;
-            else pet.yesCount += 1;
-            emit PetitionVoted(petitionId, vote, nullifier, newCount);
-        } else {
-            // YesNoAbstain
-            if (vote == 0) pet.noCount += 1;
-            else if (vote == 1) pet.yesCount += 1;
-            else pet.abstainCount += 1;
-            emit PetitionVoted(petitionId, vote, nullifier, newCount);
-        }
+        emit PetitionSigned(petitionId, nullifier, newCount);
 
         if (!pet.thresholdReached && newCount >= pet.threshold) {
             pet.thresholdReached = true;
@@ -255,9 +201,9 @@ contract PetitionRegistryV2 {
         }
     }
 
-    /// @notice Revoke a previously-recorded signature/vote. Frees the
+    /// @notice Revoke a previously-recorded signature. Frees the
     ///         `(petitionId, nullifier)` slot so the citizen can re-sign
-    ///         later (possibly with a different vote).
+    ///         later.
     ///
     ///         Requires a fresh proof against the current enrollment root —
     ///         identical shape to `signPetition`, no zk changes — to make
@@ -265,11 +211,11 @@ contract PetitionRegistryV2 {
     ///         `publicInputs[2]` is bound to the signer's secret by the
     ///         circuit).
     ///
-    /// @dev Counter decrements are explicit per ballot mode. `thresholdReached`
-    ///      is intentionally NOT cleared: once a petition has crossed its
-    ///      threshold, the political fact is "logged" and revocations cannot
-    ///      retroactively un-cross it. This matches the spec's sticky-threshold
-    ///      invariant.
+    /// @dev `thresholdReached` is intentionally NOT cleared: once a petition
+    ///      has crossed its threshold, the political fact is "logged" and
+    ///      revocations cannot retroactively un-cross it. This matches the
+    ///      spec's sticky-threshold invariant. (A threshold-reached petition
+    ///      leaves the Open state, so revoke reverts with PetitionClosed.)
     ///
     /// @param petitionId   Target petition id.
     /// @param nullifier    The same nullifier used in the prior
@@ -288,8 +234,7 @@ contract PetitionRegistryV2 {
         if (block.timestamp > pet.deadline) revert PetitionClosed();
         if (pet.thresholdReached) revert PetitionClosed();
 
-        uint8 slot = voteByNullifier[petitionId][nullifier];
-        if (slot == 0) revert NullifierNotUsed();
+        if (!_signed[petitionId][nullifier]) revert NullifierNotUsed();
 
         // Same public-input shape check as signPetition.
         if (publicInputs.length != 3) revert InvalidProof();
@@ -301,34 +246,17 @@ contract PetitionRegistryV2 {
 
         if (!verifier.verify(proof, publicInputs)) revert InvalidProof();
 
-        // Decode and clear the slot before touching counters, so even if
-        // a future refactor adds reentrant hooks the storage flag is gone.
-        uint8 vote = slot - 1;
-        voteByNullifier[petitionId][nullifier] = 0;
-
+        _signed[petitionId][nullifier] = false;
         uint32 newCount = --pet.signatureCount;
-
-        if (pet.mode == BallotMode.YesNo) {
-            if (vote == 0) pet.noCount -= 1;
-            else pet.yesCount -= 1;
-        } else if (pet.mode == BallotMode.YesNoAbstain) {
-            if (vote == 0) pet.noCount -= 1;
-            else if (vote == 1) pet.yesCount -= 1;
-            else pet.abstainCount -= 1;
-        }
-        // Signature mode: only signatureCount, already decremented above.
 
         emit PetitionRevoked(petitionId, nullifier, newCount);
     }
 
     // ---------- views ----------
 
-    /// @notice Backward-compat shim. Older readers (web's
-    ///         `readHasNullifier`) treat the slot as a boolean "has signed"
-    ///         flag; under the new encoding that's equivalent to "slot is
-    ///         non-zero".
+    /// @notice Whether `nf` currently holds an active signature on `id`.
     function hasNullifier(uint256 id, bytes32 nf) external view returns (bool) {
-        return voteByNullifier[id][nf] > 0;
+        return _signed[id][nf];
     }
 
     function getPetition(uint256 id) external view returns (Petition memory) {
@@ -338,15 +266,6 @@ contract PetitionRegistryV2 {
 
     function signatureCount(uint256 id) external view returns (uint32) {
         return _petitions[id].signatureCount;
-    }
-
-    function voteCounts(uint256 id)
-        external
-        view
-        returns (uint32 yesCount, uint32 noCount, uint32 abstainCount)
-    {
-        Petition storage p = _petitions[id];
-        return (p.yesCount, p.noCount, p.abstainCount);
     }
 
     enum PetitionStatus {
@@ -362,19 +281,5 @@ contract PetitionRegistryV2 {
         if (p.thresholdReached) return PetitionStatus.ThresholdReached;
         if (block.timestamp > p.deadline) return PetitionStatus.Closed;
         return PetitionStatus.Open;
-    }
-
-    // ---------- internals ----------
-
-    function _assertVoteValid(BallotMode mode, uint8 vote) private pure {
-        if (mode == BallotMode.Signature) {
-            // Signature mode accepts only vote=0 (the canonical "signed"
-            // bit). Anything else is a caller bug.
-            if (vote != 0) revert InvalidVote();
-        } else if (mode == BallotMode.YesNo) {
-            if (vote > 1) revert InvalidVote();
-        } else {
-            if (vote > 2) revert InvalidVote();
-        }
     }
 }

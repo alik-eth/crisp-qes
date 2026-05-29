@@ -63,26 +63,6 @@ export const enrollmentRegistryAbi = [
     { type: "error", name: "ZeroAddress", inputs: [] },
 ] as const;
 
-/** Mirrors `enum BallotMode { Signature, YesNo, YesNoAbstain }` in PetitionRegistryV2. */
-export type BallotMode = 0 | 1 | 2;
-export const BallotModeLabel: Record<BallotMode, "Signature" | "YesNo" | "YesNoAbstain"> = {
-    0: "Signature",
-    1: "YesNo",
-    2: "YesNoAbstain",
-};
-
-/**
- * Vote encoding per the deployed contract (#31):
- *   Signature mode:    only `0` (= sign / yes) is allowed.
- *   YesNo mode:        0 = No, 1 = Yes.
- *   YesNoAbstain mode: 0 = No, 1 = Yes, 2 = Abstain.
- */
-export const VotesForMode: Record<BallotMode, number[]> = {
-    0: [0],
-    1: [0, 1],
-    2: [0, 1, 2],
-};
-
 export const petitionRegistryV2Abi = [
     {
         type: "function",
@@ -108,25 +88,10 @@ export const petitionRegistryV2Abi = [
                     { name: "signatureCount", type: "uint32" },
                     { name: "thresholdReached", type: "bool" },
                     { name: "depositRefunded", type: "bool" },
-                    { name: "mode", type: "uint8" },
-                    { name: "yesCount", type: "uint32" },
-                    { name: "noCount", type: "uint32" },
-                    { name: "abstainCount", type: "uint32" },
                     { name: "textHash", type: "bytes32" },
                     { name: "fullText", type: "bytes" },
                 ],
             },
-        ],
-    },
-    {
-        type: "function",
-        name: "voteCounts",
-        stateMutability: "view",
-        inputs: [{ name: "id", type: "uint256" }],
-        outputs: [
-            { name: "yesCount", type: "uint32" },
-            { name: "noCount", type: "uint32" },
-            { name: "abstainCount", type: "uint32" },
         ],
     },
     {
@@ -155,16 +120,6 @@ export const petitionRegistryV2Abi = [
     },
     {
         type: "function",
-        name: "voteByNullifier",
-        stateMutability: "view",
-        inputs: [
-            { name: "petitionId", type: "uint256" },
-            { name: "nullifier", type: "bytes32" },
-        ],
-        outputs: [{ name: "", type: "uint8" }],
-    },
-    {
-        type: "function",
         name: "revokeVote",
         stateMutability: "nonpayable",
         inputs: [
@@ -183,7 +138,6 @@ export const petitionRegistryV2Abi = [
             { name: "fullText", type: "bytes" },
             { name: "deadline", type: "uint64" },
             { name: "threshold", type: "uint32" },
-            { name: "mode", type: "uint8" },
         ],
         outputs: [{ name: "id", type: "uint256" }],
     },
@@ -193,7 +147,6 @@ export const petitionRegistryV2Abi = [
         stateMutability: "nonpayable",
         inputs: [
             { name: "petitionId", type: "uint256" },
-            { name: "vote", type: "uint8" },
             { name: "nullifier", type: "bytes32" },
             { name: "proof", type: "bytes" },
             { name: "publicInputs", type: "bytes32[]" },
@@ -222,7 +175,6 @@ export const petitionRegistryV2Abi = [
     { type: "error", name: "InvalidEnrollmentRoot", inputs: [] },
     { type: "error", name: "NullifierAlreadyUsed", inputs: [] },
     { type: "error", name: "NullifierNotUsed", inputs: [] },
-    { type: "error", name: "InvalidVote", inputs: [] },
 ] as const;
 
 export type PetitionStatusCode = 0 | 1 | 2 | 3;

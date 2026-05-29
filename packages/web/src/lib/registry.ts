@@ -1,12 +1,11 @@
 // Read paths against PetitionRegistryV2 + EnrollmentRegistry.
 //
-// Tuple shape of `getPetition` mirrors the deployed contract (#31):
+// Tuple shape of `getPetition` mirrors the deployed contract:
 //   { creator, createdAt, deadline, threshold, signatureCount,
-//     thresholdReached, depositRefunded, mode,
-//     yesCount, noCount, abstainCount, textHash, fullText }
+//     thresholdReached, depositRefunded, textHash, fullText }
 //
-// `signatureCount` is the Signature-mode tally; for YesNo / YesNoAbstain
-// modes the totals come from yes+no(+abstain).
+// A petition is support-only: `signatureCount` is the number of active
+// (un-revoked) signatures. There is no Yes/No/Abstain vote.
 
 import { type Hex, hexToBytes } from "viem";
 import {
@@ -14,8 +13,6 @@ import {
     enrollmentRegistryAbi,
     PetitionStatusLabel,
     type PetitionStatusCode,
-    BallotModeLabel,
-    type BallotMode,
 } from "./abi";
 import { publicClient } from "./chain";
 import { config } from "../config";
@@ -27,13 +24,8 @@ export interface PetitionView {
     deadline: bigint;
     threshold: number;
     signatureCount: number;
-    yesCount: number;
-    noCount: number;
-    abstainCount: number;
     thresholdReached: boolean;
     depositRefunded: boolean;
-    mode: BallotMode;
-    modeLabel: "Signature" | "YesNo" | "YesNoAbstain";
     textHash: Hex;
     fullText: string;
     status: "Open" | "Closed" | "ThresholdReached" | "Unknown";
@@ -73,31 +65,6 @@ export async function readHasNullifier(
         functionName: "hasNullifier",
         args: [petitionId, nullifier],
     });
-}
-
-/**
- * Returns the stored ballot for a (petitionId, nullifier) pair.
- *
- *   0           — nullifier has never voted on this petition.
- *   1 + vote    — nullifier has voted; subtract 1 to get the original
- *                 vote value (Signature: 0 = sign; YesNo: 0=No,1=Yes;
- *                 YesNoAbstain: 0=No,1=Yes,2=Abstain).
- *
- * The +1 offset is what lets a single uint8 slot encode both "unused"
- * and "voted-No" without ambiguity — matches `voteByNullifier` in the
- * v2 contract.
- */
-export async function readVoteByNullifier(
-    petitionId: bigint,
-    nullifier: `0x${string}`,
-): Promise<number> {
-    const raw = await publicClient.readContract({
-        address: config.petitionRegistryV2,
-        abi: petitionRegistryV2Abi,
-        functionName: "voteByNullifier",
-        args: [petitionId, nullifier],
-    });
-    return Number(raw);
 }
 
 export async function readCreationDeposit(): Promise<bigint> {
@@ -140,7 +107,6 @@ export async function readPetition(id: bigint): Promise<PetitionView | null> {
                 args: [id],
             }),
         ]);
-        const mode = pet.mode as BallotMode;
         return {
             id,
             creator: pet.creator,
@@ -148,13 +114,8 @@ export async function readPetition(id: bigint): Promise<PetitionView | null> {
             deadline: pet.deadline,
             threshold: Number(pet.threshold),
             signatureCount: Number(pet.signatureCount),
-            yesCount: Number(pet.yesCount),
-            noCount: Number(pet.noCount),
-            abstainCount: Number(pet.abstainCount),
             thresholdReached: pet.thresholdReached,
             depositRefunded: pet.depositRefunded,
-            mode,
-            modeLabel: BallotModeLabel[mode],
             textHash: pet.textHash,
             fullText: decodeText(pet.fullText),
             status:

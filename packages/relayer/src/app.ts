@@ -10,8 +10,8 @@
 //                      wallet step from the enrollment ceremony.
 //   POST /v2/submit  — relay a v2 UltraHonk signature proof to
 //                      PetitionRegistryV2.signPetition.
-//   GET  /tx/:hash   — same shape as MVP relayer; decodes the new
-//                      PetitionSigned / PetitionVoted events.
+//   GET  /tx/:hash   — same shape as MVP relayer; decodes the
+//                      PetitionSigned / PetitionRevoked events.
 //   GET  /healthz    — config snapshot + chain probe.
 //
 // Differences from the MVP relayer's `/submit`:
@@ -23,9 +23,8 @@
 //     reject the submit pre-flight if `publicInputs[1]` doesn't match.
 //     This save a doomed simulate round-trip when the citizen's path
 //     was generated under an old root.
-//   * `vote` is now a uint8 (Signature: 0, YesNo: 0|1, YesNoAbstain:
-//     0|1|2). Wire-validated against the mode the petition was
-//     created with by the contract; here we only bound-check.
+//   * A petition is support-only — there is no vote value. Signing means
+//     supporting; withdrawing is /v2/revoke.
 
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyCors from "@fastify/cors";
@@ -51,10 +50,10 @@ const sig65 = z
 const decimalUint = z.string().regex(/^\d+$/, "expected decimal integer");
 
 // Body shape pinned by web's submit() — see N4 wire contract:
-//   { petitionId, vote, nullifier, proof, publicInputs[] }
+//   { petitionId, nullifier, proof, publicInputs[] }
+// A petition is support-only: signing = supporting it. There is no vote.
 const SubmitBody = z.object({
     petitionId: decimalUint,
-    vote: z.number().int().min(0).max(2),
     nullifier: hex32,
     proof: hex,
     publicInputs: z.array(hex32).length(3),
@@ -262,7 +261,6 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
         // 3. Compose calldata.
         const args = [
             BigInt(body.petitionId),
-            body.vote,
             body.nullifier as Hex,
             body.proof as Hex,
             body.publicInputs as Hex[],
@@ -276,7 +274,6 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
                 functionName: "signPetition",
                 args: args as unknown as readonly [
                     bigint,
-                    number,
                     Hex,
                     Hex,
                     readonly Hex[],
@@ -297,7 +294,6 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
                 functionName: "signPetition",
                 args: args as unknown as readonly [
                     bigint,
-                    number,
                     Hex,
                     Hex,
                     readonly Hex[],
@@ -499,7 +495,7 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
 
         let petitionId: string | undefined;
         let signatureCount: number | undefined;
-        let voteValue: number | undefined;
+        let revoked = false;
 
         if (wasOurTarget) {
             for (const log of receipt.logs) {
@@ -519,16 +515,15 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
                         signatureCount = Number(a.newCount);
                         break;
                     }
-                    if (decoded.eventName === "PetitionVoted") {
+                    if (decoded.eventName === "PetitionRevoked") {
                         const a = decoded.args as unknown as {
                             id: bigint;
-                            vote: number;
                             nullifier: Hex;
                             newCount: number;
                         };
                         petitionId = a.id.toString();
                         signatureCount = Number(a.newCount);
-                        voteValue = Number(a.vote);
+                        revoked = true;
                         break;
                     }
                 } catch {
@@ -543,7 +538,7 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
             gasUsed: receipt.gasUsed.toString(),
             petitionId: petitionId ?? null,
             signatureCount: signatureCount ?? null,
-            vote: voteValue ?? null,
+            revoked,
         });
     });
 

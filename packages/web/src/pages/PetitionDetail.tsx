@@ -69,11 +69,6 @@ export function PetitionDetail({ id, state, onSignIn }: Props) {
     const title = lines[0] || `Petition #${petition.id.toString()}`;
     const body = lines.slice(1).join("\n").trim();
 
-    const total =
-        petition.modeLabel === "Signature"
-            ? petition.signatureCount
-            : petition.yesCount + petition.noCount + petition.abstainCount;
-
     return (
         <section className="detail">
             <div className="detail__crumbs">
@@ -83,7 +78,6 @@ export function PetitionDetail({ id, state, onSignIn }: Props) {
             <h1 className="detail__title">{title}</h1>
 
             <dl className="detail__facts">
-                <Fact label="Mode" value={prettyMode(petition.modeLabel)} />
                 <Fact label="Status" value={petition.status} />
                 <Fact
                     label="Deadline"
@@ -93,19 +87,11 @@ export function PetitionDetail({ id, state, onSignIn }: Props) {
                 />
                 <Fact label="Threshold" value={petition.threshold.toLocaleString()} />
                 <Fact
-                    label={
-                        petition.modeLabel === "Signature"
-                            ? "Signatures"
-                            : "Votes"
-                    }
-                    value={total.toLocaleString()}
+                    label="Signatures"
+                    value={petition.signatureCount.toLocaleString()}
                 />
                 <Fact label="Creator" value={shortAddr(petition.creator)} mono />
             </dl>
-
-            {petition.modeLabel !== "Signature" ? (
-                <Tally petition={petition} />
-            ) : null}
 
             {body ? (
                 <div className="detail__body">
@@ -144,34 +130,6 @@ function Fact({
     );
 }
 
-function Tally({ petition }: { petition: PetitionView }) {
-    const total = petition.yesCount + petition.noCount + petition.abstainCount;
-    return (
-        <div className="tally" aria-label="Tally">
-            <Row label="Yes" count={petition.yesCount} total={total} />
-            <Row label="No" count={petition.noCount} total={total} />
-            {petition.modeLabel === "YesNoAbstain" ? (
-                <Row label="Abstain" count={petition.abstainCount} total={total} />
-            ) : null}
-        </div>
-    );
-}
-function Row({ label, count, total }: { label: string; count: number; total: number }) {
-    const pct = total === 0 ? 0 : (count / total) * 100;
-    return (
-        <div className="tally__row">
-            <span className="tally__label">{label}</span>
-            <span className="tally__bar">
-                <span
-                    className="tally__fill"
-                    style={{ width: `${pct.toFixed(1)}%` }}
-                />
-            </span>
-            <span className="tally__count">{count.toLocaleString()}</span>
-        </div>
-    );
-}
-
 function SignCta({
     petition,
     state,
@@ -198,7 +156,7 @@ function SignCta({
                     className="btn btn--primary"
                     onClick={onSignIn}
                 >
-                    Sign in to vote
+                    Sign in to support
                 </button>
             </div>
         );
@@ -207,16 +165,12 @@ function SignCta({
         return (
             <div className="detail__cta">
                 <Link href="/verify" className="btn btn--primary">
-                    Verify with QES to vote
+                    Verify with QES to sign
                 </Link>
             </div>
         );
     }
     return <SignBlock petition={petition} onSigned={onSigned} />;
-}
-
-function prettyMode(m: PetitionView["modeLabel"]): string {
-    return m === "Signature" ? "Signature" : m === "YesNo" ? "Yes / No" : "Yes / No / Abstain";
 }
 
 function shortAddr(a: `0x${string}`): string {

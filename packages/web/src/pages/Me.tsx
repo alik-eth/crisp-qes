@@ -250,10 +250,7 @@ export function Me({ state, refresh }: Props) {
                                             </div>
                                             <div className="petitions__meta">
                                                 <span className="muted">
-                                                    {p.modeLabel ===
-                                                    "Signature"
-                                                        ? "Signature"
-                                                        : "Vote"}
+                                                    Signed
                                                 </span>
                                                 <span className="muted">·</span>
                                                 <span className="muted">

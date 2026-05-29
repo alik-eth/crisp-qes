@@ -1,11 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import type { AccountState } from "../lib/account.js";
-import {
-    readLeafCount,
-    readAllPetitions,
-    type PetitionView,
-} from "../lib/registry.js";
+import { readLeafCount, readAllPetitions } from "../lib/registry.js";
 
 interface Props {
     state: AccountState;
@@ -16,11 +12,6 @@ interface Stats {
     citizens: number;
     petitions: number;
     signatures: number;
-}
-
-function totalSignatures(p: PetitionView): number {
-    if (p.modeLabel === "Signature") return p.signatureCount;
-    return p.yesCount + p.noCount + p.abstainCount;
 }
 
 export function Landing({ state, onSignIn }: Props) {
@@ -40,7 +31,7 @@ export function Landing({ state, onSignIn }: Props) {
                     citizens: Number(leafCount),
                     petitions: petitions.length,
                     signatures: petitions.reduce(
-                        (acc, p) => acc + totalSignatures(p),
+                        (acc, p) => acc + p.signatureCount,
                         0,
                     ),
                 });

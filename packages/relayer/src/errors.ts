@@ -17,7 +17,6 @@ const SIGNER_ERROR_NAMES = [
     "NullifierNotUsed",
     "InvalidProof",
     "InvalidEnrollmentRoot",
-    "InvalidVote",
 ] as const;
 
 type SignerErrorName = (typeof SIGNER_ERROR_NAMES)[number];
@@ -74,7 +73,6 @@ const STATUS_BY_NAME: Record<SignerErrorName, number> = {
     UnknownPetition: 404,
     InvalidProof: 422,
     InvalidEnrollmentRoot: 422,
-    InvalidVote: 422,
 };
 
 function findRevertSelector(err: unknown): Hex | undefined {

@@ -12,7 +12,6 @@ export const petitionRegistryV2Abi = [
         stateMutability: "nonpayable",
         inputs: [
             { name: "petitionId", type: "uint256" },
-            { name: "vote", type: "uint8" },
             { name: "nullifier", type: "bytes32" },
             { name: "proof", type: "bytes" },
             { name: "publicInputs", type: "bytes32[]" },
@@ -40,17 +39,6 @@ export const petitionRegistryV2Abi = [
     },
     {
         type: "function",
-        name: "voteCounts",
-        stateMutability: "view",
-        inputs: [{ name: "id", type: "uint256" }],
-        outputs: [
-            { name: "yesCount", type: "uint32" },
-            { name: "noCount", type: "uint32" },
-            { name: "abstainCount", type: "uint32" },
-        ],
-    },
-    {
-        type: "function",
         name: "hasNullifier",
         stateMutability: "view",
         inputs: [
@@ -70,10 +58,9 @@ export const petitionRegistryV2Abi = [
     },
     {
         type: "event",
-        name: "PetitionVoted",
+        name: "PetitionRevoked",
         inputs: [
             { name: "id", type: "uint256", indexed: true },
-            { name: "vote", type: "uint8", indexed: false },
             { name: "nullifier", type: "bytes32", indexed: true },
             { name: "newCount", type: "uint32", indexed: false },
         ],
@@ -94,7 +81,6 @@ export const petitionRegistryV2Abi = [
     { type: "error", name: "NullifierNotUsed", inputs: [] },
     { type: "error", name: "InvalidProof", inputs: [] },
     { type: "error", name: "InvalidEnrollmentRoot", inputs: [] },
-    { type: "error", name: "InvalidVote", inputs: [] },
 ] as const;
 
 export const enrollmentRegistryAbi = [

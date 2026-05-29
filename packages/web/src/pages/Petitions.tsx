@@ -11,11 +11,6 @@ interface Props {
     onSignIn: () => void;
 }
 
-function totalSignatures(p: PetitionView): number {
-    if (p.modeLabel === "Signature") return p.signatureCount;
-    return p.yesCount + p.noCount + p.abstainCount;
-}
-
 function timeRemaining(deadline: bigint): string {
     const now = Math.floor(Date.now() / 1000);
     const secs = Number(deadline) - now;
@@ -95,12 +90,8 @@ export function Petitions({ state, onSignIn }: Props) {
                                                 "(untitled)"}
                                         </div>
                                         <div className="petitions__meta">
-                                            <ModeBadge mode={p.modeLabel} />
                                             <span className="muted">
-                                                {totalSignatures(p)}{" "}
-                                                {p.modeLabel === "Signature"
-                                                    ? "signatures"
-                                                    : "votes"}
+                                                {p.signatureCount} signatures
                                             </span>
                                             <span className="muted">·</span>
                                             <span className="muted">
@@ -120,14 +111,6 @@ export function Petitions({ state, onSignIn }: Props) {
 
 function firstLine(text: string): string {
     return text.split(/\r?\n/)[0]?.slice(0, 120) ?? "";
-}
-
-function ModeBadge({ mode }: { mode: PetitionView["modeLabel"] }) {
-    const label =
-        mode === "Signature" ? "Signature"
-        : mode === "YesNo" ? "Yes / No"
-        : "Yes / No / Abstain";
-    return <span className="badge">{label}</span>;
 }
 
 function StatusBadge({ status }: { status: PetitionView["status"] }) {

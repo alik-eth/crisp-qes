@@ -1,8 +1,8 @@
 {
   "network": "sepolia",
   "chainId": 11155111,
-  "deployedAt": "2026-05-29T17:55:00Z",
-  "deployerCommit": "f5019bb",
+  "deployedAt": "2026-05-29T18:33:25Z",
+  "deployerCommit": "9693051",
   "blockExplorer": "https://sepolia.etherscan.io",
   "deployer": "0xB8d121CD0B2D0AB3df2aFF0B45B2fD354FF4c1f7",
   "contracts": {
@@ -15,8 +15,8 @@
       "txHash": "0x2862c8ff30c94509921560cfae4ecd73e96708db2c1a441aad987bd4f7da12e5"
     },
     "petitionRegistryV2": {
-      "address": "0x3bad7B7db4AE83e3c2EEbE5FFfB05a226ef8dbF7",
-      "txHash": "0xe39ed899371c0d1bdaed9d4aaf5bbd898d3896f083b40ee78025d39d4a5337fe"
+      "address": "0x4CaEeAFbd5CAAD10dE75995ae5b1Cc8d29c01757",
+      "txHash": "0xff86371d6efb835b157c8cb1638eb1b1d6f36e9bb27fbe9ea7124e5d9075d7d9"
     }
   },
   "params": {
@@ -65,6 +65,13 @@
     "Block time on Sepolia is ~12s (vs Base Sepolia's ~2s). On-chain step latency in the demo is higher by an order of magnitude."
   ],
   "supersedes_within_sepolia": [
+    {
+      "deployedAt": "2026-05-29T18:33:25Z",
+      "enrollmentRegistry": "0x0214504C1Be6d664bbE3AE6687507aBE19A36d1a",
+      "ultraVerifierV2": "0xEC306EFA07D9688ae759d1c11D411cB6F0200acB",
+      "petitionRegistryV2": "0x3bad7B7db4AE83e3c2EEbE5FFfB05a226ef8dbF7",
+      "reason": "PetitionRegistryV2 superseded by 0x4CaEeAFb…1757 on 2026-05-29T18:33Z after collapsing petitions to support-only (task #38): dropped the BallotMode enum (Signature/YesNo/YesNoAbstain) and the per-vote yes/no/abstain counters + voteByNullifier(uint8) encoding. A petition is now a one-directional support instrument — sign to support, revoke to withdraw; the per-nullifier slot is a plain bool. createPetition/signPetition lost their mode/vote args. EnrollmentRegistry + UltraVerifierV2 reused (the v2 circuit never bound the vote, so no zk/verifier change), so all existing local vaults remain valid against the new petition registry."
+    },
     {
       "deployedAt": "2026-05-29T12:50:00Z",
       "enrollmentRegistry": "0x0214504C1Be6d664bbE3AE6687507aBE19A36d1a",

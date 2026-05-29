@@ -1,15 +1,14 @@
 // v2 relayer client. Endpoint shape coordinates with task #34 (N5).
 //
-// For demo purposes the relayer accepts `vote` + the 3-input public
+// A petition is support-only: the relayer accepts the 3-input public
 // array `[petition_id, enrollment_root, nullifier]` and posts
-// `PetitionRegistryV2.signPetition` on behalf of the citizen. No
-// per-citizen fee — the relayer absorbs gas.
+// `PetitionRegistryV2.signPetition` on behalf of the citizen. No vote,
+// no per-citizen fee — the relayer absorbs gas.
 
 import { config } from "../config";
 
 export interface SubmitArgs {
     petitionId: bigint;
-    vote: number;
     nullifier: `0x${string}`;
     proof: `0x${string}`;
     /** Length 3: [petition_id, enrollment_root, nullifier] — as 0x-hex32. */
@@ -34,7 +33,6 @@ export async function submitSignature(
 ): Promise<SubmitOk | SubmitErr> {
     const body = {
         petitionId: args.petitionId.toString(10),
-        vote: args.vote,
         nullifier: args.nullifier,
         proof: args.proof,
         publicInputs: args.publicInputs,

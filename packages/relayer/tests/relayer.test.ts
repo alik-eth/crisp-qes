@@ -74,7 +74,6 @@ function fakeClients(impls: {
 
 const VALID_BODY = {
     petitionId: "1",
-    vote: 0,
     nullifier: "0x" + "11".repeat(32),
     proof: "0xdead",
     publicInputs: [
@@ -119,16 +118,6 @@ describe("POST /v2/submit validation", () => {
         await app.close();
     });
 
-    it("rejects vote > 2 with 400", async () => {
-        const app = buildApp({ config: cfg(), clientsFactory: () => fakeClients() });
-        const res = await app.inject({
-            method: "POST",
-            url: "/v2/submit",
-            payload: { ...VALID_BODY, vote: 3 },
-        });
-        expect(res.statusCode).toBe(400);
-        await app.close();
-    });
 
     it("rejects stale enrollmentRoot with 409", async () => {
         const liveRoot = `0x${"a".repeat(64)}`;

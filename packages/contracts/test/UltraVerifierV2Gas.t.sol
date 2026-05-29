@@ -66,8 +66,7 @@ contract UltraVerifierV2GasTest is Test {
         uint256 id = registry.createPetition{value: 0.001 ether}(
             bytes("v2 gas bench"),
             uint64(block.timestamp + 7 days),
-            1,
-            PetitionRegistryV2.BallotMode.Signature
+            1
         );
         require(id == PETITION_ID, "id mismatch");
 
@@ -78,7 +77,7 @@ contract UltraVerifierV2GasTest is Test {
         bytes memory proof = vm.readFileBinary("../../bench/v2-proof.bin");
 
         uint256 g0 = gasleft();
-        registry.signPetition(id, 0, NULLIFIER, proof, publicInputs);
+        registry.signPetition(id, NULLIFIER, proof, publicInputs);
         uint256 used = g0 - gasleft();
         emit log_named_uint("signPetition gas", used);
     }
