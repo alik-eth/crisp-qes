@@ -168,9 +168,9 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
         body: JSON.stringify(body),
     });
     if (!r.ok) {
-        let parsed: { error?: string; detail?: string } = {};
+        let parsed: Record<string, unknown> = {};
         try {
-            parsed = (await r.json()) as typeof parsed;
+            parsed = (await r.json()) as Record<string, unknown>;
         } catch {
             // body wasn't JSON
         }
@@ -178,9 +178,16 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
             `OPRF ${path} → ${r.status} ${parsed.error ?? ""} ${
                 parsed.detail ?? ""
             }`.trim(),
-        ) as Error & { status: number; code: string };
+        ) as Error & {
+            status: number;
+            code: string;
+            body: Record<string, unknown>;
+        };
         err.status = r.status;
-        err.code = parsed.error ?? "Unknown";
+        err.code = (parsed.error as string | undefined) ?? "Unknown";
+        // Preserve the full body so callers can read structured fields
+        // beyond {error, detail} — e.g. the age-gate's {min, found}.
+        err.body = parsed;
         throw err;
     }
     return (await r.json()) as T;

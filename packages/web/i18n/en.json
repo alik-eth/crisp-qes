@@ -110,7 +110,9 @@
             "pubkeyMismatch": "The OPRF server's public key does not match the one pinned in the client. Possible MITM — enrollment aborted.",
             "commit": "Commitment",
             "secret": "Secret (private)",
-            "error": "OPRF error: {{detail}}"
+            "error": "OPRF error: {{detail}}",
+            "ageBlocked": "Diia certifies you're under {{min}}.",
+            "ageBlockedHint": "CRISP-QES is for adult civic petitions only. You can return when you turn {{min}}."
         },
         "register": {
             "title": "Register in the Merkle commitment",

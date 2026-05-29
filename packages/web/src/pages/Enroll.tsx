@@ -118,6 +118,13 @@ export function Enroll({ onBack, onDone }: Props) {
     } | null>(null);
     const [oprfBusy, setOprfBusy] = useState(false);
     const [oprfErr, setOprfErr] = useState<string | null>(null);
+    // Terminal age-gate state. Fires from /oprf/blind-eval 403 when the
+    // Diia cert's SubjectDirectoryAttributes DOB resolves under AGE_THRESHOLD
+    // (default 18). No retry — citizen can't grow older mid-session.
+    const [ageBlocked, setAgeBlocked] = useState<{
+        min: number;
+        found: number;
+    } | null>(null);
 
     const [registerResult, setRegisterResult] = useState<{
         merklePath: `0x${string}`[];
@@ -183,11 +190,18 @@ export function Enroll({ onBack, onDone }: Props) {
     // path. Survives #55 cleanly (the wallet-presence rework keeps the
     // same auto-chain logic and additionally collapses the chain step).
     useEffect(() => {
-        if (parsed && p7sBytes && !oprfResult && !oprfBusy && !oprfErr) {
+        if (
+            parsed &&
+            p7sBytes &&
+            !oprfResult &&
+            !oprfBusy &&
+            !oprfErr &&
+            !ageBlocked
+        ) {
             void runOprf();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [parsed, p7sBytes, oprfResult, oprfBusy, oprfErr]);
+    }, [parsed, p7sBytes, oprfResult, oprfBusy, oprfErr, ageBlocked]);
 
     useEffect(() => {
         if (oprfResult && !registerResult && !registerBusy && !registerErr) {
@@ -495,6 +509,31 @@ export function Enroll({ onBack, onDone }: Props) {
             const s = await pedersenS(N);
             setOprfResult({ N, blindedElement, s });
         } catch (e) {
+            // 403 with code "age_below_threshold" — backend's OPRF
+            // service rejected the citizen because their Diia cert's
+            // DOB attribute resolved under AGE_THRESHOLD. Terminal
+            // state; no retry.
+            const errObj = e as
+                | (Error & {
+                      status?: number;
+                      code?: string;
+                      body?: { min?: unknown; found?: unknown };
+                  })
+                | null;
+            if (
+                errObj &&
+                errObj.status === 403 &&
+                errObj.code === "age_below_threshold"
+            ) {
+                const min =
+                    typeof errObj.body?.min === "number" ? errObj.body.min : 18;
+                const found =
+                    typeof errObj.body?.found === "number"
+                        ? errObj.body.found
+                        : 0;
+                setAgeBlocked({ min, found });
+                return;
+            }
             setOprfErr(e instanceof Error ? e.message : String(e));
         } finally {
             setOprfBusy(false);
@@ -663,7 +702,29 @@ export function Enroll({ onBack, onDone }: Props) {
                 <div className="panel">
                     <p className="panel__title">{t("enroll.oprf.title")}</p>
                     <p className="note">{t("enroll.oprf.intro")}</p>
-                    {oprfResult ? (
+                    {ageBlocked ? (
+                        <>
+                            <p className="error-line">
+                                {t("enroll.oprf.ageBlocked", {
+                                    min: ageBlocked.min,
+                                })}
+                            </p>
+                            <p className="note">
+                                {t("enroll.oprf.ageBlockedHint", {
+                                    min: ageBlocked.min,
+                                })}
+                            </p>
+                            <div className="actions">
+                                <button
+                                    className="btn--link"
+                                    type="button"
+                                    onClick={onBack}
+                                >
+                                    ← {t("enroll.back")}
+                                </button>
+                            </div>
+                        </>
+                    ) : oprfResult ? (
                         <dl>
                             <div className="field-row">
                                 <dt>{t("enroll.oprf.commit")}</dt>
