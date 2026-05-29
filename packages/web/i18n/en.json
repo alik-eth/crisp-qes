@@ -64,11 +64,11 @@
         "intro": "Done once. You prove your identity with a Diia QES, bind it to a Passkey on this device, and from then on every signature is a sub-second tap — no fresh KEP.",
         "back": "Back to petitions",
         "steps": {
-            "binding": "0. File to sign in Diia",
+            "binding": "File to sign in Diia",
             "upload": "1. Upload signed Diia QES",
-            "oprf": "2. Compute commitment",
-            "register": "3. Record on-chain",
-            "passkey": "4. Create Passkey",
+            "passkey": "2. Create Passkey",
+            "oprf": "3. Compute commitment",
+            "register": "4. Record on-chain",
             "systemTag": "(we handle this)"
         },
         "binding": {
@@ -93,13 +93,21 @@
         "passkey": {
             "title": "Passkey on this device",
             "intro": "We'll create a Passkey with the PRF extension. The authenticator (Face ID, Touch ID, security key) syncs via iCloud / Google / Microsoft, so losing this device doesn't lose your Passkey.",
+            "introEarly": "We create the Passkey now, before we touch the ciphernode or the chain. If your authenticator can't deliver a PRF output, nothing is committed anywhere — you can retry on another device with no leftover state.",
             "recoveryNote": "Recovery: Passkey cloud sync only in v2; yearly re-enrollment via Diia from v3 onward.",
             "create": "Create Passkey",
             "creating": "Waiting for the authenticator…",
             "created": "Passkey created. PRF extension is active.",
+            "ceremonyOk": "Passkey ready. Computing your commitment…",
             "finish": "Finish enrollment",
             "error": "Passkey creation failed: {{detail}}",
-            "unsupported": "This browser or device doesn't support WebAuthn PRF. Try Chrome, Safari, Firefox, or Edge."
+            "unsupported": "This browser or device doesn't support WebAuthn PRF. Try Chrome, Safari, or Edge — or a hardware security key with hmac-secret."
+        },
+        "done": {
+            "title": "Enrollment complete",
+            "persisting": "Sealing your Passkey-encrypted store on this device…",
+            "ready": "You're enrolled. Ready to sign petitions.",
+            "persistError": "Could not write the local store: {{detail}}"
         },
         "oprf": {
             "title": "Compute the commitment via the ciphernode",

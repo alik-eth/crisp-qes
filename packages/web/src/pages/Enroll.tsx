@@ -103,7 +103,18 @@ export function Enroll({ onBack, onDone }: Props) {
     // Passkey now sits AFTER the on-chain step (#48 UX review). A failed
     // OPRF / commitment / chain submit no longer leaves a dangling
     // credential on the authenticator: the citizen only ever sees the
-    // create-passkey prompt once enrollment is irrevocably committed.
+    // create-passkey prompt fires EARLY (right after .p7s upload, before
+    // any OPRF call). If the authenticator can't deliver a PRF output —
+    // Firefox+Bitwarden, hardware key without hmac-secret, etc. — we
+    // never call /oprf/register and never submit on-chain, so the
+    // citizen can retry in another browser without any orphan state.
+    // `prfDerivation` carries the PRF output + credential id in memory
+    // until chain submit succeeds; then `finalizeEnrollment` wraps the
+    // payload and persists it, flipping `passkey` to non-null.
+    const [prfDerivation, setPrfDerivation] = useState<{
+        credentialId: Uint8Array;
+        prfOutput: Uint8Array;
+    } | null>(null);
     const [passkey, setPasskey] = useState<{
         credentialId: Uint8Array;
         prfOutput: Uint8Array;
@@ -154,19 +165,26 @@ export function Enroll({ onBack, onDone }: Props) {
     const [stage, setStage] = useState<Stage>("binding");
 
     // Auto-advance the visible "current step" based on which artifacts
-    // exist. 5-step sequence (see file header):
-    //   binding → upload → oprf → register → chain → passkey.
+    // exist. New order: Passkey ceremony fires BEFORE OPRF + chain so a
+    // PRF-incompatible authenticator (Firefox+Bitwarden, older keys)
+    // surfaces the failure before any commit-on-chain side-effect.
+    //   binding → upload → passkey → oprf → register → chain → passkey(done).
+    // The terminal "done" view re-uses the passkey stage label since
+    // `passkey` is non-null only after finalizeEnrollment writes the
+    // store.
     useEffect(() => {
         if (passkey) setStage("passkey");
         else if (chainTx) setStage("passkey");
         else if (registerResult) setStage("chain");
         else if (oprfResult) setStage("register");
-        else if (parsed) setStage("oprf");
+        else if (prfDerivation) setStage("oprf");
+        else if (parsed) setStage("passkey");
         else if (bindingDownloaded) setStage("upload");
         else setStage("binding");
     }, [
         bindingDownloaded,
         parsed,
+        prfDerivation,
         oprfResult,
         registerResult,
         chainTx,
@@ -190,9 +208,14 @@ export function Enroll({ onBack, onDone }: Props) {
     // path. Survives #55 cleanly (the wallet-presence rework keeps the
     // same auto-chain logic and additionally collapses the chain step).
     useEffect(() => {
+        // Gated on `prfDerivation` — OPRF blind-eval does not fire until
+        // the Passkey ceremony has succeeded. This makes the Passkey the
+        // first thing the authenticator has to prove it can do, before
+        // the OPRF DB is touched or any chain gas is spent.
         if (
             parsed &&
             p7sBytes &&
+            prfDerivation &&
             !oprfResult &&
             !oprfBusy &&
             !oprfErr &&
@@ -201,7 +224,41 @@ export function Enroll({ onBack, onDone }: Props) {
             void runOprf();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [parsed, p7sBytes, oprfResult, oprfBusy, oprfErr, ageBlocked]);
+    }, [
+        parsed,
+        p7sBytes,
+        prfDerivation,
+        oprfResult,
+        oprfBusy,
+        oprfErr,
+        ageBlocked,
+    ]);
+
+    // After chainTx lands AND we already have prfDerivation from step 2,
+    // finalize the local persist (wrap payload, write encryptedStore,
+    // set `passkey`). Idempotent — guarded by `!passkey && !passkeyBusy`.
+    useEffect(() => {
+        if (
+            chainTx &&
+            prfDerivation &&
+            oprfResult &&
+            registerResult &&
+            !passkey &&
+            !passkeyBusy &&
+            !passkeyErr
+        ) {
+            void finalizeEnrollment();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        chainTx,
+        prfDerivation,
+        oprfResult,
+        registerResult,
+        passkey,
+        passkeyBusy,
+        passkeyErr,
+    ]);
 
     useEffect(() => {
         if (oprfResult && !registerResult && !registerBusy && !registerErr) {
@@ -409,18 +466,18 @@ export function Enroll({ onBack, onDone }: Props) {
     }
 
     /**
-     * Step 4: now that the enrollment root is on-chain, mint the Passkey,
-     * wrap the payload, persist to IndexedDB. If this step fails, the
-     * enrollment is still good on-chain — the citizen can re-enter the
-     * app and retry locally; the OPRF service's
-     * `/enrollment/:commitment/path` endpoint reconstructs everything
-     * else from the existing on-chain commitment.
+     * Step 2: Passkey ceremony — fires AFTER .p7s upload, BEFORE any
+     * OPRF call. The point is to discover authenticator/browser PRF
+     * incompatibility (Firefox+Bitwarden, older keys without
+     * hmac-secret) BEFORE we touch the OPRF DB or pay relayer gas. If
+     * this throws, the rest of the pipeline never runs and the citizen
+     * can retry in a different browser with no orphan state anywhere.
      *
-     * No mnemonic derivation — recovery in v2 is Passkey cloud sync
-     * only (see v2 spec §3.4 patched at d4bb63d).
+     * The PRF output is held in memory as `prfDerivation` until chain
+     * submit succeeds; `finalizeEnrollment` then encrypts + persists.
      */
-    async function handleCreatePasskey() {
-        if (!oprfResult || !registerResult || !chainTx) return;
+    async function handlePasskeyCeremony() {
+        if (prfDerivation) return;
         setPasskeyBusy(true);
         setPasskeyErr(null);
         try {
@@ -432,21 +489,53 @@ export function Enroll({ onBack, onDone }: Props) {
                 userName,
                 userName,
             );
+            setPrfDerivation(pk);
+        } catch (e) {
+            setPasskeyErr(e instanceof Error ? e.message : String(e));
+        } finally {
+            setPasskeyBusy(false);
+        }
+    }
+
+    /**
+     * Final persistence — auto-fires once chain submit lands. Wraps the
+     * payload with the PRF output minted at step 2 and writes the
+     * encrypted store. After this, `passkey` is non-null and the citizen
+     * sees the "Finish" CTA.
+     *
+     * No mnemonic derivation — recovery in v2 is Passkey cloud sync
+     * only (see v2 spec §3.4 patched at d4bb63d).
+     */
+    async function finalizeEnrollment() {
+        if (
+            !oprfResult ||
+            !registerResult ||
+            !chainTx ||
+            !prfDerivation ||
+            passkey
+        )
+            return;
+        setPasskeyBusy(true);
+        setPasskeyErr(null);
+        try {
             const payload: EnrollmentPayload = {
                 enrollmentSecret: oprfResult.s,
                 oprfOutputN: hexEncode(oprfResult.N),
                 merklePath: registerResult.merklePath,
                 merklePathIndices: registerResult.merklePathIndices,
             };
-            const ciphertext = await wrapPayload(payload, pk.prfOutput);
+            const ciphertext = await wrapPayload(
+                payload,
+                prfDerivation.prfOutput,
+            );
             await putEnrollment({
                 version: 1,
                 commitment: oprfResult.s,
                 leafIndex: registerResult.leafIndex,
-                credentialId: hexEncode(pk.credentialId),
+                credentialId: hexEncode(prfDerivation.credentialId),
                 ciphertext,
             });
-            setPasskey(pk);
+            setPasskey(prfDerivation);
         } catch (e) {
             setPasskeyErr(e instanceof Error ? e.message : String(e));
         } finally {
@@ -610,18 +699,19 @@ export function Enroll({ onBack, onDone }: Props) {
             <ol className="steps">
                 {(
                     [
-                        { key: "binding", system: false },
+                        // Binding download is the hoisted pre-step above
+                        // (CTA-row); it doesn't get a numbered seat in
+                        // the post-#17 layout. Passkey ceremony fires
+                        // BEFORE the OPRF + chain auto-chain so the
+                        // citizen confronts the authenticator on its
+                        // own (no committed side-effect yet). OPRF +
+                        // register + chain then run as a single "we
+                        // handle this" system block on the relayer
+                        // default path.
                         { key: "upload", system: false },
-                        // OPRF + register fire automatically (#68 auto-chain).
-                        // Chain (the on-chain submit) is system-handled too on
-                        // the relayer-default path (#55); wallet path is opt-in.
-                        // Marking them as `system` dims the row visually so the
-                        // citizen reads the list as "I do these three; we
-                        // handle the rest" rather than "5 things to do".
-                        // See YEL-5 in bench/ux-results-2026-05-29.md.
+                        { key: "passkey", system: false },
                         { key: "oprf", system: true },
                         { key: "register", system: chainMode === "relayer" },
-                        { key: "passkey", system: false },
                     ] as const
                 ).map(({ key, system }) => {
                     const isActive = stage === key;
@@ -697,8 +787,53 @@ export function Enroll({ onBack, onDone }: Props) {
                 ) : null}
             </div>
 
-            {/* 2. OPRF — auto-fires on `parsed`. Error surfaces Retry. */}
+            {/* 2. Passkey ceremony — fires BEFORE OPRF + chain. If this
+                fails (Firefox+Bitwarden, older keys without hmac-secret),
+                no OPRF DB row, no on-chain tx, no orphan state. The
+                actual encrypt-and-persist step happens later in
+                `finalizeEnrollment`, after the chain root lands. */}
             {parsed ? (
+                <div className="panel">
+                    <p className="panel__title">
+                        {t("enroll.passkey.title")}
+                    </p>
+                    <p className="note">{t("enroll.passkey.introEarly")}</p>
+                    <p className="note">{t("enroll.passkey.recoveryNote")}</p>
+                    {!probe.available ? (
+                        <p className="error-line">
+                            {t("enroll.passkey.unsupported")}
+                            {probe.reason ? ` — ${probe.reason}` : ""}
+                        </p>
+                    ) : !prfDerivation ? (
+                        <div className="actions">
+                            <button
+                                className="btn btn--accent"
+                                type="button"
+                                onClick={handlePasskeyCeremony}
+                                disabled={passkeyBusy}
+                            >
+                                {passkeyBusy
+                                    ? t("enroll.passkey.creating")
+                                    : t("enroll.passkey.create")}
+                            </button>
+                        </div>
+                    ) : (
+                        <p className="tag-ok">
+                            ✓ {t("enroll.passkey.ceremonyOk")}
+                        </p>
+                    )}
+                    {passkeyErr && !passkey ? (
+                        <p className="error-line">
+                            {t("enroll.passkey.error", {
+                                detail: passkeyErr,
+                            })}
+                        </p>
+                    ) : null}
+                </div>
+            ) : null}
+
+            {/* 3. OPRF — auto-fires on `parsed && prfDerivation`. */}
+            {parsed && prfDerivation ? (
                 <div className="panel">
                     <p className="panel__title">{t("enroll.oprf.title")}</p>
                     <p className="note">{t("enroll.oprf.intro")}</p>
@@ -1018,43 +1153,28 @@ export function Enroll({ onBack, onDone }: Props) {
                 </div>
             ) : null}
 
-            {/* 4. Passkey — minted AFTER the chain step lands so a
-                failed enrollment can't leave a dangling credential.
-                The same handler wraps + persists the local payload.
-                The recovery-tier disclosure (Passkey cloud sync is the
-                only v2 recovery; v3 introduces yearly re-enrollment
-                via Diia) is anchored on this panel — no separate
-                Backup step. See file header for #51 rationale. */}
+            {/* Done — after the chain root lands AND finalizeEnrollment
+                wraps + persists the encrypted store. The Passkey was
+                already minted at step 2; what completes here is the
+                local-store write. */}
             {chainTx ? (
                 <div className="panel">
                     <p className="note mono">
                         {t("enroll.chain.tx")}: {chainTx}
                     </p>
-                    <p className="panel__title">{t("enroll.passkey.title")}</p>
-                    <p className="note">{t("enroll.passkey.intro")}</p>
-                    <p className="note">{t("enroll.passkey.recoveryNote")}</p>
-                    {!probe.available ? (
-                        <p className="error-line">
-                            {t("enroll.passkey.unsupported")}
-                            {probe.reason ? ` — ${probe.reason}` : ""}
+                    <p className="panel__title">{t("enroll.done.title")}</p>
+                    {!passkey && passkeyBusy ? (
+                        <p className="progress">
+                            {t("enroll.done.persisting")}
+                            <span className="progress__line">
+                                <span />
+                            </span>
                         </p>
-                    ) : !passkey ? (
-                        <div className="actions">
-                            <button
-                                className="btn btn--accent"
-                                type="button"
-                                onClick={handleCreatePasskey}
-                                disabled={passkeyBusy}
-                            >
-                                {passkeyBusy
-                                    ? t("enroll.passkey.creating")
-                                    : t("enroll.passkey.create")}
-                            </button>
-                        </div>
-                    ) : (
+                    ) : null}
+                    {passkey ? (
                         <div className="actions">
                             <p className="tag-ok" style={{ marginRight: 12 }}>
-                                ✓ {t("enroll.passkey.created")}
+                                ✓ {t("enroll.done.ready")}
                             </p>
                             <button
                                 className="btn btn--accent"
@@ -1064,10 +1184,12 @@ export function Enroll({ onBack, onDone }: Props) {
                                 {t("enroll.passkey.finish")}
                             </button>
                         </div>
-                    )}
-                    {passkeyErr ? (
+                    ) : null}
+                    {passkeyErr && !passkey ? (
                         <p className="error-line">
-                            {t("enroll.passkey.error", { detail: passkeyErr })}
+                            {t("enroll.done.persistError", {
+                                detail: passkeyErr,
+                            })}
                         </p>
                     ) : null}
                 </div>
