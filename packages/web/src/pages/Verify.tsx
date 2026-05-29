@@ -538,7 +538,12 @@ function ChallengePanel({
             >
                 <input
                     type="file"
-                    accept=".p7s,application/pkcs7-signature"
+                    // No `accept` filter on purpose: mobile pickers (iOS
+                    // Files, Android) grey out files whose extension/UTI they
+                    // don't recognise, and `.p7s` has no standard mobile UTI —
+                    // so a filter makes the signed file unselectable. We
+                    // validate contents in onFile (parseP7s + RNOKPP cross-
+                    // check) regardless, so an unfiltered picker is safe.
                     onChange={(e) => {
                         const f = e.target.files?.[0];
                         if (f) void onFile(f);
