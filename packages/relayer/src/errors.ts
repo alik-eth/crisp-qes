@@ -14,6 +14,7 @@ const SIGNER_ERROR_NAMES = [
     "UnknownPetition",
     "PetitionClosed",
     "NullifierAlreadyUsed",
+    "NullifierNotUsed",
     "InvalidProof",
     "InvalidEnrollmentRoot",
     "InvalidVote",
@@ -68,6 +69,7 @@ export interface RelayerErrorResponse {
 
 const STATUS_BY_NAME: Record<SignerErrorName, number> = {
     NullifierAlreadyUsed: 409,
+    NullifierNotUsed: 409,
     PetitionClosed: 410,
     UnknownPetition: 404,
     InvalidProof: 422,

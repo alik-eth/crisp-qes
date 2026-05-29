@@ -224,6 +224,201 @@ describe("POST /v2/submit revert mapping", () => {
     });
 });
 
+// — POST /v2/revoke ─────────────────────────────────────────────────────
+//
+// Mirrors /v2/submit's pipeline (rate-limit → body validation → public-input
+// cross-check → live-root pre-flight → simulate → write) but calls
+// PetitionRegistryV2.revokeVote and uses the frozen { ok, code, status, ... }
+// response envelope.
+
+const VALID_REVOKE = {
+    petitionId: "1",
+    nullifier: "0x" + "11".repeat(32),
+    proof: "0xdead",
+    publicInputs: [
+        "0x" + "00".repeat(31) + "01", // [0] petitionId
+        ENROLL_ROOT,                    // [1] enrollmentRoot
+        "0x" + "11".repeat(32),         // [2] nullifier
+    ],
+};
+
+describe("POST /v2/revoke validation", () => {
+    it("rejects malformed JSON with 400", async () => {
+        const app = buildApp({ config: cfg(), clientsFactory: () => fakeClients() });
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/revoke",
+            payload: { nope: true },
+        });
+        expect(res.statusCode).toBe(400);
+        const body = res.json();
+        expect(body.ok).toBe(false);
+        expect(body.code).toBe("BadRequest");
+        await app.close();
+    });
+
+    it("rejects publicInputs[0] != petitionId with 400", async () => {
+        const app = buildApp({ config: cfg(), clientsFactory: () => fakeClients() });
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/revoke",
+            payload: { ...VALID_REVOKE, petitionId: "2" },
+        });
+        expect(res.statusCode).toBe(400);
+        const body = res.json();
+        expect(body.ok).toBe(false);
+        await app.close();
+    });
+
+    it("rejects publicInputs[2] != nullifier with 400", async () => {
+        const app = buildApp({ config: cfg(), clientsFactory: () => fakeClients() });
+        const wrongNull = "0x" + "ff".repeat(32);
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/revoke",
+            payload: { ...VALID_REVOKE, nullifier: wrongNull },
+        });
+        expect(res.statusCode).toBe(400);
+        await app.close();
+    });
+
+    it("rejects body with stray `vote` field permitted; rejects bad nullifier hex with 400", async () => {
+        // Zod's default behaviour is to allow extra keys, so a stray `vote`
+        // shouldn't fail validation. A malformed nullifier should.
+        const app = buildApp({ config: cfg(), clientsFactory: () => fakeClients() });
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/revoke",
+            payload: { ...VALID_REVOKE, nullifier: "0xnothex" },
+        });
+        expect(res.statusCode).toBe(400);
+        await app.close();
+    });
+
+    it("rejects stale enrollmentRoot with 409", async () => {
+        const liveRoot = `0x${"a".repeat(64)}`;
+        const clients = fakeClients({
+            read: vi.fn().mockResolvedValue(liveRoot),
+        });
+        const app = buildApp({ config: cfg(), clientsFactory: () => clients });
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/revoke",
+            payload: VALID_REVOKE,
+        });
+        expect(res.statusCode).toBe(409);
+        const body = res.json() as { ok: boolean; code: string };
+        expect(body.ok).toBe(false);
+        expect(body.code).toBe("StaleEnrollmentRoot");
+        await app.close();
+    });
+});
+
+describe("POST /v2/revoke happy path", () => {
+    it("returns 200 with ok+txHash+blockExplorerUrl when viem succeeds", async () => {
+        const fakeHash = ("0x" + "cd".repeat(32)) as Hex;
+        const simulate = vi.fn().mockResolvedValue({ request: {} });
+        const write = vi.fn().mockResolvedValue(fakeHash);
+        const clients = fakeClients({ simulate, write });
+        const app = buildApp({ config: cfg(), clientsFactory: () => clients });
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/revoke",
+            payload: VALID_REVOKE,
+        });
+        expect(res.statusCode).toBe(200);
+        const json = res.json();
+        expect(json.ok).toBe(true);
+        expect(json.txHash).toBe(fakeHash);
+        expect(json.blockExplorerUrl).toBe(
+            `https://example.test/tx/${fakeHash}`,
+        );
+        // simulate-then-submit pattern: each called once
+        expect(simulate).toHaveBeenCalledTimes(1);
+        expect(write).toHaveBeenCalledTimes(1);
+        // simulate must target revokeVote, not signPetition
+        const simulateArgs = simulate.mock.calls[0][0];
+        expect(simulateArgs.functionName).toBe("revokeVote");
+        await app.close();
+    });
+});
+
+describe("POST /v2/revoke revert mapping", () => {
+    function revertWith(name: string): ContractFunctionRevertedError {
+        const selector = toFunctionSelector(`error ${name}()`);
+        return new ContractFunctionRevertedError({
+            abi: [{ type: "error", name, inputs: [] }],
+            data: selector,
+            functionName: "revokeVote",
+        });
+    }
+
+    it("maps NullifierNotUsed → 409 with code NullifierNotUsed, no chain write", async () => {
+        const write = vi.fn().mockResolvedValue("0x" + "ff".repeat(32));
+        const clients = fakeClients({
+            simulate: vi.fn().mockRejectedValue(revertWith("NullifierNotUsed")),
+            write,
+        });
+        const app = buildApp({ config: cfg(), clientsFactory: () => clients });
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/revoke",
+            payload: VALID_REVOKE,
+        });
+        expect(res.statusCode).toBe(409);
+        const body = res.json() as { ok: boolean; code: string };
+        expect(body.ok).toBe(false);
+        expect(body.code).toBe("NullifierNotUsed");
+        // crucially, no write was issued
+        expect(write).not.toHaveBeenCalled();
+        await app.close();
+    });
+
+    it("maps InvalidProof → 422", async () => {
+        const clients = fakeClients({
+            simulate: vi.fn().mockRejectedValue(revertWith("InvalidProof")),
+        });
+        const app = buildApp({ config: cfg(), clientsFactory: () => clients });
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/revoke",
+            payload: VALID_REVOKE,
+        });
+        expect(res.statusCode).toBe(422);
+        const body = res.json() as { ok: boolean; code: string };
+        expect(body.code).toBe("InvalidProof");
+        await app.close();
+    });
+
+    it("maps PetitionClosed → 410", async () => {
+        const clients = fakeClients({
+            simulate: vi.fn().mockRejectedValue(revertWith("PetitionClosed")),
+        });
+        const app = buildApp({ config: cfg(), clientsFactory: () => clients });
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/revoke",
+            payload: VALID_REVOKE,
+        });
+        expect(res.statusCode).toBe(410);
+        await app.close();
+    });
+
+    it("maps UnknownPetition → 404", async () => {
+        const clients = fakeClients({
+            simulate: vi.fn().mockRejectedValue(revertWith("UnknownPetition")),
+        });
+        const app = buildApp({ config: cfg(), clientsFactory: () => clients });
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/revoke",
+            payload: VALID_REVOKE,
+        });
+        expect(res.statusCode).toBe(404);
+        await app.close();
+    });
+});
+
 describe("GET /healthz", () => {
     it("exposes config snapshot", async () => {
         const app = buildApp({ config: cfg(), clientsFactory: () => fakeClients() });

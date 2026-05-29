@@ -60,6 +60,17 @@ const SubmitBody = z.object({
     publicInputs: z.array(hex32).length(3),
 });
 
+// /v2/revoke body — same shape as submit minus `vote`. Calls
+// PetitionRegistryV2.revokeVote(petitionId, nullifier, proof, publicInputs)
+// to withdraw a previously-cast signature. Public inputs share the
+// signPetition layout: [petitionId, enrollmentRoot, nullifier].
+const RevokeBody = z.object({
+    petitionId: decimalUint,
+    nullifier: hex32,
+    proof: hex,
+    publicInputs: z.array(hex32).length(3),
+});
+
 // `/v2/enroll` body — verbatim relay of the OPRF service's
 // `/oprf/register` output's `(newRoot, newCommitments, attesterSig)` to
 // `EnrollmentRegistry.updateRoot(...)`. No citizen-supplied fields. No
@@ -301,6 +312,155 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
         }
 
         return reply.code(200).send({
+            txHash,
+            blockExplorerUrl: config.blockExplorerBase
+                ? `${config.blockExplorerBase}${txHash}`
+                : null,
+        });
+    });
+
+    app.post("/v2/revoke", async (req, reply) => {
+        // Mirrors /v2/submit: rate-limit → validate body → cross-field check
+        // against publicInputs → live-root pre-flight → simulate → write.
+        // Calls PetitionRegistryV2.revokeVote rather than signPetition; on
+        // a successful revoke the contract burns the same nullifier the
+        // citizen used to sign, so re-signing under the same identity is
+        // not possible. Response shape per the frozen wire contract:
+        //   200: { ok: true, txHash, blockExplorerUrl }
+        //   4xx/5xx: { ok: false, code, status, detail? }
+        const ip = req.ip ?? "unknown";
+        if (!rateLimiter.take(ip)) {
+            return reply.code(429).send({
+                ok: false,
+                code: "RateLimited",
+                status: 429,
+                detail: `retry after ${config.rateLimitWindowMs}ms`,
+            });
+        }
+
+        const parsed = RevokeBody.safeParse(req.body);
+        if (!parsed.success) {
+            return reply.code(400).send({
+                ok: false,
+                code: "BadRequest",
+                status: 400,
+                detail: JSON.stringify(parsed.error.flatten()),
+            });
+        }
+        const body = parsed.data;
+
+        // 1. Cross-field sanity vs the public-input array.
+        //    [0] petitionId   [1] enrollmentRoot   [2] nullifier
+        const piPetition = hexToBigInt(body.publicInputs[0] as Hex);
+        if (piPetition.toString() !== body.petitionId) {
+            return reply.code(400).send({
+                ok: false,
+                code: "BadRequest",
+                status: 400,
+                detail: "publicInputs[0] != petitionId",
+            });
+        }
+        if (body.publicInputs[2] !== body.nullifier) {
+            return reply.code(400).send({
+                ok: false,
+                code: "BadRequest",
+                status: 400,
+                detail: "publicInputs[2] != nullifier",
+            });
+        }
+
+        // 2. Live-root pre-flight — same rationale as /v2/submit. Bail
+        //    before simulate if the citizen's path was generated under a
+        //    stale enrollment root.
+        let liveRoot: Hex;
+        try {
+            liveRoot = (await clients.publicClient.readContract({
+                address: config.enrollmentRegistry,
+                abi: enrollmentRegistryAbi,
+                functionName: "enrollmentRoot",
+                args: [],
+            })) as Hex;
+        } catch (err) {
+            req.log.error({ err }, "enrollmentRoot read failed");
+            return reply.code(502).send({
+                ok: false,
+                code: "EnrollmentRegistryUnreachable",
+                status: 502,
+                detail: (err as Error).message,
+            });
+        }
+        if (body.publicInputs[1]?.toLowerCase() !== liveRoot.toLowerCase()) {
+            return reply.code(409).send({
+                ok: false,
+                code: "StaleEnrollmentRoot",
+                status: 409,
+                detail:
+                    "publicInputs[1] does not match the live EnrollmentRegistry root — " +
+                    "fetch a fresh Merkle path from /enrollment/:commitment/path on the OPRF service",
+            });
+        }
+
+        // 3. Compose calldata for revokeVote(petitionId, nullifier, proof, publicInputs).
+        const args = [
+            BigInt(body.petitionId),
+            body.nullifier as Hex,
+            body.proof as Hex,
+            body.publicInputs as Hex[],
+        ] as const;
+
+        // 4. Simulate first so reverts surface as 4xx, not a sent tx.
+        try {
+            await clients.publicClient.simulateContract({
+                address: config.petitionRegistry,
+                abi: petitionRegistryV2Abi,
+                functionName: "revokeVote",
+                args: args as unknown as readonly [
+                    bigint,
+                    Hex,
+                    Hex,
+                    readonly Hex[],
+                ],
+                account: clients.account,
+            });
+        } catch (err) {
+            const mapped = mapContractError(err);
+            req.log.warn({ err: mapped.body }, "revoke simulate revert");
+            return reply.code(mapped.status).send({
+                ok: false,
+                code: mapped.body.error,
+                status: mapped.status,
+                detail: mapped.body.detail,
+            });
+        }
+
+        let txHash: Hex;
+        try {
+            txHash = await clients.walletClient.writeContract({
+                address: config.petitionRegistry,
+                abi: petitionRegistryV2Abi,
+                functionName: "revokeVote",
+                args: args as unknown as readonly [
+                    bigint,
+                    Hex,
+                    Hex,
+                    readonly Hex[],
+                ],
+                account: clients.account,
+                chain: clients.chain,
+            });
+        } catch (err) {
+            const mapped = mapContractError(err);
+            req.log.error({ err: mapped.body }, "revoke write revert");
+            return reply.code(mapped.status).send({
+                ok: false,
+                code: mapped.body.error,
+                status: mapped.status,
+                detail: mapped.body.detail,
+            });
+        }
+
+        return reply.code(200).send({
+            ok: true,
             txHash,
             blockExplorerUrl: config.blockExplorerBase
                 ? `${config.blockExplorerBase}${txHash}`
