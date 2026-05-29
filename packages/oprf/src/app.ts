@@ -15,6 +15,7 @@
 
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyCors from "@fastify/cors";
+import { sha256 } from "@noble/hashes/sha2";
 import { bytesToHex } from "@noble/hashes/utils";
 import { z } from "zod";
 
@@ -32,6 +33,7 @@ import {
 } from "./oprf.js";
 import {
     AttestationError,
+    buildEnrollmentBindingBytes,
     verifyAttestation,
 } from "./attestation.js";
 import { ageInYears } from "./dob.js";
@@ -142,14 +144,23 @@ export async function buildApp(
 
         const { blindedInput, attestation } = parsed.data;
 
-        // 1. Diia attestation gate. v2.1-prod also binds attestation
-        //    payload → blindedInput; demo only checks the TINUA- prefix.
+        // 1. Diia attestation gate. Verifies the .p7s envelope AND binds
+        //    `signedAttrs.messageDigest` to sha256 of the canonical
+        //    enrollment-binding artifact reconstructed from THIS request
+        //    + the server's enrollment epoch. The reconstruction must be
+        //    byte-exact (see buildEnrollmentBindingBytes); any divergence
+        //    means the citizen signed a different document and we
+        //    fail-closed with PayloadMismatch.
+        //
         //    The same call extracts the DOB attribute from the leaf cert
         //    (or returns null if absent), which we gate on next.
         let dob: Date | null;
         try {
             const p7sBytes = base64ToBytes(attestation.p7s);
-            const verified = verifyAttestation(p7sBytes);
+            const expectedDigest = sha256(
+                buildEnrollmentBindingBytes(cfg.enrollmentEpoch, blindedInput),
+            );
+            const verified = verifyAttestation(p7sBytes, { expectedDigest });
             dob = verified.dob;
             req.log.info(
                 { serial: verified.subjectSerialAscii },
