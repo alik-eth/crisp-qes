@@ -37,10 +37,10 @@ export function Masthead({ state, onSignInRequest, onChipClick }: Props) {
                 <span className="brandbox__mark" aria-hidden="true" />
                 CIVIC VOICE
             </Link>
-            <nav className="topnav" aria-label="Primary">
-                {navItem("/petitions", t("nav.petitions"))}
-            </nav>
             <div className="topnav__right">
+                <nav className="topnav" aria-label="Primary">
+                    {navItem("/petitions", t("nav.petitions"))}
+                </nav>
                 <div className="langseg" role="radiogroup" aria-label="Language">
                     <button
                         type="button"
