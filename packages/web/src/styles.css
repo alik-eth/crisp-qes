@@ -505,7 +505,7 @@ textarea { min-height: 120px; resize: vertical; }
 .notice--info { border-color: var(--accent); background: var(--accent-faint); }
 .notice--warn { border-color: var(--warn); background: #fef6ee; }
 .notice--bad { border-color: var(--bad); background: var(--bad-faint); color: var(--bad); }
-.notice--ok { border-color: var(--ok); background: #edf7f1; color: var(--ok); }
+.notice--ok { border-color: var(--ink); background: var(--paper-2); color: var(--ink); }
 
 /* ─── footer (legacy) ─── */
 .footer {
@@ -751,7 +751,7 @@ textarea { min-height: 120px; resize: vertical; }
     background: var(--paper-2);
     box-shadow: inset 0 -2px 0 var(--blue);
 }
-.strip__step--done { color: var(--ok); }
+.strip__step--done { color: var(--ink-soft); }
 .strip__n {
     display: inline-flex;
     align-items: center;
@@ -771,7 +771,7 @@ textarea { min-height: 120px; resize: vertical; }
     color: #fff;
 }
 .strip__step--done .strip__n {
-    background: var(--ok);
+    background: var(--ink);
     color: #fff;
 }
 .strip__label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -418,7 +418,6 @@ function IdentifyPanel({
                 {t("verify.identifyBody")}
             </p>
             <label>
-                RNOKPP
                 <input
                     type="text"
                     inputMode="numeric"
