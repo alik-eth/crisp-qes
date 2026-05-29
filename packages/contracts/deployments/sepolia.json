@@ -1,0 +1,73 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "deployedAt": "2026-05-29T03:30:00Z",
+  "deployerCommit": "33e2fc0",
+  "blockExplorer": "https://sepolia.etherscan.io",
+  "deployer": "0xB8d121CD0B2D0AB3df2aFF0B45B2fD354FF4c1f7",
+  "contracts": {
+    "enrollmentRegistry": {
+      "address": "0x92b54725CECb48Fb988c08C6AeC861d1861beE24",
+      "txHash": "0x5cdda5f573413006460df8358ec92d0f52e8dcee85a6a95bd6d2ed68a3f6b1e6"
+    },
+    "ultraVerifierV2": {
+      "address": "0xBe811E09D67266B5C02b0E15dAC1a7F1107A2E79",
+      "txHash": "0x8253c3aee3920705c8b07208f09e0a48d0a7cb3c15e66684beebf1ca6c23a0ac"
+    },
+    "petitionRegistryV2": {
+      "address": "0xBeaCa3c58ebb0476aAc8180E7428eD01E9367295",
+      "txHash": "0x83cbbfffe13aeea808ccb0fc2ce81f3af4ff3b3b57740f38fba228a1deeb1c50"
+    }
+  },
+  "params": {
+    "oprfAttester": "0x876E995c6f4f158ED5D746B5e10A00329df1E246",
+    "admin": "0xB8d121CD0B2D0AB3df2aFF0B45B2fD354FF4c1f7",
+    "genesisRoot": "0x1b49e706af69da35927cdf2b28b02fb2647245ac0ccbc376d062031185d3cd84",
+    "genesisLeafCount": 0,
+    "creationDepositWei": "1000000000000000"
+  },
+  "verification": {
+    "enrollmentRoot": "0x1b49e706af69da35927cdf2b28b02fb2647245ac0ccbc376d062031185d3cd84",
+    "leafCount": 0,
+    "oprfAttester": "0x876E995c6f4f158ED5D746B5e10A00329df1E246",
+    "verifiedAtBlock": 10943637,
+    "previewDigestRoundTrip": {
+      "input": {
+        "newRoot": "0x000000000000000000000000000000000000000000000000000000000000beef",
+        "newCommitments": [
+          "0x0000000000000000000000000000000000000000000000000000000000000001"
+        ]
+      },
+      "expectedInner": "0x1eb83fc69ec9226a2ea546bda3a96644fe4feed0d1a058e14f18f06562a735dd",
+      "expectedEthSigned": "0x2c99452a39e49f99d23dee339d9a07249c4cd3d1a0a2f3b99b512875cb1e08eb",
+      "verified": true,
+      "notes": "Round-trip verified via on-chain previewDigest(0x...beef, [0x...01]) against the redeployed EnrollmentRegistry at 0x92b54725\u2026beE24. Differs from Base Sepolia by chainid (11155111 vs 84532) + registry address."
+    }
+  },
+  "supersedes": {
+    "previousNetwork": "base-sepolia",
+    "previousDeploymentRecord": "packages/contracts/deployments/base-sepolia.json",
+    "reason": "User-direct migration from Base Sepolia (84532) to Ethereum Sepolia (11155111) on 2026-05-29 to consolidate testnet target to canonical Ethereum Sepolia. Old contracts on Base Sepolia remain on-chain but the live demo no longer references them. Sealed demo signature 0xc80557d7c25c9c5b8ae4b770d4eda8690566092bd412d33e372a69526ec42dfb on Base Sepolia is preserved as a historical artifact in the grant proposal."
+  },
+  "digestScheme": {
+    "inner": "keccak256(abi.encode(oldRoot, newRoot, keccak256(abi.encodePacked(newCommitments)), block.chainid, address(this)))",
+    "ethSigned": "keccak256(abi.encodePacked('\\x19Ethereum Signed Message:\\n32', inner))",
+    "signature": "secp256k1 (r, s, v) over ethSigned, 65 bytes, low-s",
+    "matches": [
+      "viem: walletClient.signMessage({ message: { raw: inner }, account: attester })",
+      "ethers: wallet.signMessage(arrayify(inner))",
+      "OZ ECDSA.recover(MessageHashUtils.toEthSignedMessageHash(inner), sig)"
+    ]
+  },
+  "notes": [
+    "Fresh genesis: enrollmentRoot=0x0...0, leafCount=0. OPRF service DB wiped to match at cutover.",
+    "Same oprfAttester address (0x876E995c\u2026E246) \u2014 the underlying key is reused safely because the digest body includes chainid + address(this), so attester sigs against the old Base Sepolia EnrollmentRegistry cannot replay here.",
+    "Block time on Sepolia is ~12s (vs Base Sepolia's ~2s). On-chain step latency in the demo is higher by an order of magnitude."
+  ],
+  "supersedes_within_sepolia": {
+    "enrollmentRegistry": "0x58119a53682A0a99fA593353675896F8d914508b",
+    "ultraVerifierV2": "0x134B16Ca8508842A4DcB491DC8C386576E19E3d3",
+    "petitionRegistryV2": "0x28dC62106783C04f452e122D0B21FfF74e871DA0",
+    "reason": "Initial Sepolia deploy used V2_GENESIS_ROOT=bytes32(0), which mismatched the OPRF service's canonical depth-20 zero-tree root 0x1b49e706\u20263cd84 \u2192 every attester sig recovered to wrong address \u2192 BadSignature(). Redeployed with V2_GENESIS_ROOT set to the pedersen-zero-tree root."
+  }
+}

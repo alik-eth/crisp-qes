@@ -40,16 +40,16 @@ import {
     encodeFunctionData,
     keccak256,
 } from "viem";
-import { baseSepolia } from "viem/chains";
+import { sepolia } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 
 // — Config ─────────────────────────────────────────────────────────────────
 
 const OPRF_URL = "https://crisp-qes-oprf.fly.dev";
 const RELAYER_URL = "https://crisp-qes-relayer.fly.dev";
-const ENROLLMENT_REGISTRY = "0x4A17285f2f3035AD8bB6da86d9aB189cC33c4106";
-const PETITION_REGISTRY_V2 = "0x11561749D669791117592332B8E5373Ff60406EF";
-const RPC = "https://sepolia.base.org";
+const ENROLLMENT_REGISTRY = "0x92b54725CECb48Fb988c08C6AeC861d1861beE24";
+const PETITION_REGISTRY_V2 = "0xBeaCa3c58ebb0476aAc8180E7428eD01E9367295";
+const RPC = "https://ethereum-sepolia-rpc.publicnode.com";
 const CIRCUIT_PATH =
     "/data/Develop/crisp-qes/packages/circuit/target/crisp_qes_v2_circuit.json";
 const P7S_PATH = "/data/Develop/crisp-qes/fixtures/diia/petition-1-binding.bin.p7s";
@@ -189,8 +189,8 @@ console.log(`        leafIndex=${reg.leafIndex}  newRoot=${reg.newRoot.slice(0, 
 // — Step 4: Anchor newRoot on chain via EnrollmentRegistry.updateRoot ──────
 
 const account = privateKeyToAccount(PRIVATE_KEY);
-const publicClient = createPublicClient({ chain: baseSepolia, transport: http(RPC) });
-const walletClient = createWalletClient({ account, chain: baseSepolia, transport: http(RPC) });
+const publicClient = createPublicClient({ chain: sepolia, transport: http(RPC) });
+const walletClient = createWalletClient({ account, chain: sepolia, transport: http(RPC) });
 
 // EnrollmentRegistry ABI surface we need. New EIP-191 contract takes the
 // commitments array; leafCount advances by `newCommitments.length`

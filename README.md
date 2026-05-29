@@ -59,30 +59,35 @@ to ~28 k and from 15 to 3 public inputs.
 ## Live demo
 
 Three-layer architecture: enrol once via OPRF + Diia QES, sign petitions in
-2 s via Noir ZK. Fly app names retain the `v2` tag (external identifiers cited
-in the grant proposal); repo paths are unprefixed.
+2 s via Noir ZK.
 
 | Layer        | Component             | URL                                                                                  |
 | ------------ | --------------------- | ------------------------------------------------------------------------------------ |
-| Web (UI)     | `packages/web`        | [crisp-qes-web.fly.dev](https://crisp-qes-web.fly.dev)                         |
-| OPRF service | `packages/oprf`       | [crisp-qes-oprf.fly.dev](https://crisp-qes-oprf.fly.dev/healthz)               |
-| Relayer      | `packages/relayer`    | [crisp-qes-relayer.fly.dev](https://crisp-qes-relayer.fly.dev/healthz)         |
+| Web (UI)     | `packages/web`        | [crisp-qes-web.fly.dev](https://crisp-qes-web.fly.dev)                               |
+| OPRF service | `packages/oprf`       | [crisp-qes-oprf.fly.dev](https://crisp-qes-oprf.fly.dev/healthz)                     |
+| Relayer      | `packages/relayer`    | [crisp-qes-relayer.fly.dev](https://crisp-qes-relayer.fly.dev/healthz)               |
 
-Contracts (Base Sepolia, chain 84532):
+Contracts (Ethereum Sepolia, chain 11155111):
 
 | Contract              | Address                                                                                                                            |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `EnrollmentRegistry`  | [`0x4A17285f2f3035AD8bB6da86d9aB189cC33c4106`](https://sepolia.basescan.org/address/0x4a17285f2f3035ad8bb6da86d9ab189cc33c4106)     |
-| `PetitionRegistryV2`  | [`0x11561749D669791117592332B8E5373Ff60406EF`](https://sepolia.basescan.org/address/0x11561749d669791117592332b8e5373ff60406ef)     |
-| `UltraVerifierV2`     | [`0x173F7BB534C7589d3f6D11DF3BE8Efee07312577`](https://sepolia.basescan.org/address/0x173f7bb534c7589d3f6d11df3be8efee07312577)     |
+| `EnrollmentRegistry`  | [`0x92b54725CECb48Fb988c08C6AeC861d1861beE24`](https://sepolia.etherscan.io/address/0x92b54725CECb48Fb988c08C6AeC861d1861beE24)     |
+| `PetitionRegistryV2`  | [`0xBeaCa3c58ebb0476aAc8180E7428eD01E9367295`](https://sepolia.etherscan.io/address/0xBeaCa3c58ebb0476aAc8180E7428eD01E9367295)     |
+| `UltraVerifierV2`     | [`0xBe811E09D67266B5C02b0E15dAC1a7F1107A2E79`](https://sepolia.etherscan.io/address/0xBe811E09D67266B5C02b0E15dAC1a7F1107A2E79)     |
 
-Demo signature, end-to-end on Base Sepolia (full enrol + ZK sign + relay):
+Demo signature, end-to-end on Ethereum Sepolia (full enrol + ZK sign + relay):
+[`0x9ea18325…7504`](https://sepolia.etherscan.io/tx/0x9ea1832529fe7a585d177fdcc1511ea63c94deedb3905a04cc5d86886ff87504)
+— native prove time 936 ms.
+
+The original Base Sepolia deployment is historical (see
+[`deployments/base-sepolia.json`](packages/contracts/deployments/base-sepolia.json)
+marked `retired: true`); the sealed demo signature
 [`0xc80557d7…2dfb`](https://sepolia.basescan.org/tx/0xc80557d7c25c9c5b8ae4b770d4eda8690566092bd412d33e372a69526ec42dfb)
-— native prove time 823 ms.
+on that chain remains immortal on-chain.
 
 ## Status
 
-Testnet demo live on Base Sepolia. See
+Testnet demo live on Ethereum Sepolia. See
 [v2-refined spec §5](docs/specs/2026-05-29-crisp-qes-v2-refined.md) for the
 in-scope items and
 [v3-funded-scope](docs/specs/2026-05-29-crisp-qes-v3-funded-scope.md) for

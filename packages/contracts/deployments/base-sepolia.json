@@ -1,4 +1,8 @@
 {
+  "retired": true,
+  "retiredAt": "2026-05-29T03:30:00Z",
+  "supersededBy": "packages/contracts/deployments/sepolia.json",
+  "supersededReason": "User-direct migration to Ethereum Sepolia on 2026-05-29 to consolidate testnet target. Base Sepolia contracts remain on-chain at the addresses below but are no longer referenced by the live demo. Sealed demo signature 0xc80557d7…2dfb is preserved as a historical artifact.",
   "network": "base-sepolia",
   "chainId": 84532,
   "deployedAt": "2026-05-29T01:42:00Z",

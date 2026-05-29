@@ -8,7 +8,7 @@ primary_region = "fra"
   NODE_ENV = "production"
   PORT = "8788"
   DB_PATH = "/data/oprf.db"
-  CHAIN_ID = "84532"
+  CHAIN_ID = "11155111"
   # ENROLLMENT_REGISTRY set via `flyctl secrets set` once N2 deploys.
 
 [http_service]

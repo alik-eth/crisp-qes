@@ -7,11 +7,11 @@ primary_region = "fra"
 [env]
   NODE_ENV = "production"
   PORT = "8789"
-  CHAIN_ID = "84532"
-  RPC_URL = "https://sepolia.base.org"
-  PETITION_REGISTRY_V2 = "0x11561749D669791117592332B8E5373Ff60406EF"
-  ENROLLMENT_REGISTRY = "0x4A17285f2f3035AD8bB6da86d9aB189cC33c4106"
-  BLOCK_EXPLORER_BASE = "https://sepolia.basescan.org/tx/"
+  CHAIN_ID = "11155111"
+  RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
+  PETITION_REGISTRY_V2 = "0xBeaCa3c58ebb0476aAc8180E7428eD01E9367295"
+  ENROLLMENT_REGISTRY = "0x92b54725CECb48Fb988c08C6AeC861d1861beE24"
+  BLOCK_EXPLORER_BASE = "https://sepolia.etherscan.io/tx/"
   RATE_LIMIT_WINDOW_MS = "10000"
 
 [http_service]
