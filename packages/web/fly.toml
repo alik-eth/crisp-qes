@@ -23,6 +23,9 @@ primary_region = "fra"
     # moves this onto EnrollmentRegistry as `bytes32 oprfPubkey` and the
     # client reads from chain.
     VITE_OPRF_PUBKEY = "0xbe42b0024b2e4ee2483021fefbf40a5bec6f51fe08d35237027a667712694456"
+    # Must match the OPRF service's OPRF_ENROLLMENT_EPOCH byte-for-byte
+    # (#29 / #33). Rotate in lockstep with OPRF_KEY rotations.
+    VITE_OPRF_ENROLLMENT_EPOCH = "v2-2026"
 
 [http_service]
   internal_port = 80

@@ -67,6 +67,13 @@ export interface AppConfig {
      * admin-settable, and fetch from chain at app boot.
      */
     oprfPubkey: `0x${string}`;
+    /**
+     * Enrollment epoch string baked into the canonical JSON binding the
+     * citizen signs in Diia. Must match the OPRF service's
+     * `OPRF_ENROLLMENT_EPOCH` byte-for-byte. Defaults to `"v2-2026"`.
+     * Operators rotate this in lockstep with `OPRF_KEY`.
+     */
+    oprfEnrollmentEpoch: string;
     /** Mirrors PetitionRegistryV2.CREATION_DEPOSIT (0.001 ether). */
     creationDepositWei: bigint;
     /** Mirrors PetitionRegistryV2.MAX_TEXT_BYTES (8 * 1024). */
@@ -95,6 +102,7 @@ export const config: AppConfig = {
         "VITE_OPRF_PUBKEY",
         "0xbe42b0024b2e4ee2483021fefbf40a5bec6f51fe08d35237027a667712694456",
     ) as `0x${string}`,
+    oprfEnrollmentEpoch: req("VITE_OPRF_ENROLLMENT_EPOCH", "v2-2026"),
     creationDepositWei: 1_000_000_000_000_000n,
     maxTextBytes: 8 * 1024,
 };

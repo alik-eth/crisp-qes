@@ -1,0 +1,157 @@
+[
+  {
+    "viewport": {
+      "w": 360,
+      "h": 780,
+      "name": "iphone-mini-360"
+    },
+    "mastheadH": 59,
+    "brand": {
+      "text": "CRISP-QES v2",
+      "display": "block",
+      "fontSize": "24px",
+      "visible": true
+    },
+    "tagline": {
+      "text": "Зареєструйтесь один раз — підписуйте за ",
+      "display": "none",
+      "fontSize": "15px",
+      "visible": false
+    },
+    "issueLabel": {
+      "text": "v2.1 prototype",
+      "display": "none",
+      "fontSize": "10px",
+      "visible": false
+    },
+    "nav": [
+      "Петиції",
+      "Реєстрація",
+      "English"
+    ]
+  },
+  {
+    "viewport": {
+      "w": 375,
+      "h": 667,
+      "name": "iphone-se-375"
+    },
+    "mastheadH": 59,
+    "brand": {
+      "text": "CRISP-QES v2",
+      "display": "block",
+      "fontSize": "24px",
+      "visible": true
+    },
+    "tagline": {
+      "text": "Зареєструйтесь один раз — підписуйте за ",
+      "display": "none",
+      "fontSize": "15px",
+      "visible": false
+    },
+    "issueLabel": {
+      "text": "v2.1 prototype",
+      "display": "none",
+      "fontSize": "10px",
+      "visible": false
+    },
+    "nav": [
+      "Петиції",
+      "Реєстрація",
+      "English"
+    ]
+  },
+  {
+    "viewport": {
+      "w": 390,
+      "h": 844,
+      "name": "iphone-14-390"
+    },
+    "mastheadH": 134,
+    "brand": {
+      "text": "CRISP-QES v2",
+      "display": "block",
+      "fontSize": "24px",
+      "visible": true
+    },
+    "tagline": {
+      "text": "Зареєструйтесь один раз — підписуйте за ",
+      "display": "block",
+      "fontSize": "15px",
+      "visible": true
+    },
+    "issueLabel": {
+      "text": "v2.1 prototype",
+      "display": "none",
+      "fontSize": "10px",
+      "visible": false
+    },
+    "nav": [
+      "Петиції",
+      "Реєстрація",
+      "English"
+    ]
+  },
+  {
+    "viewport": {
+      "w": 420,
+      "h": 900,
+      "name": "wide-420"
+    },
+    "mastheadH": 150,
+    "brand": {
+      "text": "CRISP-QES v2",
+      "display": "block",
+      "fontSize": "30px",
+      "visible": true
+    },
+    "tagline": {
+      "text": "Зареєструйтесь один раз — підписуйте за ",
+      "display": "block",
+      "fontSize": "15px",
+      "visible": true
+    },
+    "issueLabel": {
+      "text": "v2.1 prototype",
+      "display": "block",
+      "fontSize": "11px",
+      "visible": true
+    },
+    "nav": [
+      "Петиції",
+      "Реєстрація",
+      "English"
+    ]
+  },
+  {
+    "viewport": {
+      "w": 480,
+      "h": 900,
+      "name": "small-tablet-480"
+    },
+    "mastheadH": 127,
+    "brand": {
+      "text": "CRISP-QES v2",
+      "display": "block",
+      "fontSize": "30px",
+      "visible": true
+    },
+    "tagline": {
+      "text": "Зареєструйтесь один раз — підписуйте за ",
+      "display": "block",
+      "fontSize": "15px",
+      "visible": true
+    },
+    "issueLabel": {
+      "text": "v2.1 prototype",
+      "display": "block",
+      "fontSize": "11px",
+      "visible": true
+    },
+    "nav": [
+      "Петиції",
+      "Реєстрація",
+      "English"
+    ]
+  }
+]

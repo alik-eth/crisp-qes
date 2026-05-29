@@ -19,8 +19,13 @@ import { hkdf } from "@noble/hashes/hkdf";
 import { sha256 } from "@noble/hashes/sha2";
 
 const DB_NAME = "crisp_qes_v2";
-const DB_VERSION = 1;
+// v2 bump introduces the `accounts` store used by `lib/account.ts`. Both
+// modules MUST agree on the version; if one opens at v1 after the other
+// has already upgraded to v2, IndexedDB throws "stored database is a
+// higher version than the version requested".
+const DB_VERSION = 2;
 const STORE = "enrollments";
+const STORE_ACCOUNTS = "accounts";
 
 export interface EnrollmentRecord {
     /** Schema version — bump when the inner payload shape changes. */
@@ -55,6 +60,14 @@ function openDb(): Promise<IDBDatabase> {
                 db.createObjectStore(STORE, {
                     keyPath: "id",
                     autoIncrement: true,
+                });
+            }
+            // Mirror the accounts-store creation in `lib/account.ts` so
+            // that whichever module triggers the v1→v2 upgrade first
+            // brings both stores into existence.
+            if (!db.objectStoreNames.contains(STORE_ACCOUNTS)) {
+                db.createObjectStore(STORE_ACCOUNTS, {
+                    keyPath: "credentialId",
                 });
             }
         };

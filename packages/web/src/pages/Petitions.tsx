@@ -1,187 +1,174 @@
 import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { readAllPetitions, type PetitionView } from "../lib/registry";
+import { Link } from "wouter";
+import type { AccountState } from "../lib/account.js";
+import {
+    readAllPetitions,
+    type PetitionView,
+} from "../lib/registry.js";
 
 interface Props {
-    onSign: (id: bigint) => void;
+    state: AccountState;
+    onSignIn: () => void;
 }
 
-function shortAddr(addr: string): string {
-    return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
-
-function formatDate(epochSecs: bigint, locale: string): string {
-    return new Date(Number(epochSecs) * 1000).toLocaleString(locale, {
-        year: "numeric",
-        month: "short",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-    });
-}
-
-function totalVotes(p: PetitionView): number {
+function totalSignatures(p: PetitionView): number {
+    if (p.modeLabel === "Signature") return p.signatureCount;
     return p.yesCount + p.noCount + p.abstainCount;
 }
 
-export function Petitions({ onSign }: Props) {
-    const { t, i18n } = useTranslation();
-    const [items, setItems] = useState<PetitionView[] | null>(null);
-    const [err, setErr] = useState<boolean>(false);
-    const [reloadKey, setReloadKey] = useState(0);
+function timeRemaining(deadline: bigint): string {
+    const now = Math.floor(Date.now() / 1000);
+    const secs = Number(deadline) - now;
+    if (secs <= 0) return "Closed";
+    const days = Math.floor(secs / 86400);
+    if (days >= 2) return `${days} days left`;
+    if (days === 1) return "1 day left";
+    const hours = Math.floor(secs / 3600);
+    if (hours >= 1) return `${hours}h left`;
+    const mins = Math.floor(secs / 60);
+    return `${mins}m left`;
+}
+
+export function Petitions({ state, onSignIn }: Props) {
+    const [petitions, setPetitions] = useState<PetitionView[] | null>(null);
+    const [err, setErr] = useState<string | null>(null);
 
     useEffect(() => {
         let alive = true;
-        setErr(false);
-        setItems(null);
-        (async () => {
+        void (async () => {
             try {
-                const all = await readAllPetitions();
-                if (alive) setItems(all);
+                const list = await readAllPetitions();
+                if (alive) setPetitions(list);
             } catch (e) {
-                // Raw viem / RPC detail stays in console for debugging;
-                // the UI shows a translated, calm fallback (see RED-2 in
-                // bench/ux-results-2026-05-29.md).
-                console.error("[Petitions] readAllPetitions failed:", e);
-                if (alive) setErr(true);
+                if (alive) setErr(e instanceof Error ? e.message : "load failed");
             }
         })();
         return () => {
             alive = false;
         };
-    }, [reloadKey]);
-
-    if (err) {
-        return (
-            <section className="section">
-                <h2 className="section__title">{t("list.heading")}</h2>
-                <p className="error-line">{t("list.error")}</p>
-                <p className="note">{t("list.errorFallback")}</p>
-                <div className="actions">
-                    <button
-                        className="btn"
-                        type="button"
-                        onClick={() => setReloadKey((k) => k + 1)}
-                    >
-                        {t("list.errorRetry")}
-                    </button>
-                </div>
-            </section>
-        );
-    }
-    if (items === null) {
-        return (
-            <section className="section">
-                <h2 className="section__title">{t("list.heading")}</h2>
-                <p className="note">{t("list.loading")}</p>
-                <div className="progress__line">
-                    <span />
-                </div>
-            </section>
-        );
-    }
-    if (items.length === 0) {
-        return (
-            <section className="section">
-                <h2 className="section__title">{t("list.heading")}</h2>
-                <p className="note">{t("list.empty")}</p>
-            </section>
-        );
-    }
+    }, []);
 
     return (
-        <section className="section">
-            <p className="section__label">§ 03</p>
-            <h2 className="section__title">{t("list.heading")}</h2>
-            <div className="petition-grid">
-                {items.map((p) => {
-                    const total = totalVotes(p);
-                    const ratio =
-                        p.threshold > 0 ? Math.min(1, total / p.threshold) : 0;
-                    const statusClass =
-                        p.status === "Open"
-                            ? "status-tag--open"
-                            : p.status === "ThresholdReached"
-                              ? "status-tag--reached"
-                              : "status-tag--closed";
-                    const truncated =
-                        p.fullText.length > 320
-                            ? p.fullText.slice(0, 320) + "…"
-                            : p.fullText;
-                    return (
-                        <article className="petition-card" key={p.id.toString()}>
-                            <div>
-                                <p className="petition-card__id">
-                                    {t("list.card.id", { id: p.id.toString() })}
-                                </p>
-                                <p className="petition-card__text">{truncated}</p>
-                                <div className="petition-card__actions">
-                                    <span className={`status-tag ${statusClass}`}>
-                                        {t(`list.status.${p.status}`)}
-                                    </span>
-                                </div>
-                            </div>
-                            <dl className="petition-card__meta">
-                                <div>
-                                    <dt>{t("list.card.mode")}</dt>
-                                    <dd className="mono">
-                                        {p.modeLabel === "Signature"
-                                            ? t("list.card.signature")
-                                            : p.modeLabel === "YesNo"
-                                              ? t("list.card.yesNo")
-                                              : t("list.card.yesNoAbstain")}
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt>{t("list.card.count")}</dt>
-                                    <dd>
-                                        <span className="petition-card__count">
-                                            {total}
-                                        </span>
-                                        <span className="petition-card__count-of">
-                                            {t("list.card.of")}{" "}
-                                            {p.threshold.toString()}
-                                        </span>
-                                        <div className="petition-card__bar">
-                                            <span style={{ width: `${ratio * 100}%` }} />
+        <section>
+            <header className="petitions__head">
+                <h1>Petitions</h1>
+                <CreateCta state={state} onSignIn={onSignIn} />
+            </header>
+
+            {state.kind === "account" ? (
+                <div className="notice notice--info" style={{ marginBottom: 20 }}>
+                    <div>
+                        Your account is registered but not verified.{" "}
+                        <Link href="/verify">Verify with QES</Link>{" "}
+                        to sign or create petitions.
+                    </div>
+                </div>
+            ) : null}
+
+            {err ? (
+                <p className="muted">Could not load petitions: {err}</p>
+            ) : petitions === null ? (
+                <p className="muted">Loading…</p>
+            ) : petitions.length === 0 ? (
+                <p className="muted">
+                    No petitions yet. {state.kind === "verified" ? (
+                        <Link href="/p/new">Create the first one.</Link>
+                    ) : (
+                        "Be the first to register and create one."
+                    )}
+                </p>
+            ) : (
+                <ul className="petitions">
+                    {petitions
+                        .slice()
+                        .reverse()
+                        .map((p) => (
+                            <li key={p.id.toString()}>
+                                <Link
+                                    href={`/p/${p.id.toString()}`}
+                                    className="petitions__row"
+                                >
+                                    <div className="petitions__main">
+                                        <div className="petitions__title">
+                                            #{p.id.toString()} ·{" "}
+                                            {firstLine(p.fullText) ||
+                                                "(untitled)"}
                                         </div>
-                                        {p.modeLabel !== "Signature" ? (
-                                            <p
-                                                className="note mono"
-                                                style={{ marginTop: 6 }}
-                                            >
-                                                {p.yesCount} · {p.noCount}
-                                                {p.modeLabel === "YesNoAbstain"
-                                                    ? ` · ${p.abstainCount}`
-                                                    : ""}
-                                            </p>
-                                        ) : null}
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt>{t("list.card.deadline")}</dt>
-                                    <dd>{formatDate(p.deadline, i18n.language)}</dd>
-                                </div>
-                                <div>
-                                    <dt>{t("list.card.creator")}</dt>
-                                    <dd className="mono">{shortAddr(p.creator)}</dd>
-                                </div>
-                                {p.status === "Open" ? (
-                                    <div>
-                                        <button
-                                            className="btn btn--small"
-                                            onClick={() => onSign(p.id)}
-                                            type="button"
-                                        >
-                                            {t("list.card.sign")}
-                                        </button>
+                                        <div className="petitions__meta">
+                                            <ModeBadge mode={p.modeLabel} />
+                                            <span className="muted">
+                                                {totalSignatures(p)}{" "}
+                                                {p.modeLabel === "Signature"
+                                                    ? "signatures"
+                                                    : "votes"}
+                                            </span>
+                                            <span className="muted">·</span>
+                                            <span className="muted">
+                                                {timeRemaining(p.deadline)}
+                                            </span>
+                                        </div>
                                     </div>
-                                ) : null}
-                            </dl>
-                        </article>
-                    );
-                })}
-            </div>
+                                    <StatusBadge status={p.status} />
+                                </Link>
+                            </li>
+                        ))}
+                </ul>
+            )}
         </section>
+    );
+}
+
+function firstLine(text: string): string {
+    return text.split(/\r?\n/)[0]?.slice(0, 120) ?? "";
+}
+
+function ModeBadge({ mode }: { mode: PetitionView["modeLabel"] }) {
+    const label =
+        mode === "Signature" ? "Signature"
+        : mode === "YesNo" ? "Yes / No"
+        : "Yes / No / Abstain";
+    return <span className="badge">{label}</span>;
+}
+
+function StatusBadge({ status }: { status: PetitionView["status"] }) {
+    const cls =
+        status === "Open" ? "badge badge--ok"
+        : status === "ThresholdReached" ? "badge badge--ok"
+        : status === "Closed" ? "badge badge--muted"
+        : "badge";
+    const label =
+        status === "ThresholdReached" ? "Threshold met" : status;
+    return <span className={cls}>{label}</span>;
+}
+
+function CreateCta({
+    state,
+    onSignIn,
+}: {
+    state: AccountState;
+    onSignIn: () => void;
+}) {
+    if (state.kind === "verified") {
+        return (
+            <Link href="/p/new" className="btn btn--primary btn--sm">
+                New petition
+            </Link>
+        );
+    }
+    if (state.kind === "account") {
+        return (
+            <Link href="/verify" className="btn btn--ghost btn--sm">
+                Verify to create
+            </Link>
+        );
+    }
+    return (
+        <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={onSignIn}
+        >
+            Sign in to create
+        </button>
     );
 }

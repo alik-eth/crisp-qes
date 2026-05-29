@@ -63,6 +63,34 @@ export async function readOprfAttester(): Promise<`0x${string}`> {
     });
 }
 
+export async function readHasNullifier(
+    petitionId: bigint,
+    nullifier: `0x${string}`,
+): Promise<boolean> {
+    return publicClient.readContract({
+        address: config.petitionRegistryV2,
+        abi: petitionRegistryV2Abi,
+        functionName: "hasNullifier",
+        args: [petitionId, nullifier],
+    });
+}
+
+export async function readCreationDeposit(): Promise<bigint> {
+    return publicClient.readContract({
+        address: config.petitionRegistryV2,
+        abi: petitionRegistryV2Abi,
+        functionName: "CREATION_DEPOSIT",
+    });
+}
+
+export async function readLeafCount(): Promise<bigint> {
+    return publicClient.readContract({
+        address: config.enrollmentRegistry,
+        abi: enrollmentRegistryAbi,
+        functionName: "leafCount",
+    });
+}
+
 export async function readNextPetitionId(): Promise<bigint> {
     return publicClient.readContract({
         address: config.petitionRegistryV2,

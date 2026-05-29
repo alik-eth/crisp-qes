@@ -1,0 +1,202 @@
+[
+  {
+    "label": "initial",
+    "vp": {
+      "w": 390,
+      "h": 844
+    },
+    "scrollH": 1729,
+    "allButtons": [
+      {
+        "text": "Петиції",
+        "cls": "",
+        "rect": {
+          "top": 136,
+          "w": 48,
+          "h": 18
+        }
+      },
+      {
+        "text": "Реєстрація",
+        "cls": "",
+        "rect": {
+          "top": 136,
+          "w": 68,
+          "h": 18
+        }
+      },
+      {
+        "text": "English",
+        "cls": "",
+        "rect": {
+          "top": 136,
+          "w": 48,
+          "h": 18
+        }
+      },
+      {
+        "text": "← До списку петицій",
+        "cls": "btn--link",
+        "rect": {
+          "top": 193,
+          "w": 127,
+          "h": 18
+        }
+      },
+      {
+        "text": "Завантажити файл для підпису",
+        "cls": "btn btn--accent",
+        "rect": {
+          "top": 398,
+          "w": 263,
+          "h": 44
+        }
+      },
+      {
+        "text": "Завантажити файл для підпису",
+        "cls": "btn btn--accent",
+        "rect": {
+          "top": 978,
+          "w": 263,
+          "h": 44
+        }
+      },
+      {
+        "text": "Що це за файл?",
+        "cls": "btn--link",
+        "rect": {
+          "top": 1039,
+          "w": 96,
+          "h": 18
+        }
+      }
+    ],
+    "primaryCount": 2,
+    "primaryTexts": [
+      "Завантажити файл для підпису",
+      "Завантажити файл для підпису"
+    ],
+    "retryButtons": [],
+    "panels": [
+      {
+        "title": "Файл для підпису в Дії",
+        "buttonCount": 2,
+        "primaryCount": 1,
+        "buttonTexts": [
+          "Завантажити файл для підпису",
+          "Що це за файл?"
+        ],
+        "hasProgress": false,
+        "hasErrorLine": false
+      },
+      {
+        "title": "Файл .p7s з Дія QES",
+        "buttonCount": 0,
+        "primaryCount": 0,
+        "buttonTexts": [],
+        "hasProgress": false,
+        "hasErrorLine": false
+      }
+    ]
+  },
+  {
+    "label": "after-bad-upload",
+    "vp": {
+      "w": 390,
+      "h": 844
+    },
+    "scrollH": 1794,
+    "allButtons": [
+      {
+        "text": "Петиції",
+        "cls": "",
+        "rect": {
+          "top": 136,
+          "w": 48,
+          "h": 18
+        }
+      },
+      {
+        "text": "Реєстрація",
+        "cls": "",
+        "rect": {
+          "top": 136,
+          "w": 68,
+          "h": 18
+        }
+      },
+      {
+        "text": "English",
+        "cls": "",
+        "rect": {
+          "top": 136,
+          "w": 48,
+          "h": 18
+        }
+      },
+      {
+        "text": "← До списку петицій",
+        "cls": "btn--link",
+        "rect": {
+          "top": 193,
+          "w": 127,
+          "h": 18
+        }
+      },
+      {
+        "text": "Завантажити файл для підпису",
+        "cls": "btn btn--accent",
+        "rect": {
+          "top": 398,
+          "w": 263,
+          "h": 44
+        }
+      },
+      {
+        "text": "Завантажити файл для підпису",
+        "cls": "btn btn--accent",
+        "rect": {
+          "top": 978,
+          "w": 263,
+          "h": 44
+        }
+      },
+      {
+        "text": "Що це за файл?",
+        "cls": "btn--link",
+        "rect": {
+          "top": 1039,
+          "w": 96,
+          "h": 18
+        }
+      }
+    ],
+    "primaryCount": 2,
+    "primaryTexts": [
+      "Завантажити файл для підпису",
+      "Завантажити файл для підпису"
+    ],
+    "retryButtons": [],
+    "panels": [
+      {
+        "title": "Файл для підпису в Дії",
+        "buttonCount": 2,
+        "primaryCount": 1,
+        "buttonTexts": [
+          "Завантажити файл для підпису",
+          "Що це за файл?"
+        ],
+        "hasProgress": false,
+        "hasErrorLine": false
+      },
+      {
+        "title": "Файл .p7s з Дія QES",
+        "buttonCount": 0,
+        "primaryCount": 0,
+        "buttonTexts": [],
+        "hasProgress": false,
+        "hasErrorLine": true
+      }
+    ]
+  }
+]

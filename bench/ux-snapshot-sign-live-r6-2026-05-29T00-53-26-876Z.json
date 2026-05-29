@@ -1,0 +1,101 @@
+{
+  "url": "https://crisp-qes-web.fly.dev",
+  "tag": "live-r6",
+  "records": [
+    {
+      "label": "landing",
+      "vp": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollH": 2134,
+      "screensTall": 2.53,
+      "buttonCount": 5,
+      "primaryCount": 2,
+      "panelCount": 0,
+      "inlineErrorPanel": null,
+      "errorTexts": [],
+      "primaryTexts": [
+        "До петицій",
+        "До петицій"
+      ]
+    },
+    {
+      "label": "petitions",
+      "vp": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollH": 844,
+      "screensTall": 1,
+      "buttonCount": 4,
+      "primaryCount": 0,
+      "panelCount": 0,
+      "inlineErrorPanel": null,
+      "errorTexts": [],
+      "primaryTexts": []
+    },
+    {
+      "label": "sign-initial",
+      "vp": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollH": 850,
+      "screensTall": 1.01,
+      "buttonCount": 6,
+      "primaryCount": 0,
+      "panelCount": 2,
+      "inlineErrorPanel": {
+        "rect": {
+          "top": 270,
+          "w": 334,
+          "h": 199
+        },
+        "errorText": "На цьому пристрої немає реєстрації. Пройдіть «Реєстрацію», або увійдіть з тим самим Apple / Google /",
+        "hasRecoverLink": true,
+        "recoverText": "Я вже реєструвався на іншому пристрої →"
+      },
+      "errorTexts": [
+        "На цьому пристрої немає реєстрації. Пройдіть «Реєстрацію», або увійдіть з тим самим Apple / Google / Microsoft акаунтом,"
+      ],
+      "primaryTexts": []
+    },
+    {
+      "label": "yel4-vote-reveal-delta",
+      "beforeScrollH": 850,
+      "afterScrollH": 1131,
+      "delta": 281,
+      "verdict": "still jumps (+281px) — YEL-4 still applies; consider #60"
+    },
+    {
+      "label": "sign-after-vote",
+      "vp": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollH": 1131,
+      "screensTall": 1.34,
+      "buttonCount": 7,
+      "primaryCount": 2,
+      "panelCount": 3,
+      "inlineErrorPanel": {
+        "rect": {
+          "top": 270,
+          "w": 334,
+          "h": 199
+        },
+        "errorText": "На цьому пристрої немає реєстрації. Пройдіть «Реєстрацію», або увійдіть з тим самим Apple / Google /",
+        "hasRecoverLink": true,
+        "recoverText": "Я вже реєструвався на іншому пристрої →"
+      },
+      "errorTexts": [
+        "На цьому пристрої немає реєстрації. Пройдіть «Реєстрацію», або увійдіть з тим самим Apple / Google / Microsoft акаунтом,"
+      ],
+      "primaryTexts": [
+        "Підписати",
+        "Підтвердити Passkey"
+      ]
+    }
+  ]
+}

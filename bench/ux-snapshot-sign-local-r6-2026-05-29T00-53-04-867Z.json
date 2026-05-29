@@ -1,0 +1,41 @@
+{
+  "url": "http://localhost:4173",
+  "tag": "local-r6",
+  "records": [
+    {
+      "label": "landing",
+      "vp": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollH": 2134,
+      "screensTall": 2.53,
+      "buttonCount": 5,
+      "primaryCount": 2,
+      "panelCount": 0,
+      "inlineErrorPanel": null,
+      "errorTexts": [],
+      "primaryTexts": [
+        "До петицій",
+        "До петицій"
+      ]
+    },
+    {
+      "label": "petitions",
+      "vp": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollH": 844,
+      "screensTall": 1,
+      "buttonCount": 4,
+      "primaryCount": 0,
+      "panelCount": 0,
+      "inlineErrorPanel": null,
+      "errorTexts": [
+        "Не вдалося прочитати реєстр петицій. Перевірте мережеві налаштування."
+      ],
+      "primaryTexts": []
+    }
+  ]
+}

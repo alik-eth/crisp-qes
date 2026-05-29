@@ -138,6 +138,23 @@ export const petitionRegistryV2Abi = [
     },
     {
         type: "function",
+        name: "CREATION_DEPOSIT",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [{ name: "", type: "uint256" }],
+    },
+    {
+        type: "function",
+        name: "hasNullifier",
+        stateMutability: "view",
+        inputs: [
+            { name: "petitionId", type: "uint256" },
+            { name: "nullifier", type: "bytes32" },
+        ],
+        outputs: [{ name: "", type: "bool" }],
+    },
+    {
+        type: "function",
         name: "createPetition",
         stateMutability: "payable",
         inputs: [
