@@ -1,4 +1,4 @@
-app = "crisp-qes-v2-relayer"
+app = "crisp-qes-relayer"
 primary_region = "fra"
 
 [build]

@@ -1,4 +1,4 @@
-app = "crisp-qes-v2-oprf"
+app = "crisp-qes-oprf"
 primary_region = "fra"
 
 [build]

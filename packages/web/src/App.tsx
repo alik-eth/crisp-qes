@@ -24,7 +24,6 @@ export function App() {
             <Masthead
                 onTogglePetitions={() => setView({ kind: "list" })}
                 onEnroll={() => setView({ kind: "enroll" })}
-                onRecover={() => setView({ kind: "recover" })}
             />
             {view.kind === "landing" ? (
                 <Landing onBrowse={() => setView({ kind: "list" })} />
@@ -44,6 +43,7 @@ export function App() {
                 <Sign
                     petitionId={view.petitionId}
                     onBack={() => setView({ kind: "list" })}
+                    onRecover={() => setView({ kind: "recover" })}
                     onDone={(txHash, vote) =>
                         setView({
                             kind: "done",

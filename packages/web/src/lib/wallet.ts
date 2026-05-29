@@ -168,7 +168,7 @@ async function getWcProvider() {
             url:
                 typeof window !== "undefined"
                     ? window.location.origin
-                    : "https://crisp-qes-v2-web.fly.dev",
+                    : "https://crisp-qes-web.fly.dev",
             icons: [],
         },
     });

@@ -1,4 +1,4 @@
-app = "crisp-qes-v2-web"
+app = "crisp-qes-web"
 primary_region = "fra"
 
 [build]
@@ -10,7 +10,7 @@ primary_region = "fra"
   [build.args]
     VITE_CHAIN_ID = "84532"
     VITE_RPC_URL = "https://sepolia.base.org"
-    VITE_OPRF_URL = "https://crisp-qes-v2-oprf.fly.dev"
+    VITE_OPRF_URL = "https://crisp-qes-oprf.fly.dev"
     # Addresses from packages/contracts/deployments/base-sepolia.json
     # (deployer commit 486cb0d, 2026-05-29). The initial 7a78c86 deploy
     # used a bytes24 digest scheme that didn't match the backend signer;
@@ -18,7 +18,7 @@ primary_region = "fra"
     # never accept attesterSig from the live OPRF service.
     VITE_ENROLLMENT_REGISTRY = "0x4A17285f2f3035AD8bB6da86d9aB189cC33c4106"
     VITE_PETITION_REGISTRY_V2 = "0x11561749D669791117592332B8E5373Ff60406EF"
-    VITE_RELAYER_URL = "https://crisp-qes-v2-relayer.fly.dev"
+    VITE_RELAYER_URL = "https://crisp-qes-relayer.fly.dev"
     VITE_CIRCUIT_URL = "/crisp_qes_v2_circuit.json"
     VITE_BLOCK_EXPLORER = "https://sepolia.basescan.org"
     VITE_WALLETCONNECT_PROJECT_ID = "33a263ffda20d72b289cf92b369cfa47"

@@ -64,9 +64,9 @@ in the grant proposal); repo paths are unprefixed.
 
 | Layer        | Component             | URL                                                                                  |
 | ------------ | --------------------- | ------------------------------------------------------------------------------------ |
-| Web (UI)     | `packages/web`        | [crisp-qes-v2-web.fly.dev](https://crisp-qes-v2-web.fly.dev)                         |
-| OPRF service | `packages/oprf`       | [crisp-qes-v2-oprf.fly.dev](https://crisp-qes-v2-oprf.fly.dev/healthz)               |
-| Relayer      | `packages/relayer`    | [crisp-qes-v2-relayer.fly.dev](https://crisp-qes-v2-relayer.fly.dev/healthz)         |
+| Web (UI)     | `packages/web`        | [crisp-qes-web.fly.dev](https://crisp-qes-web.fly.dev)                         |
+| OPRF service | `packages/oprf`       | [crisp-qes-oprf.fly.dev](https://crisp-qes-oprf.fly.dev/healthz)               |
+| Relayer      | `packages/relayer`    | [crisp-qes-relayer.fly.dev](https://crisp-qes-relayer.fly.dev/healthz)         |
 
 Contracts (Base Sepolia, chain 84532):
 

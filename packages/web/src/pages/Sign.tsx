@@ -26,6 +26,7 @@ import { config } from "../config";
 interface Props {
     petitionId: bigint;
     onBack: () => void;
+    onRecover?: () => void;
     onDone: (txHash: `0x${string}`, vote: number) => void;
 }
 
@@ -49,7 +50,7 @@ interface UnlockedRecord {
     commitment: `0x${string}`;
 }
 
-export function Sign({ petitionId, onBack, onDone }: Props) {
+export function Sign({ petitionId, onBack, onRecover, onDone }: Props) {
     const { t } = useTranslation();
 
     const [petition, setPetition] = useState<PetitionView | null>(null);
@@ -251,7 +252,25 @@ export function Sign({ petitionId, onBack, onDone }: Props) {
             {petitionErr ? <p className="error-line">{petitionErr}</p> : null}
 
             {hasEnrollment === false ? (
-                <p className="error-line">{t("sign.vote.missingEnrollment")}</p>
+                <div className="panel panel--inline-error">
+                    <p className="error-line">
+                        {t("sign.vote.missingEnrollment")}
+                    </p>
+                    {onRecover ? (
+                        // YEL-6 fix (option a): surface Recover only at the
+                        // moment a citizen actually needs it — i.e. when
+                        // signing fails because there's no enrollment on this
+                        // device — rather than as a cold-start nav entry.
+                        // See bench/ux-results-2026-05-29.md §YELLOW-6.
+                        <button
+                            className="btn--link"
+                            onClick={onRecover}
+                            type="button"
+                        >
+                            {t("sign.vote.alreadyEnrolledElsewhere")}
+                        </button>
+                    ) : null}
+                </div>
             ) : null}
 
             {/* 1. Vote */}

@@ -7,8 +7,8 @@ Owner: Oleksandr Vovkotrub. Reviewers: TBD.
 
 v2 is live end-to-end on Base Sepolia: live demo signature
 `0xc80557d7c25c9c5b8ae4b770d4eda8690566092bd412d33e372a69526ec42dfb`,
-~823 ms native prove, full stack on Fly (`crisp-qes-v2-web.fly.dev`,
-`crisp-qes-v2-oprf.fly.dev`, `crisp-qes-v2-relayer.fly.dev`),
+~823 ms native prove, full stack on Fly (`crisp-qes-web.fly.dev`,
+`crisp-qes-oprf.fly.dev`, `crisp-qes-relayer.fly.dev`),
 contracts on Base Sepolia.
 
 v2 ships with honest, documented limitations:

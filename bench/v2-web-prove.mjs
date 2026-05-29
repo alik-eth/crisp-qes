@@ -18,7 +18,7 @@
 //      real-bb.js-wasm prove number BEFORE v2 web deploys.
 //
 //   2. **Against the live v2 web app (preferred once it exists).** Once
-//      #33 + #34 ship at https://crisp-qes-v2-web.fly.dev, point
+//      #33 + #34 ship at https://crisp-qes-web.fly.dev, point
 //      --url at it and drop --interceptCircuit; the bench self-detects
 //      and falls back to its own scraping.
 //

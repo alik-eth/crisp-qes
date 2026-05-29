@@ -12,8 +12,7 @@
     },
     "nav": {
         "petitions": "Petitions",
-        "enroll": "Enroll",
-        "recover": "Already enrolled?"
+        "enroll": "Enroll"
     },
     "landing": {
         "lede": "v2.1 splits identification from signing. Enrollment with a Diia QES + Passkey happens once. After that, every petition signature is just a Passkey tap — no fresh QES, no identity reveal. The chain sees a commitment, never an RNOKPP; the guarantee is still 'one RNOKPP, one vote'.",
@@ -172,7 +171,8 @@
             "no": "No",
             "abstain": "Abstain",
             "signOnly": "Sign",
-            "missingEnrollment": "No enrollment on this device. Run «Enroll», or sign in with the same Apple / Google / Microsoft account if your Passkey is cloud-synced."
+            "missingEnrollment": "No enrollment on this device. Run «Enroll», or sign in with the same Apple / Google / Microsoft account if your Passkey is cloud-synced.",
+            "alreadyEnrolledElsewhere": "I already enrolled on another device →"
         },
         "unlock": {
             "title": "Unlock your Passkey",

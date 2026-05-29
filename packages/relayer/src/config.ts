@@ -97,7 +97,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RelayerConfig 
 
     const corsRaw =
         env.CORS_ALLOWED_ORIGINS ??
-        (isProd ? "https://crisp-qes-v2-web.fly.dev" : "*");
+        (isProd ? "https://crisp-qes-web.fly.dev" : "*");
     const corsAllowedOrigins = corsRaw
         .split(",")
         .map((s) => s.trim())
