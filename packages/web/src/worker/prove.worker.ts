@@ -49,14 +49,15 @@ function post(msg: OutMsg) {
 
 // bb.js options for the threaded WASM prover.
 //
-// The iOS "Out of memory" is NOT proving exhausting RAM — the bench peak
-// is ~225–256 MB. It's instantiation: bb creates a *shared* WASM memory
-// and reserves its `maximum` up front, and on iOS bb defaults that maximum
-// to 2**14 pages = 1 GiB. iOS Safari refuses a 1 GiB up-front shared
-// reservation and kills the tab. Reservation size is set by `maximum`, not
-// thread count — so we cap the iOS maximum to 512 MiB (8192 pages), ~2× the
-// real working set, which iOS grants while leaving proving room to grow.
-// (Non-iOS keeps bb's defaults.)
+// The iOS "Out of memory" is NOT proving exhausting RAM. Measured floor
+// (bench/v2-mem-floor.mjs): the v2 sign/revoke proof completes with a cap
+// as low as 192 MiB, peak working set ~164 MB. It's instantiation: bb
+// creates a *shared* WASM memory and reserves its `maximum` up front, and
+// on iOS bb defaults that maximum to 2**14 pages = 1 GiB. iOS Safari
+// refuses the 1 GiB reservation and kills the tab. Reservation size is set
+// by `maximum`, not thread count — so we cap the iOS maximum to 384 MiB
+// (6144 pages), ~2× the measured 192 MiB floor: plenty of proving headroom,
+// and a small enough reservation for iOS to grant. (Non-iOS keeps defaults.)
 function bbOptions(): { threads: number; memory?: { maximum: number } } {
     const nav = (self as unknown as { navigator?: WorkerNavigator }).navigator;
     const hw = nav?.hardwareConcurrency ?? 4;
@@ -65,7 +66,7 @@ function bbOptions(): { threads: number; memory?: { maximum: number } } {
     if (isIOS) {
         return {
             threads: Math.max(1, Math.min(hw, 2)),
-            memory: { maximum: 8192 }, // 8192 pages × 64 KiB = 512 MiB
+            memory: { maximum: 6144 }, // 6144 pages × 64 KiB = 384 MiB
         };
     }
     return { threads: Math.max(1, Math.min(hw, 8)) };
