@@ -104,31 +104,18 @@ export function Landing({ state, onSignIn }: Props) {
                 <span className="statbar__live">LIVE · SEPOLIA</span>
             </div>
 
-            <div style={{ marginTop: 64 }}>
-                <h2 className="section__title">{t("landing.howTitle")}</h2>
-                <ol className="howlist">
-                    <li className="howlist__item">
-                        <span className="howlist__num">1</span>
-                        <p className="howlist__text">
-                            <b>{t("landing.how1title")}</b>{" "}
-                            {t("landing.how1body")}
-                        </p>
-                    </li>
-                    <li className="howlist__item">
-                        <span className="howlist__num">2</span>
-                        <p className="howlist__text">
-                            <b>{t("landing.how2title")}</b>{" "}
-                            {t("landing.how2body")}
-                        </p>
-                    </li>
-                    <li className="howlist__item">
-                        <span className="howlist__num">3</span>
-                        <p className="howlist__text">
-                            <b>{t("landing.how3title")}</b>{" "}
-                            {t("landing.how3body")}
-                        </p>
-                    </li>
-                </ol>
+            <div className="how-section">
+                <p className="how-section__label">— {t("landing.howLabel")} —</p>
+                <h2 className="how-section__title">{t("landing.howTitle")}</h2>
+                <div className="how-grid">
+                    {([1, 2, 3, 4] as const).map((n) => (
+                        <div key={n} className="how-card">
+                            <span className="how-card__n">{t(`landing.step${n}n`)}</span>
+                            <h3 className="how-card__title">{t(`landing.step${n}title`)}</h3>
+                            <p className="how-card__body">{t(`landing.step${n}body`)}</p>
+                        </div>
+                    ))}
+                </div>
             </div>
         </section>
     );

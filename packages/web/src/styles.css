@@ -387,47 +387,68 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
     color: var(--muted-2);
 }
 
-/* ─── «Як це працює» ─── */
-.section__title {
+/* ─── «Як це працює» — 4 картки ─── */
+.how-section {
+    margin-top: 80px;
+    text-align: center;
+}
+.how-section__label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted-2);
+    margin-bottom: 16px;
+}
+.how-section__title {
     font-family: var(--display);
     font-weight: 300;
     font-size: clamp(28px, 3.6vw, 40px);
     letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin-bottom: 48px;
 }
-.howlist {
-    margin: 28px 0 0;
-    padding: 0;
-    list-style: none;
-    border-top: 1px solid var(--line);
-}
-.howlist__item {
+.how-grid {
     display: grid;
-    grid-template-columns: 34px 1fr;
-    gap: 18px;
-    align-items: start;
-    padding: 22px 0;
-    border-bottom: 1px solid var(--line);
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    border: 1px solid var(--line);
+    background: var(--line);
+    text-align: left;
 }
-.howlist__num {
-    width: 26px;
-    height: 26px;
-    border: 1px solid var(--ink);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+.how-card {
+    background: var(--bg);
+    padding: 24px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.how-card__n {
     font-family: var(--mono);
     font-size: 12px;
+    color: var(--muted-2);
+    letter-spacing: 0.04em;
+}
+.how-card__title {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 16px;
+    letter-spacing: -0.005em;
     color: var(--ink);
-    border-radius: var(--r);
+    margin: 0;
 }
-.howlist__text {
-    font-size: 15.5px;
-    line-height: 1.6;
-    color: var(--ink-2);
-    margin: 2px 0 0;
-    max-width: 70ch;
+.how-card__body {
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    margin: 0;
 }
-.howlist__text b { font-weight: 600; color: var(--ink); }
+@media (max-width: 768px) {
+    .how-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+    .how-grid { grid-template-columns: 1fr; }
+}
 
 /* ─── footnote (footer) ─── */
 .footnote {
