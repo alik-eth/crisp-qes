@@ -47,20 +47,28 @@ function post(msg: OutMsg) {
     (self as unknown as DedicatedWorkerGlobalScope).postMessage(msg);
 }
 
-// Pick a thread count for the bb.js threaded prover. bb defaults to the
-// hardware max (up to 32); each extra thread holds its own polynomial
-// buffers during proving, so peak WASM memory grows with thread count.
-// iOS Safari has a hard per-tab memory ceiling that the default blows
-// past on real devices (e.g. iPhone 14 Pro → "Out of memory"), so we cap
-// aggressively there and modestly elsewhere. Fewer threads = slower, but
-// it actually completes instead of getting the tab killed.
-function pickThreads(): number {
+// bb.js options for the threaded WASM prover.
+//
+// The iOS "Out of memory" is NOT proving exhausting RAM — the bench peak
+// is ~225–256 MB. It's instantiation: bb creates a *shared* WASM memory
+// and reserves its `maximum` up front, and on iOS bb defaults that maximum
+// to 2**14 pages = 1 GiB. iOS Safari refuses a 1 GiB up-front shared
+// reservation and kills the tab. Reservation size is set by `maximum`, not
+// thread count — so we cap the iOS maximum to 512 MiB (8192 pages), ~2× the
+// real working set, which iOS grants while leaving proving room to grow.
+// (Non-iOS keeps bb's defaults.)
+function bbOptions(): { threads: number; memory?: { maximum: number } } {
     const nav = (self as unknown as { navigator?: WorkerNavigator }).navigator;
     const hw = nav?.hardwareConcurrency ?? 4;
     const ua = nav?.userAgent ?? "";
     const isIOS = /iP(hone|od|ad)/.test(ua);
-    if (isIOS) return Math.max(1, Math.min(hw, 2));
-    return Math.max(1, Math.min(hw, 8));
+    if (isIOS) {
+        return {
+            threads: Math.max(1, Math.min(hw, 2)),
+            memory: { maximum: 8192 }, // 8192 pages × 64 KiB = 512 MiB
+        };
+    }
+    return { threads: Math.max(1, Math.min(hw, 8)) };
 }
 
 self.addEventListener("message", (ev: MessageEvent<InMsg>) => {
@@ -84,7 +92,7 @@ self.addEventListener("message", (ev: MessageEvent<InMsg>) => {
             );
 
             post({ type: "stage", stage: "proving" });
-            const api = await Barretenberg.new({ threads: pickThreads() });
+            const api = await Barretenberg.new(bbOptions());
             try {
                 const backend = new UltraHonkBackend(circuit.bytecode, api);
                 const { proof, publicInputs } = await backend.generateProof(
