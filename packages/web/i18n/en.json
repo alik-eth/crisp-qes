@@ -25,6 +25,7 @@
         "statPolls": "polls",
         "statSignatures": "signatures",
         "howTitle": "How it works",
+        "signInOrRegister": "Sign in or register",
         "how1title": "You verify once with Diia QES.",
         "how1body": "Your qualified electronic signature confirms you are an adult citizen of Ukraine.",
         "how2title": "A Passkey on this device locks your private key.",

@@ -66,11 +66,11 @@ export function Landing({ state, onSignIn }: Props) {
                             className="btn btn--ghost"
                             onClick={onSignIn}
                         >
-                            Sign in or register
+                            {t("landing.signInOrRegister")}
                         </button>
                     ) : state.kind === "account" ? (
                         <Link href="/verify" className="btn btn--ghost">
-                            Verify with QES
+                            {t("me.verifyNow")}
                         </Link>
                     ) : null}
                 </div>
