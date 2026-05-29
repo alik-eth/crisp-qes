@@ -49,12 +49,19 @@ const P256_SPKI_PREFIX = new Uint8Array([
 const P256_SPKI_PREFIX_LEN = P256_SPKI_PREFIX.length;
 
 const MESSAGE_DIGEST_OID = "1.2.840.113549.1.9.4";
+const SIGNING_TIME_OID = "1.2.840.113549.1.9.5";
 
 export interface ParsedP7s {
     /** Raw signedAttrs bytes — fed to the P-256 precompile via sha256. */
     signedAttrs: Uint8Array;
     /** sha256(signedAttrs) — what the precompile takes as msg_hash. */
     signedAttrsSha256: Uint8Array;
+    /**
+     * RFC 5652 §11.3 `signingTime` authenticated attribute (OID
+     * 1.2.840.113549.1.9.5), if present in signedAttrs. Used by the OPRF
+     * attestation gate to enforce a freshness window.
+     */
+    signingTime: Date | null;
     /** Inner messageDigest attribute extracted from signedAttrs. */
     messageDigest: Uint8Array;
     /**
@@ -166,6 +173,10 @@ export function parseP7s(bytes: Uint8Array): ParsedP7s {
     const messageDigest = extractMessageDigest(signer);
     const messageDigestOffset = locateMessageDigestOffset(signedAttrs, messageDigest);
 
+    // (3b) Optional signingTime authenticated attribute — the OPRF gate
+    //      enforces a freshness window over this.
+    const signingTime = extractSigningTime(signer);
+
     // (4, 5, 6) Cert chain. Identify the leaf via SID, fall back to first
     //           cert if SID matching is ambiguous (shouldn't happen for
     //           well-formed Diia .p7s).
@@ -222,6 +233,7 @@ export function parseP7s(bytes: Uint8Array): ParsedP7s {
     return {
         signedAttrs,
         signedAttrsSha256,
+        signingTime,
         messageDigest,
         messageDigestOffset,
         subjectSerial,
@@ -409,6 +421,41 @@ function extractMessageDigest(signer: SignerInfo): Uint8Array {
         );
     }
     return bytes;
+}
+
+/**
+ * Pull the optional `signingTime` authenticated attribute (RFC 5652 §11.3,
+ * OID 1.2.840.113549.1.9.5) from `signedAttrs`. Returns `null` if absent —
+ * callers (the OPRF attestation gate) decide whether absence is fatal.
+ *
+ * The attribute value is `Time ::= CHOICE { utcTime UTCTime, generalTime
+ * GeneralizedTime }`. pkijs surfaces it as an asn1js UTCTime or
+ * GeneralizedTime node carrying a JS `Date` on `valueBlock.value`.
+ */
+function extractSigningTime(signer: SignerInfo): Date | null {
+    const attrs = signer.signedAttrs?.attributes ?? [];
+    const st = attrs.find((a) => a.type === SIGNING_TIME_OID);
+    if (!st || st.values.length === 0) return null;
+    // asn1js wraps Time as either a UTCTime or GeneralizedTime node. Both
+    // carry a `.toDate(): Date` method (preferred), or a Date in
+    // `valueBlock.value` for older asn1js versions.
+    const v = st.values[0] as {
+        toDate?: () => Date;
+        valueBlock?: { value?: unknown };
+    } | undefined;
+    if (v && typeof v.toDate === "function") {
+        const d = v.toDate();
+        if (!Number.isNaN(d.getTime())) return new Date(d.getTime());
+    }
+    const raw = v?.valueBlock?.value;
+    if (raw instanceof Date) {
+        if (!Number.isNaN(raw.getTime())) return new Date(raw.getTime());
+    }
+    if (typeof raw === "string" && raw.length > 0) {
+        const d = new Date(raw);
+        if (!Number.isNaN(d.getTime())) return d;
+    }
+    return null;
 }
 
 function collectCertificates(signed: SignedData): Certificate[] {

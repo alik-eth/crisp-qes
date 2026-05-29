@@ -11,6 +11,7 @@
 import { randomBytes } from "node:crypto";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 
+import { parseTrustRootEnv, type TrustedCa } from "./attestation.js";
 import { randomScalar } from "./oprf.js";
 
 export interface OprfConfig {
@@ -46,6 +47,19 @@ export interface OprfConfig {
      * `/oprf/blind-eval` in `app.ts`. v3 multi-QTSP revisits.
      */
     ageThreshold: number;
+    /**
+     * Diia LOTL trust roots. Populated from `OPRF_TRUST_ROOT_PEM` env
+     * (base64-encoded PEM bundle). Empty array means chain verification
+     * is skipped — `loadConfig` rejects this at startup unless
+     * `OPRF_TRUST_ROOT_REQUIRED=false` is explicitly opted out.
+     */
+    trustRoots: TrustedCa[];
+    /**
+     * Maximum age in seconds the `.p7s` signingTime may be relative to
+     * server wall clock. 0 disables the freshness check (dev/tests only).
+     * Default 600s (10 min) — matches a typical citizen UX window.
+     */
+    signingTimeMaxAgeSec: number;
 }
 
 function encodeScalarLE(s: bigint): Uint8Array {
@@ -135,6 +149,48 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OprfConfig {
         );
     }
 
+    // Diia LOTL trust roots — fail-closed unless explicitly opted out.
+    // The env var carries a base64-encoded PEM bundle (one or more
+    // `-----BEGIN CERTIFICATE-----` blocks) so multi-cert chains pass
+    // through Fly/k8s secret stores without newline drama.
+    let trustRoots: TrustedCa[] = [];
+    const trustRootRequired = (env.OPRF_TRUST_ROOT_REQUIRED ?? "true")
+        .toLowerCase() !== "false";
+    if (env.OPRF_TRUST_ROOT_PEM) {
+        try {
+            trustRoots = parseTrustRootEnv(env.OPRF_TRUST_ROOT_PEM);
+        } catch (e) {
+            throw new Error(
+                `[oprf] OPRF_TRUST_ROOT_PEM failed to parse: ${(e as Error).message}`,
+            );
+        }
+    } else if (trustRootRequired) {
+        throw new Error(
+            "[oprf] OPRF_TRUST_ROOT_PEM is required (fail-closed default). " +
+            "Set it to a base64-encoded PEM bundle of trusted Diia CA certs, " +
+            "or pass OPRF_TRUST_ROOT_REQUIRED=false for the demo/local-dev " +
+            "case where chain verification is intentionally skipped.",
+        );
+    } else {
+        // eslint-disable-next-line no-console
+        console.warn(
+            "[oprf] OPRF_TRUST_ROOT_PEM unset and OPRF_TRUST_ROOT_REQUIRED=false " +
+            "— chain-of-trust verification is DISABLED. Do NOT use in production.",
+        );
+    }
+
+    // signingTime freshness window. 0 disables (dev/tests).
+    let signingTimeMaxAgeSec = 600;
+    if (env.SIGNING_TIME_MAX_AGE_SEC !== undefined) {
+        const n = Number(env.SIGNING_TIME_MAX_AGE_SEC);
+        if (!Number.isInteger(n) || n < 0 || n > 24 * 3600) {
+            throw new Error(
+                `[oprf] SIGNING_TIME_MAX_AGE_SEC must be an integer in [0, 86400] (got ${env.SIGNING_TIME_MAX_AGE_SEC})`,
+            );
+        }
+        signingTimeMaxAgeSec = n;
+    }
+
     // Minimum citizen age (completed years). 0 disables the gate.
     let ageThreshold = 18;
     if (env.AGE_THRESHOLD !== undefined) {
@@ -155,6 +211,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OprfConfig {
         oprfPubkey: new Uint8Array(32), // filled by buildApp once curve is loaded
         attesterKey,
         ageThreshold,
+        trustRoots,
+        signingTimeMaxAgeSec,
         chainId,
         enrollmentRegistry,
         corsAllowedOrigins,

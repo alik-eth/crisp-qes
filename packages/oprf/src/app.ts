@@ -149,10 +149,17 @@ export async function buildApp(
         let dob: Date | null;
         try {
             const p7sBytes = base64ToBytes(attestation.p7s);
-            const verified = verifyAttestation(p7sBytes);
+            const verified = verifyAttestation(p7sBytes, {
+                trustRoots: cfg.trustRoots,
+                signingTimeMaxAgeSec: cfg.signingTimeMaxAgeSec,
+            });
             dob = verified.dob;
             req.log.info(
-                { serial: verified.subjectSerialAscii },
+                {
+                    serial: verified.subjectSerialAscii,
+                    chainAnchor: verified.chainAnchor,
+                    signingTime: verified.signingTime?.toISOString() ?? null,
+                },
                 "attestation ok",
             );
         } catch (e) {

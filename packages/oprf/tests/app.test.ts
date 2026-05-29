@@ -56,6 +56,11 @@ async function buildTestApp(overrides: Partial<OprfConfig> = {}) {
             "0x1234567890abcdef1234567890abcdef12345678" as `0x${string}`,
         corsAllowedOrigins: ["*"],
         ageThreshold: 0, // default to disabled in tests
+        // Trust roots + signingTime gate disabled by default in this suite —
+        // the dedicated attestation.test.ts exercises both gates against the
+        // real fixture. Suites here focus on routing + OPRF math.
+        trustRoots: [],
+        signingTimeMaxAgeSec: 0,
         ...overrides,
     };
     const store = new EnrollmentStore(":memory:");
