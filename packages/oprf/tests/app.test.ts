@@ -61,6 +61,8 @@ async function buildTestApp(overrides: Partial<OprfConfig> = {}) {
         // real fixture. Suites here focus on routing + OPRF math.
         trustRoots: [],
         signingTimeMaxAgeSec: 0,
+        maxBlindEvalPerRnokppPerEpoch: 3,
+        replayCacheTtlSec: 86400 * 400,
         ...overrides,
     };
     const store = new EnrollmentStore(":memory:");
@@ -149,6 +151,86 @@ maybe("oprf /oprf/blind-eval", () => {
             },
         });
         expect(res.statusCode).toBe(401);
+    });
+
+    it("rejects a replayed .p7s envelope on second post with 409 ReplayedAttestation", async () => {
+        // High blind-eval cap so the 409 is unambiguously from replay,
+        // not from throttling.
+        const { app } = await buildTestApp({
+            maxBlindEvalPerRnokppPerEpoch: 100,
+        });
+
+        const mkPayload = () => {
+            // Re-blind each call so the request body differs but the
+            // attestation envelope is the same — exactly the replay
+            // attack we're defending against.
+            const M = blind(new TextEncoder().encode("RNOKPP=3627506575")).M;
+            return {
+                blindedInput: `0x${bytesToHex(M)}` as `0x${string}`,
+                attestation: { p7s: p7sBase64 },
+            };
+        };
+
+        const first = await app.inject({
+            method: "POST",
+            url: "/oprf/blind-eval",
+            payload: mkPayload(),
+        });
+        expect(first.statusCode).toBe(200);
+
+        const second = await app.inject({
+            method: "POST",
+            url: "/oprf/blind-eval",
+            payload: mkPayload(),
+        });
+        expect(second.statusCode).toBe(409);
+        expect((second.json() as { error: string }).error).toBe(
+            "ReplayedAttestation",
+        );
+    });
+
+    it("throttles the same RNOKPP with 429 on the 4th distinct blind-eval", async () => {
+        // We need the same subjectSerial but a distinct .p7s envelope on
+        // each call — otherwise replay-cache rejects first. The fixture
+        // is a single envelope, so we patch the store to bypass replay
+        // and exercise just the rate-limit path. (No mocking of the DB:
+        // we sub the public `recordP7sHashIfFresh` to always succeed,
+        // which is the same outcome as four genuinely-distinct envelopes
+        // with the same subjectSerial.)
+        const { app, store } = await buildTestApp({
+            maxBlindEvalPerRnokppPerEpoch: 3,
+        });
+        const origRecord = store.recordP7sHashIfFresh.bind(store);
+        store.recordP7sHashIfFresh = () => true;
+
+        try {
+            const mkPayload = () => {
+                const M = blind(new TextEncoder().encode("x")).M;
+                return {
+                    blindedInput: `0x${bytesToHex(M)}` as `0x${string}`,
+                    attestation: { p7s: p7sBase64 },
+                };
+            };
+
+            for (let i = 0; i < 3; i++) {
+                const res = await app.inject({
+                    method: "POST",
+                    url: "/oprf/blind-eval",
+                    payload: mkPayload(),
+                });
+                expect(res.statusCode).toBe(200);
+            }
+
+            const fourth = await app.inject({
+                method: "POST",
+                url: "/oprf/blind-eval",
+                payload: mkPayload(),
+            });
+            expect(fourth.statusCode).toBe(429);
+            expect((fourth.json() as { error: string }).error).toBe("Throttled");
+        } finally {
+            store.recordP7sHashIfFresh = origRecord;
+        }
     });
 });
 

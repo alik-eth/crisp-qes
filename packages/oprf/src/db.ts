@@ -25,6 +25,28 @@ CREATE TABLE IF NOT EXISTS kv (
     k TEXT PRIMARY KEY NOT NULL,
     v TEXT NOT NULL
 );
+
+-- Per-epoch p7s replay cache (task #31). One row per distinct .p7s
+-- envelope observed at /oprf/blind-eval. PRIMARY KEY on the SHA-256
+-- gives us atomic INSERT-OR-IGNORE semantics for TOCTOU-free dedupe.
+CREATE TABLE IF NOT EXISTS p7s_replay_cache (
+    p_hash    BLOB PRIMARY KEY NOT NULL,   -- 32 bytes, sha256(p7sBytes)
+    seen_at   INTEGER NOT NULL             -- unix seconds (UTC)
+);
+
+CREATE INDEX IF NOT EXISTS p7s_replay_cache_by_seen_at
+    ON p7s_replay_cache (seen_at);
+
+-- Per-RNOKPP blind-eval counter (task #32). subject_hash is
+-- sha256(subjectSerial) — we never store the plaintext RNOKPP.
+CREATE TABLE IF NOT EXISTS blind_eval_counts (
+    subject_hash  BLOB PRIMARY KEY NOT NULL,
+    count         INTEGER NOT NULL,
+    first_seen    INTEGER NOT NULL          -- unix seconds (UTC)
+);
+
+CREATE INDEX IF NOT EXISTS blind_eval_counts_by_first_seen
+    ON blind_eval_counts (first_seen);
 `;
 
 export interface EnrolledRow {
@@ -103,6 +125,75 @@ export class EnrollmentStore {
                  ON CONFLICT(k) DO UPDATE SET v = excluded.v`,
             )
             .run(key, value);
+    }
+
+    /**
+     * Atomically record a p7s hash in the per-epoch replay cache.
+     *
+     * Returns `true` if this hash had not been seen yet (the insert won),
+     * `false` if it was already present (replay — caller must reject).
+     *
+     * Atomicity: INSERT OR IGNORE collapses check + insert into a single
+     * SQL statement; `stmt.run().changes` is 1 on a fresh insert and 0
+     * when the PRIMARY KEY on `p_hash` blocked it. No TOCTOU window.
+     */
+    recordP7sHashIfFresh(pHash: Uint8Array, seenAt: number): boolean {
+        const stmt = this.db.prepare(
+            `INSERT OR IGNORE INTO p7s_replay_cache (p_hash, seen_at)
+             VALUES (?, ?)`,
+        );
+        const info = stmt.run(Buffer.from(pHash), seenAt);
+        return info.changes === 1;
+    }
+
+    /** Drop p7s replay rows older than `olderThan` (unix seconds). */
+    prunePAhsReplayCache(olderThan: number): number {
+        const info = this.db
+            .prepare(`DELETE FROM p7s_replay_cache WHERE seen_at < ?`)
+            .run(olderThan);
+        return Number(info.changes);
+    }
+
+    /**
+     * Increment the per-RNOKPP blind-eval counter and return the new value.
+     *
+     * Uses ON CONFLICT to keep the increment + insert atomic. `first_seen`
+     * is set on initial insert and not touched on subsequent updates;
+     * cleanup uses `first_seen` so a single sliding-TTL eviction works.
+     */
+    incrementBlindEvalCount(
+        subjectHash: Uint8Array,
+        now: number,
+    ): { count: number; firstSeen: number } {
+        const sh = Buffer.from(subjectHash);
+        // We do this in a transaction so the increment and the SELECT-back
+        // happen against the same DB snapshot. better-sqlite3 transactions
+        // are synchronous, which matches our handler shape.
+        const txn = this.db.transaction(() => {
+            this.db
+                .prepare(
+                    `INSERT INTO blind_eval_counts (subject_hash, count, first_seen)
+                     VALUES (?, 1, ?)
+                     ON CONFLICT(subject_hash) DO UPDATE SET count = count + 1`,
+                )
+                .run(sh, now);
+            const row = this.db
+                .prepare(
+                    `SELECT count AS c, first_seen AS f
+                     FROM blind_eval_counts WHERE subject_hash = ?`,
+                )
+                .get(sh) as { c: number; f: number };
+            return { count: row.c, firstSeen: row.f };
+        });
+        return txn();
+    }
+
+    /** Drop blind-eval counter rows older than `olderThan` (unix seconds). */
+    pruneBlindEvalCounts(olderThan: number): number {
+        const info = this.db
+            .prepare(`DELETE FROM blind_eval_counts WHERE first_seen < ?`)
+            .run(olderThan);
+        return Number(info.changes);
     }
 
     close(): void {
