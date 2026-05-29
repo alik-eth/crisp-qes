@@ -66,9 +66,10 @@
         "steps": {
             "binding": "0. File to sign in Diia",
             "upload": "1. Upload signed Diia QES",
-            "oprf": "2. OPRF + commitment",
-            "register": "3. Register on-chain",
-            "passkey": "4. Create Passkey"
+            "oprf": "2. Compute commitment",
+            "register": "3. Record on-chain",
+            "passkey": "4. Create Passkey",
+            "systemTag": "(we handle this)"
         },
         "binding": {
             "title": "File to sign in Diia",
@@ -123,8 +124,13 @@
             "error": "Registration error: {{detail}}"
         },
         "chain": {
-            "title": "Confirm the on-chain root update",
-            "intro": "Last step: sign `EnrollmentRegistry.updateRoot(newRoot, newCommitments, attesterSig)` with your own wallet. This updates the tree root in the contract — a one-time action per enrollment. You pay the gas yourself: enrollment is the one moment in the protocol where the audit story is cleaner if the citizen is the on-chain sender (not the relayer).",
+            "title": "Record on-chain",
+            "intro": "Sign `EnrollmentRegistry.updateRoot(newRoot, newCommitments, attesterSig)` with your own wallet. This updates the tree root in the contract — a one-time action per enrollment. You pay the gas yourself.",
+            "relayerIntro": "We're recording your enrollment on-chain for you. No wallet, no gas, no ETH on your end.",
+            "relayerSubmitting": "Recording on-chain via relayer…",
+            "modeNotice": "Connecting a wallet links your enrollment to that address on-chain. Skip wallet to enroll privately via relayer.",
+            "useWallet": "I'd rather submit from my own wallet →",
+            "useRelayer": "← Back to relayer submission",
             "injectedHint": "Browser extension",
             "walletConnect": "WalletConnect",
             "walletConnectHint": "QR code for a mobile wallet",

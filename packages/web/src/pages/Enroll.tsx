@@ -52,6 +52,7 @@ import {
 } from "../lib/wallet";
 import { useWallet } from "../lib/walletContext";
 import { enrollmentRegistryAbi } from "../lib/abi";
+import { submitEnrollment } from "../lib/relayer";
 import { config } from "../config";
 
 interface Props {
@@ -129,9 +130,14 @@ export function Enroll({ onBack, onDone }: Props) {
     const [registerBusy, setRegisterBusy] = useState(false);
     const [registerErr, setRegisterErr] = useState<string | null>(null);
 
-    // On-chain step (user-signed via WalletConnect).
+    // On-chain step. #55 wallet-presence detection: the default path is
+    // relayer-submitted (citizen never touches ETH). Wallet-self-submit
+    // is preserved as an opt-in. The mode toggle lives inside the chain
+    // panel; switching modes mid-flight is gated on chainBusy so we
+    // don't strand a request.
     const { session, setSession, clearSession } = useWallet();
     const [injected, setInjected] = useState<InjectedDetail[]>([]);
+    const [chainMode, setChainMode] = useState<"relayer" | "wallet">("relayer");
     const [chainBusy, setChainBusy] = useState<
         "idle" | "connecting" | "switching" | "submitting" | "mining"
     >("idle");
@@ -190,6 +196,24 @@ export function Enroll({ onBack, onDone }: Props) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [oprfResult, registerResult, registerBusy, registerErr]);
 
+    // #55 — auto-fire relayer submit when in relayer mode (default).
+    // The citizen never touches ETH on the happy path. Wallet mode is
+    // opt-in (see chain panel JSX below). Same idempotency gate as the
+    // OPRF/register effects: requires registerResult, no existing tx,
+    // not already busy, no error.
+    useEffect(() => {
+        if (
+            chainMode === "relayer" &&
+            registerResult &&
+            !chainTx &&
+            chainBusy === "idle" &&
+            !chainErr
+        ) {
+            void runRelayerSubmit();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [chainMode, registerResult, chainTx, chainBusy, chainErr]);
+
     /** Step 0: write the binding file to disk for Diia. */
     function handleDownloadBinding() {
         const bytes = buildEnrollmentBindingBytes();
@@ -247,16 +271,52 @@ export function Enroll({ onBack, onDone }: Props) {
     }
 
     /**
-     * Submit `EnrollmentRegistry.updateRoot(newRoot, newCommitments, attesterSig)`
-     * via the user's wallet. The relayer is intentionally not on this path —
-     * enrollment is a one-time, audit-cleaner action signed by the citizen.
+     * #55 — relayer-default path. POST the OPRF service's attester
+     * signature to the v2 relayer, which signs and submits the
+     * `EnrollmentRegistry.updateRoot(...)` transaction on the citizen's
+     * behalf. The citizen never sees a wallet picker, never pays gas.
      *
+     * Pre-#55 the comment on `handleChainSubmit` claimed enrollment was
+     * "intentionally not on the relayer path" for audit cleanliness;
+     * post-#55 the user's call is to prioritise zero-friction onboarding
+     * (citizens are not crypto users; demanding a wallet at enrollment
+     * loses 95 % of them at step 0). The audit story shifts to "citizen
+     * actively chose relayer; wallet-self-submit available for those who
+     * want it" — surfaced via the mode toggle in the chain panel.
+     */
+    async function runRelayerSubmit() {
+        if (!registerResult) return;
+        setChainBusy("submitting");
+        setChainErr(null);
+        try {
+            const r = await submitEnrollment({
+                newRoot: registerResult.newRoot,
+                newCommitments: registerResult.newCommitments,
+                signature: registerResult.attesterSig,
+            });
+            if (!r.ok) {
+                setChainErr(
+                    r.detail ?? r.code ?? t("enroll.chain.errors.unknown"),
+                );
+                setChainBusy("idle");
+                return;
+            }
+            setChainTx(r.txHash);
+            setChainBusy("idle");
+        } catch (e) {
+            setChainErr(e instanceof Error ? e.message : String(e));
+            setChainBusy("idle");
+        }
+    }
+
+    /**
+     * Wallet-self-submit path (opt-in via the chain panel mode toggle).
      * The attester pre-signs the EIP-191-wrapped digest
      *   inner = keccak256(abi.encode(oldRoot, newRoot,
      *                                keccak256(packed(newCommitments)),
      *                                chainId, address(this)))
      * server-side, so we pass `newCommitments` (and the resulting sig)
-     * through verbatim.
+     * through verbatim regardless of who broadcasts the tx.
      */
     async function handleChainSubmit() {
         if (!session || !registerResult || !oprfResult) return;
@@ -511,23 +571,40 @@ export function Enroll({ onBack, onDone }: Props) {
             <ol className="steps">
                 {(
                     [
-                        "binding",
-                        "upload",
-                        "oprf",
-                        "register",
-                        "passkey",
+                        { key: "binding", system: false },
+                        { key: "upload", system: false },
+                        // OPRF + register fire automatically (#68 auto-chain).
+                        // Chain (the on-chain submit) is system-handled too on
+                        // the relayer-default path (#55); wallet path is opt-in.
+                        // Marking them as `system` dims the row visually so the
+                        // citizen reads the list as "I do these three; we
+                        // handle the rest" rather than "5 things to do".
+                        // See YEL-5 in bench/ux-results-2026-05-29.md.
+                        { key: "oprf", system: true },
+                        { key: "register", system: chainMode === "relayer" },
+                        { key: "passkey", system: false },
                     ] as const
-                ).map((k) => {
-                    const isActive = stage === k;
+                ).map(({ key, system }) => {
+                    const isActive = stage === key;
+                    const cls = [
+                        "steps__item",
+                        isActive ? "steps__item--active" : "",
+                        system ? "steps__item--system" : "",
+                    ]
+                        .filter(Boolean)
+                        .join(" ");
                     return (
-                        <li
-                            key={k}
-                            className={
-                                "steps__item " +
-                                (isActive ? "steps__item--active" : "")
-                            }
-                        >
-                            {t(`enroll.steps.${k}`)}
+                        <li key={key} className={cls}>
+                            {t(`enroll.steps.${key}`)}
+                            {system ? (
+                                <span
+                                    className="steps__system-tag"
+                                    aria-label={t("enroll.steps.systemTag")}
+                                >
+                                    {" "}
+                                    {t("enroll.steps.systemTag")}
+                                </span>
+                            ) : null}
                         </li>
                     );
                 })}
@@ -667,14 +744,73 @@ export function Enroll({ onBack, onDone }: Props) {
                 </div>
             ) : null}
 
-            {/* 4b. On-chain — user-signed via WalletConnect */}
+            {/* 4b. On-chain — #55 wallet-presence detection.
+                Default = relayer-submitted (zero clicks for the citizen).
+                Wallet-self-submit is an opt-in toggle inside the panel. */}
             {registerResult && !chainTx ? (
                 <div className="panel">
                     <p className="panel__title">{t("enroll.chain.title")}</p>
-                    <p className="note">{t("enroll.chain.intro")}</p>
+                    <p className="note">
+                        {chainMode === "relayer"
+                            ? t("enroll.chain.relayerIntro")
+                            : t("enroll.chain.intro")}
+                    </p>
 
-                    {!session ? (
+                    {chainMode === "relayer" ? (
                         <>
+                            {chainErr ? (
+                                <>
+                                    <p className="error-line">
+                                        {t("enroll.chain.error", {
+                                            detail: chainErr,
+                                        })}
+                                    </p>
+                                    <div className="actions">
+                                        <button
+                                            className="btn"
+                                            type="button"
+                                            onClick={() => {
+                                                setChainErr(null);
+                                                void runRelayerSubmit();
+                                            }}
+                                        >
+                                            {t("common.retry")}
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <p className="progress">
+                                    {t("enroll.chain.relayerSubmitting")}
+                                    <span className="progress__line">
+                                        <span />
+                                    </span>
+                                </p>
+                            )}
+                            <p className="note" style={{ marginTop: 12 }}>
+                                {t("enroll.chain.modeNotice")}
+                            </p>
+                            <p>
+                                <button
+                                    className="btn--link"
+                                    type="button"
+                                    onClick={() => {
+                                        // Switching to wallet only makes sense
+                                        // when nothing is in flight; chainBusy
+                                        // gates the link.
+                                        if (chainBusy !== "idle") return;
+                                        setChainErr(null);
+                                        setChainMode("wallet");
+                                    }}
+                                    disabled={chainBusy !== "idle"}
+                                >
+                                    {t("enroll.chain.useWallet")}
+                                </button>
+                            </p>
+                        </>
+                    ) : (
+                        <>
+                            {!session ? (
+                                <>
                             <ul className="wallet-picker">
                                 {injected.map((d) => (
                                     <li key={d.info.uuid}>
@@ -730,9 +866,9 @@ export function Enroll({ onBack, onDone }: Props) {
                                     </button>
                                 </li>
                             </ul>
-                        </>
-                    ) : (
-                        <>
+                                </>
+                            ) : (
+                                <>
                             <dl>
                                 <div className="field-row">
                                     <dt>{t("enroll.chain.wallet")}</dt>
@@ -785,14 +921,39 @@ export function Enroll({ onBack, onDone }: Props) {
                                           : t("enroll.chain.submit")}
                                 </button>
                             </div>
+                                </>
+                            )}
+
+                            {/* Common wallet-mode footer: chainErr surface
+                                + disclosure copy + "back to relayer" link. */}
+                            {chainErr ? (
+                                <p className="error-line">
+                                    {t("enroll.chain.error", {
+                                        detail: chainErr,
+                                    })}
+                                </p>
+                            ) : null}
+                            <p className="note" style={{ marginTop: 12 }}>
+                                {t("enroll.chain.modeNotice")}
+                            </p>
+                            <p>
+                                <button
+                                    className="btn--link"
+                                    type="button"
+                                    onClick={() => {
+                                        // Switching away from wallet only when
+                                        // no tx is in flight; chainBusy gates.
+                                        if (chainBusy !== "idle") return;
+                                        setChainErr(null);
+                                        setChainMode("relayer");
+                                    }}
+                                    disabled={chainBusy !== "idle"}
+                                >
+                                    {t("enroll.chain.useRelayer")}
+                                </button>
+                            </p>
                         </>
                     )}
-
-                    {chainErr ? (
-                        <p className="error-line">
-                            {t("enroll.chain.error", { detail: chainErr })}
-                        </p>
-                    ) : null}
                 </div>
             ) : null}
 

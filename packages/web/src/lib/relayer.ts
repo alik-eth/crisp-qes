@@ -80,3 +80,84 @@ export function explorerTxUrl(txHash: string): string {
     const base = config.blockExplorerUrl.replace(/\/$/, "");
     return `${base}/tx/${txHash}`;
 }
+
+// #55 — relayer-default enrollment submit. When the citizen has no wallet
+// connected (the default UX), the relayer signs `EnrollmentRegistry.
+// updateRoot(newRoot, newCommitments, signature)` on their behalf so they
+// don't need to touch ETH to enroll. Wallet path remains available via
+// the existing self-submit flow in Enroll.tsx.
+//
+// Endpoint shape per team-lead's #55 brief:
+//   POST <RELAYER_URL>/v2/enroll
+//   body: { newRoot, newCommitments, signature }
+//   200:  { txHash, blockNumber, status }
+
+export interface EnrollSubmitArgs {
+    newRoot: `0x${string}`;
+    newCommitments: `0x${string}`[];
+    /** Attester sig from the OPRF service (65 bytes EIP-191). */
+    signature: `0x${string}`;
+}
+
+export interface EnrollSubmitOk {
+    ok: true;
+    txHash: `0x${string}`;
+    blockNumber: number;
+    status: "success";
+}
+
+export interface EnrollSubmitErr {
+    ok: false;
+    code: string;
+    status: number;
+    detail?: string;
+}
+
+export async function submitEnrollment(
+    args: EnrollSubmitArgs,
+): Promise<EnrollSubmitOk | EnrollSubmitErr> {
+    let res: Response;
+    try {
+        res = await fetch(`${config.relayerUrl}/v2/enroll`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+                newRoot: args.newRoot,
+                newCommitments: args.newCommitments,
+                signature: args.signature,
+            }),
+        });
+    } catch (err) {
+        return {
+            ok: false,
+            code: "Network",
+            status: 0,
+            detail: err instanceof Error ? err.message : String(err),
+        };
+    }
+    if (res.status === 200) {
+        const j = (await res.json()) as {
+            txHash: `0x${string}`;
+            blockNumber: number;
+            status?: "success";
+        };
+        return {
+            ok: true,
+            txHash: j.txHash,
+            blockNumber: j.blockNumber,
+            status: "success",
+        };
+    }
+    let parsed: { error?: string; detail?: string } = {};
+    try {
+        parsed = (await res.json()) as typeof parsed;
+    } catch {
+        // body wasn't JSON
+    }
+    return {
+        ok: false,
+        code: parsed.error ?? "Unknown",
+        status: res.status,
+        detail: parsed.detail,
+    };
+}

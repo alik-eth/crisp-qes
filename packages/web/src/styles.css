@@ -556,6 +556,27 @@ button:disabled {
     color: var(--ok);
 }
 
+/* YEL-5 — rows the system handles end-to-end (OPRF + register fire
+ * automatically per #68; chain step is relayer-default per #55). Dim
+ * the label and append a small "(we handle this)" tag so the citizen
+ * reads "3 things I do" rather than "5 things to do". The active-step
+ * highlight (--active) overrides --system so the citizen still sees
+ * progress moving through the system-handled rows. */
+.steps__item--system {
+    opacity: 0.55;
+}
+
+.steps__item--system.steps__item--active {
+    opacity: 1;
+}
+
+.steps__system-tag {
+    font-size: 9px;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--ink-faint);
+}
+
 .panel {
     border: 1px solid var(--rule);
     background: var(--paper-bright);
