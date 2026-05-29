@@ -2,7 +2,7 @@
   "network": "sepolia",
   "chainId": 11155111,
   "deployedAt": "2026-05-29T18:33:25Z",
-  "deployerCommit": "9693051",
+  "deployerCommit": "fb0ecbf",
   "blockExplorer": "https://sepolia.etherscan.io",
   "deployer": "0xB8d121CD0B2D0AB3df2aFF0B45B2fD354FF4c1f7",
   "contracts": {
