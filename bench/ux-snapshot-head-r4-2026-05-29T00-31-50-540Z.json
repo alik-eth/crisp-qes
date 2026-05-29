@@ -1,0 +1,963 @@
+{
+  "url": "http://localhost:4173",
+  "tag": "head-r4",
+  "capturedAt": "2026-05-29T00-31-50-540Z",
+  "records": [
+    {
+      "label": "mobile-landing",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollHeight": 2036,
+      "screensTall": 2.41,
+      "interactiveCount": {
+        "all": 5,
+        "visible": 5,
+        "primary": 2,
+        "secondary": 0
+      },
+      "panelCount": 0,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Що гарантує v2",
+        "Чого не гарантує цей демо"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "English"
+      ],
+      "textChars": 1887,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 60,
+            "left": 28,
+            "w": 48,
+            "h": 18
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 60,
+            "left": 88,
+            "w": 68,
+            "h": 18
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 60,
+            "left": 168,
+            "w": 48,
+            "h": 18
+          }
+        },
+        {
+          "text": "До петицій",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 379,
+            "left": 28,
+            "w": 125,
+            "h": 44
+          }
+        },
+        {
+          "text": "До петицій",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 1798,
+            "left": 28,
+            "w": 125,
+            "h": 44
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "До петицій",
+          "rect": {
+            "top": 379,
+            "left": 28,
+            "w": 125,
+            "h": 44
+          }
+        },
+        {
+          "text": "До петицій",
+          "rect": {
+            "top": 1798,
+            "left": 28,
+            "w": 125,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [],
+      "firstPrimaryTop": 379,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head-r4/mobile-landing.png"
+    },
+    {
+      "label": "mobile-petitions",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollHeight": 844,
+      "screensTall": 1,
+      "interactiveCount": {
+        "all": 4,
+        "visible": 4,
+        "primary": 0,
+        "secondary": 0
+      },
+      "panelCount": 0,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Відкриті петиції"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "English"
+      ],
+      "textChars": 355,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 60,
+            "left": 28,
+            "w": 48,
+            "h": 18
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 60,
+            "left": 88,
+            "w": 68,
+            "h": 18
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 60,
+            "left": 168,
+            "w": 48,
+            "h": 18
+          }
+        },
+        {
+          "text": "Спробувати ще раз",
+          "cls": "btn",
+          "rect": {
+            "top": 276,
+            "left": 28,
+            "w": 181,
+            "h": 44
+          }
+        }
+      ],
+      "primaryRects": [],
+      "panelInfo": [],
+      "firstPrimaryTop": null,
+      "firstPrimaryRequiresScroll": null,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head-r4/mobile-petitions.png"
+    },
+    {
+      "label": "mobile-enroll-initial",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollHeight": 1632,
+      "screensTall": 1.93,
+      "interactiveCount": {
+        "all": 8,
+        "visible": 7,
+        "primary": 2,
+        "secondary": 2
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Реєстрація v2"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "English"
+      ],
+      "textChars": 1242,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 60,
+            "left": 28,
+            "w": 48,
+            "h": 18
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 60,
+            "left": 88,
+            "w": 68,
+            "h": 18
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 60,
+            "left": 168,
+            "w": 48,
+            "h": 18
+          }
+        },
+        {
+          "text": "← До списку петицій",
+          "cls": "btn--link",
+          "rect": {
+            "top": 118,
+            "left": 28,
+            "w": 131,
+            "h": 18
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 323,
+            "left": 28,
+            "w": 272,
+            "h": 44
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 902,
+            "left": 53,
+            "w": 272,
+            "h": 44
+          }
+        },
+        {
+          "text": "Що це за файл?",
+          "cls": "btn--link",
+          "rect": {
+            "top": 963,
+            "left": 53,
+            "w": 99,
+            "h": 18
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Завантажити файл для підпису",
+          "rect": {
+            "top": 323,
+            "left": 28,
+            "w": 272,
+            "h": 44
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "rect": {
+            "top": 902,
+            "left": 53,
+            "w": 272,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "Файл для підпису в Дії",
+          "rect": {
+            "top": 631,
+            "left": 28,
+            "w": 334,
+            "h": 393
+          },
+          "textChars": 411,
+          "buttons": [
+            {
+              "text": "Завантажити файл для підпису",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Що це за файл?",
+              "cls": "btn--link"
+            }
+          ]
+        },
+        {
+          "title": "Файл .p7s з Дія QES",
+          "rect": {
+            "top": 1048,
+            "left": 28,
+            "w": 334,
+            "h": 390
+          },
+          "textChars": 286,
+          "buttons": []
+        }
+      ],
+      "firstPrimaryTop": 323,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head-r4/mobile-enroll-initial.png"
+    },
+    {
+      "label": "mobile-enroll-after-first-cta",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollHeight": 1660,
+      "screensTall": 1.97,
+      "interactiveCount": {
+        "all": 7,
+        "visible": 6,
+        "primary": 1,
+        "secondary": 2
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Реєстрація v2"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "English"
+      ],
+      "textChars": 1353,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": -374,
+            "left": 28,
+            "w": 48,
+            "h": 18
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": -374,
+            "left": 88,
+            "w": 68,
+            "h": 18
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": -374,
+            "left": 168,
+            "w": 48,
+            "h": 18
+          }
+        },
+        {
+          "text": "← До списку петицій",
+          "cls": "btn--link",
+          "rect": {
+            "top": -316,
+            "left": 28,
+            "w": 131,
+            "h": 18
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 400,
+            "left": 53,
+            "w": 272,
+            "h": 44
+          }
+        },
+        {
+          "text": "Що це за файл?",
+          "cls": "btn--link",
+          "rect": {
+            "top": 557,
+            "left": 53,
+            "w": 99,
+            "h": 18
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Завантажити файл для підпису",
+          "rect": {
+            "top": 400,
+            "left": 53,
+            "w": 272,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "Файл для підпису в Дії",
+          "rect": {
+            "top": 129,
+            "left": 28,
+            "w": 334,
+            "h": 489
+          },
+          "textChars": 551,
+          "buttons": [
+            {
+              "text": "Завантажити файл для підпису",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Що це за файл?",
+              "cls": "btn--link"
+            }
+          ]
+        },
+        {
+          "title": "Файл .p7s з Дія QES",
+          "rect": {
+            "top": 641,
+            "left": 28,
+            "w": 334,
+            "h": 390
+          },
+          "textChars": 286,
+          "buttons": []
+        }
+      ],
+      "firstPrimaryTop": 400,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head-r4/mobile-enroll-after-first-cta.png"
+    },
+    {
+      "label": "mobile-lang-toggle",
+      "beforeLabel": "English",
+      "afterLabel": "Українська",
+      "charsBefore": 1887,
+      "charsAfter": 1842,
+      "charDelta": -45,
+      "elapsedMs": 285
+    },
+    {
+      "label": "desktop-landing",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "scrollHeight": 1238,
+      "screensTall": 1.38,
+      "interactiveCount": {
+        "all": 5,
+        "visible": 5,
+        "primary": 2,
+        "secondary": 0
+      },
+      "panelCount": 0,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Що гарантує v2",
+        "Чого не гарантує цей демо"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "English"
+      ],
+      "textChars": 2004,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1029,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1102,
+            "w": 79,
+            "h": 19
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1199,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "До петицій",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 344,
+            "left": 186,
+            "w": 123,
+            "h": 44
+          }
+        },
+        {
+          "text": "До петицій",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 1002,
+            "left": 186,
+            "w": 123,
+            "h": 44
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "До петицій",
+          "rect": {
+            "top": 344,
+            "left": 186,
+            "w": 123,
+            "h": 44
+          }
+        },
+        {
+          "text": "До петицій",
+          "rect": {
+            "top": 1002,
+            "left": 186,
+            "w": 123,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [],
+      "firstPrimaryTop": 344,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head-r4/desktop-landing.png"
+    },
+    {
+      "label": "desktop-petitions",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "scrollHeight": 900,
+      "screensTall": 1,
+      "interactiveCount": {
+        "all": 4,
+        "visible": 4,
+        "primary": 0,
+        "secondary": 0
+      },
+      "panelCount": 0,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Відкриті петиції"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "English"
+      ],
+      "textChars": 472,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1029,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1102,
+            "w": 79,
+            "h": 19
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1199,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Спробувати ще раз",
+          "cls": "btn",
+          "rect": {
+            "top": 335,
+            "left": 186,
+            "w": 179,
+            "h": 44
+          }
+        }
+      ],
+      "primaryRects": [],
+      "panelInfo": [],
+      "firstPrimaryTop": null,
+      "firstPrimaryRequiresScroll": null,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head-r4/desktop-petitions.png"
+    },
+    {
+      "label": "desktop-enroll-initial",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "scrollHeight": 1366,
+      "screensTall": 1.52,
+      "interactiveCount": {
+        "all": 8,
+        "visible": 7,
+        "primary": 2,
+        "secondary": 2
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Реєстрація v2"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "English"
+      ],
+      "textChars": 1359,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1029,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1102,
+            "w": 79,
+            "h": 19
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1199,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "← До списку петицій",
+          "cls": "btn--link",
+          "rect": {
+            "top": 197,
+            "left": 186,
+            "w": 127,
+            "h": 18
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 360,
+            "left": 186,
+            "w": 263,
+            "h": 44
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 696,
+            "left": 219,
+            "w": 263,
+            "h": 44
+          }
+        },
+        {
+          "text": "Що це за файл?",
+          "cls": "btn--link",
+          "rect": {
+            "top": 757,
+            "left": 219,
+            "w": 96,
+            "h": 18
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Завантажити файл для підпису",
+          "rect": {
+            "top": 360,
+            "left": 186,
+            "w": 263,
+            "h": 44
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "rect": {
+            "top": 696,
+            "left": 219,
+            "w": 263,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "Файл для підпису в Дії",
+          "rect": {
+            "top": 504,
+            "left": 186,
+            "w": 1068,
+            "h": 317
+          },
+          "textChars": 411,
+          "buttons": [
+            {
+              "text": "Завантажити файл для підпису",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Що це за файл?",
+              "cls": "btn--link"
+            }
+          ]
+        },
+        {
+          "title": "Файл .p7s з Дія QES",
+          "rect": {
+            "top": 845,
+            "left": 186,
+            "w": 1068,
+            "h": 329
+          },
+          "textChars": 286,
+          "buttons": []
+        }
+      ],
+      "firstPrimaryTop": 360,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head-r4/desktop-enroll-initial.png"
+    },
+    {
+      "label": "desktop-enroll-after-first-cta",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "scrollHeight": 1351,
+      "screensTall": 1.5,
+      "interactiveCount": {
+        "all": 7,
+        "visible": 6,
+        "primary": 1,
+        "secondary": 2
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Реєстрація v2"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "English"
+      ],
+      "textChars": 1470,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1029,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1102,
+            "w": 79,
+            "h": 19
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1199,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "← До списку петицій",
+          "cls": "btn--link",
+          "rect": {
+            "top": 197,
+            "left": 186,
+            "w": 127,
+            "h": 18
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 628,
+            "left": 219,
+            "w": 263,
+            "h": 44
+          }
+        },
+        {
+          "text": "Що це за файл?",
+          "cls": "btn--link",
+          "rect": {
+            "top": 743,
+            "left": 219,
+            "w": 96,
+            "h": 18
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Завантажити файл для підпису",
+          "rect": {
+            "top": 628,
+            "left": 219,
+            "w": 263,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "Файл для підпису в Дії",
+          "rect": {
+            "top": 436,
+            "left": 186,
+            "w": 1068,
+            "h": 371
+          },
+          "textChars": 551,
+          "buttons": [
+            {
+              "text": "Завантажити файл для підпису",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Що це за файл?",
+              "cls": "btn--link"
+            }
+          ]
+        },
+        {
+          "title": "Файл .p7s з Дія QES",
+          "rect": {
+            "top": 831,
+            "left": 186,
+            "w": 1068,
+            "h": 329
+          },
+          "textChars": 286,
+          "buttons": []
+        }
+      ],
+      "firstPrimaryTop": 628,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head-r4/desktop-enroll-after-first-cta.png"
+    },
+    {
+      "label": "desktop-lang-toggle",
+      "beforeLabel": "English",
+      "afterLabel": "Українська",
+      "charsBefore": 2004,
+      "charsAfter": 1948,
+      "charDelta": -56,
+      "elapsedMs": 284
+    }
+  ]
+}

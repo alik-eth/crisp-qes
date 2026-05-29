@@ -149,12 +149,19 @@ button:disabled {
     border-color: var(--accent);
 }
 
-/* Narrow-mobile (iPhone SE 375 px) compression — see R3-2 in
- * benchmarker's round-2 report. The default masthead wraps to ~165 px
- * on SE = 25 % of the 667 px viewport gone before any content. Hiding
- * the tagline + issue-label and dropping the nav font reclaims ~70 px
- * vertical. Mid-range mobile (≥420 px) and the entire iPhone-14 class
- * are unaffected. */
+/* Narrow-mobile masthead compression — see R3-2 in benchmarker's round-2
+ * report and the round-3 follow-up note on breakpoint scope.
+ *
+ * Two tiers:
+ *   <420 px (catches iPhone-14 class at 390 + Pixel-5 at 393 + SE)
+ *       — drop the metadata "v2.1 PROTOTYPE" label, shrink brand + nav.
+ *         Keeps the tagline (brand voice) since these devices have enough
+ *         vertical room (≥667 px) that the trim is a polish, not a rescue.
+ *   <380 px (SE 375 / iPhone-mini 360 only)
+ *       — drop the tagline too. On the 667 px SE viewport every vertical
+ *         pixel matters; this layer reclaims the full ~106 px the round-3
+ *         bench measured. iPhone-14 / Pixel-5 stay above this threshold
+ *         and keep the tagline. */
 @media (max-width: 419px) {
     .masthead {
         gap: 4px;
@@ -164,17 +171,20 @@ button:disabled {
     .masthead__brand {
         font-size: 24px;
     }
-    .masthead__tagline {
-        display: none;
-    }
     .masthead__meta {
         font-size: 10px;
         gap: 12px;
         flex-wrap: wrap;
     }
-    /* The "v2.1 prototype" issue label is metadata, not actionable —
-     * first <span> inside .masthead__meta. Hide on very narrow widths. */
+    /* The "v2.1 PROTOTYPE" issue label is metadata, not actionable —
+     * first <span> inside .masthead__meta. Hide on every narrow-mobile. */
     .masthead__meta > span:first-child {
+        display: none;
+    }
+}
+
+@media (max-width: 379px) {
+    .masthead__tagline {
         display: none;
     }
 }
