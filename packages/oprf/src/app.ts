@@ -34,6 +34,7 @@ import {
     AttestationError,
     verifyAttestation,
 } from "./attestation.js";
+import { ageInYears } from "./dob.js";
 import { commitmentFromOprfOutput } from "./pedersen.js";
 
 // — Body validators ────────────────────────────────────────────────────────
@@ -126,6 +127,7 @@ export async function buildApp(
             attesterAddr: attester.address,
             chainId: cfg.chainId,
             enrollmentRegistry: cfg.enrollmentRegistry,
+            ageThreshold: cfg.ageThreshold,
         };
     });
 
@@ -142,9 +144,13 @@ export async function buildApp(
 
         // 1. Diia attestation gate. v2.1-prod also binds attestation
         //    payload → blindedInput; demo only checks the TINUA- prefix.
+        //    The same call extracts the DOB attribute from the leaf cert
+        //    (or returns null if absent), which we gate on next.
+        let dob: Date | null;
         try {
             const p7sBytes = base64ToBytes(attestation.p7s);
             const verified = verifyAttestation(p7sBytes);
+            dob = verified.dob;
             req.log.info(
                 { serial: verified.subjectSerialAscii },
                 "attestation ok",
@@ -156,6 +162,34 @@ export async function buildApp(
                     .send({ error: e.code, detail: e.message });
             }
             throw e;
+        }
+
+        // 1b. Age gate. Strict calendar age — `today < (dob + N years)`
+        //     reads as `age = N - 1`. The DOB itself is never logged —
+        //     only a coarse bucket label, per the v2.1 demo's compliance
+        //     note. v3 multi-QTSP design will revisit fail-open below.
+        if (cfg.ageThreshold > 0) {
+            if (dob === null) {
+                // FAIL-OPEN for the v2 demo: older Diia certs and
+                // foreign QTSPs don't carry the DOB attribute. Admit
+                // the citizen and surface the gap in audit logs.
+                req.log.warn(
+                    { ageThreshold: cfg.ageThreshold },
+                    "age-gate fail-open: DOB attribute absent in cert",
+                );
+            } else {
+                const age = ageInYears(dob, new Date());
+                const bucket =
+                    age >= cfg.ageThreshold ? "ge_threshold" : "under_threshold";
+                req.log.info({ ageBucket: bucket }, "age-gate eval");
+                if (age < cfg.ageThreshold) {
+                    return reply.code(403).send({
+                        error: "age_below_threshold",
+                        min: cfg.ageThreshold,
+                        found: age,
+                    });
+                }
+            }
         }
 
         // 2. BlindEvaluate + DLEQ proof.

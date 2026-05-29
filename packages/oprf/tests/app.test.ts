@@ -42,7 +42,7 @@ function scalarToLE(s: bigint): Uint8Array {
     return out;
 }
 
-async function buildTestApp() {
+async function buildTestApp(overrides: Partial<OprfConfig> = {}) {
     const k = randomScalar();
     const config: OprfConfig = {
         port: 0,
@@ -55,6 +55,8 @@ async function buildTestApp() {
         enrollmentRegistry:
             "0x1234567890abcdef1234567890abcdef12345678" as `0x${string}`,
         corsAllowedOrigins: ["*"],
+        ageThreshold: 0, // default to disabled in tests
+        ...overrides,
     };
     const store = new EnrollmentStore(":memory:");
     const merkle = await MerkleIndex.fromLeaves([]);

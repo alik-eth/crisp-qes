@@ -19,6 +19,7 @@
         "@noble/hashes": "^1.8.0",
         "better-sqlite3": "^11.5.0",
         "fastify": "^5.0.0",
+        "pkijs": "^3.2.4",
         "viem": "^2.21.0",
         "zod": "^3.23.0"
     },

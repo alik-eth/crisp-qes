@@ -35,6 +35,17 @@ export interface OprfConfig {
      */
     enrollmentRegistry: `0x${string}`;
     corsAllowedOrigins: string[];
+    /**
+     * Minimum age (completed years) the citizen must be at the moment of
+     * `/oprf/blind-eval` to receive an OPRF evaluation. Read from
+     * `AGE_THRESHOLD` env, default 18. Set to 0 to disable the gate
+     * entirely (useful for tests + the dev profile).
+     *
+     * Implementation detail: when the Diia cert lacks a parseable DOB
+     * attribute the service fail-opens with a warning log — see
+     * `/oprf/blind-eval` in `app.ts`. v3 multi-QTSP revisits.
+     */
+    ageThreshold: number;
 }
 
 function encodeScalarLE(s: bigint): Uint8Array {
@@ -124,6 +135,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OprfConfig {
         );
     }
 
+    // Minimum citizen age (completed years). 0 disables the gate.
+    let ageThreshold = 18;
+    if (env.AGE_THRESHOLD !== undefined) {
+        const n = Number(env.AGE_THRESHOLD);
+        if (!Number.isInteger(n) || n < 0 || n > 130) {
+            throw new Error(
+                `[oprf] AGE_THRESHOLD must be an integer in [0, 130] (got ${env.AGE_THRESHOLD})`,
+            );
+        }
+        ageThreshold = n;
+    }
+
     return {
         port: Number(env.PORT ?? 8788),
         isProd,
@@ -131,6 +154,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OprfConfig {
         oprfKey,
         oprfPubkey: new Uint8Array(32), // filled by buildApp once curve is loaded
         attesterKey,
+        ageThreshold,
         chainId,
         enrollmentRegistry,
         corsAllowedOrigins,

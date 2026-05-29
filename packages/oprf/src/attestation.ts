@@ -24,6 +24,8 @@
 
 import { parseP7s, type ParsedP7s } from "@crisp-qes/sdk";
 
+import { extractDOB } from "./dob.js";
+
 const TINUA_PREFIX = new TextEncoder().encode("TINUA-");
 
 export interface VerifiedAttestation {
@@ -31,6 +33,13 @@ export interface VerifiedAttestation {
     subjectSerialAscii: string;
     /** Raw subject serial bytes — kept in memory, never persisted. */
     subjectSerial: Uint8Array;
+    /**
+     * Citizen DOB extracted from the leaf cert's SubjectDirectoryAttributes
+     * extension. `null` when the cert doesn't carry the Diia DOB attribute
+     * (older certs, foreign QTSPs); fail-open in the v2 demo, gated by
+     * the OPRF service config. v3 multi-QTSP design revisits.
+     */
+    dob: Date | null;
 }
 
 export function verifyAttestation(p7sBytes: Uint8Array): VerifiedAttestation {
@@ -59,9 +68,11 @@ export function verifyAttestation(p7sBytes: Uint8Array): VerifiedAttestation {
 
     // TODO(v2.1-prod): verify the cert chain against the Diia trust root,
     // and check signedAttrs binds the actual blinded input we received.
+    const dob = extractDOB(parsed.leafCertDer);
     return {
         subjectSerialAscii: bytesToAscii(parsed.subjectSerial),
         subjectSerial: parsed.subjectSerial,
+        dob,
     };
 }
 
