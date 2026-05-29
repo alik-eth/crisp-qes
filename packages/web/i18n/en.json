@@ -8,29 +8,26 @@
         "name": "CRISP-QES v2",
         "tagline": "Enroll once, sign in seconds. No re-issuing your QES on every click, no RNOKPP on-chain.",
         "issue": "v2.1 prototype",
-        "footnote": "Independent open-source client. Not an official Diia service. Demo runs a single-node ciphernode; not production."
+        "footnote": "Open service. Not an official Diia service. Site is running in Demo mode."
     },
     "nav": {
         "petitions": "Petitions",
         "enroll": "Enroll"
     },
     "landing": {
-        "lede": "v2.1 splits identification from signing. Enrollment with a Diia QES + Passkey happens once. After that, every petition signature is just a Passkey tap — no fresh QES, no identity reveal. The chain sees a commitment, never an RNOKPP; the guarantee is still 'one RNOKPP, one vote'.",
-        "sectionGuarantees": "What v2 guarantees",
-        "sectionLimits": "What this demo does not yet guarantee",
-        "guarantees": [
-            "The Diia QES handshake is a one-time event. All subsequent signing is a single Passkey tap — no per-document KEP re-issue.",
-            "Your Diia certificate and RNOKPP are seen only by your browser and the ciphernode committee. The blockchain stores a 32-byte commitment with no link to your identity.",
-            "One RNOKPP yields one commitment. Re-enrolling the same RNOKPP is rejected by the ciphernode committee before the chain even sees it.",
-            "Each signature emits a deterministic nullifier over (commitment, petition). One vote per petition is guaranteed by construction."
-        ],
-        "limits": [
-            "This demo runs the ciphernode as a single server, not a 5-of-7 committee. A compromised admin of that single server could mount a Sybil attack. In production this trust is split across seven independent operators via TSS.",
-            "Proof generation runs in your browser in ~5–10 seconds (target). A modern device with SharedArrayBuffer and WebAuthn PRF support is required.",
-            "Recovery in v2 relies on Passkey cloud sync (Apple / Google / Microsoft). If you lose every device and your Passkey is not synced, the v2 enrollment is locked until v3's yearly re-enrollment via Diia.",
-            "Vote tallying is transparent in this demo. v2.2 will add FHE-aggregated ciphertexts: per-vote counts will be encrypted, and only the final result will be revealed after the deadline."
-        ],
-        "cta": "Browse petitions"
+        "hero": "Anonymous, private voting with results in a <b>public registry</b>.",
+        "sub": "Vote and create polls. Each participant uses Diia QES to confirm they are an adult citizen of Ukraine. Personal data stays on your device. Your vote is private — even the registry doesn't know how you voted. Voting results are available in a public distributed registry — without the possibility of deletion or falsification.",
+        "cta": "All polls",
+        "statCitizens": "citizens verified",
+        "statPolls": "polls",
+        "statSignatures": "signatures",
+        "howTitle": "How it works",
+        "how1title": "You verify once with Diia QES.",
+        "how1body": "Your qualified electronic signature confirms you are an adult citizen of Ukraine.",
+        "how2title": "A Passkey on this device locks your private key.",
+        "how2body": "Your private data never leaves the browser.",
+        "how3title": "Vote anonymously and privately.",
+        "how3body": "Only a nullifier reaches the chain — enough to prevent double-voting, not enough to identify you."
     },
     "list": {
         "heading": "Open petitions",

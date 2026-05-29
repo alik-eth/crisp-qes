@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
+import { useTranslation } from "react-i18next";
 import type { AccountState } from "../lib/account.js";
 import { readLeafCount, readAllPetitions } from "../lib/registry.js";
 
@@ -15,6 +16,7 @@ interface Stats {
 }
 
 export function Landing({ state, onSignIn }: Props) {
+    const { t } = useTranslation();
     const [stats, setStats] = useState<Stats | null>(null);
     const [statsErr, setStatsErr] = useState(false);
 
@@ -47,16 +49,16 @@ export function Landing({ state, onSignIn }: Props) {
     return (
         <section>
             <div className="hero">
-                <h1 className="hero__title">
-                    Anonymous citizen petitions, verified by Diia.
-                </h1>
+                <h1
+                    className="hero__title"
+                    dangerouslySetInnerHTML={{ __html: t("landing.hero") }}
+                />
                 <p className="hero__sub">
-                    Sign Ukrainian petitions without revealing who you are.
-                    The chain cannot link your signature to your identity.
+                    {t("landing.sub")}
                 </p>
                 <div className="hero__cta">
                     <Link href="/petitions" className="btn btn--primary">
-                        Browse petitions
+                        {t("landing.cta")}
                     </Link>
                     {state.kind === "guest" ? (
                         <button
@@ -74,62 +76,60 @@ export function Landing({ state, onSignIn }: Props) {
                 </div>
             </div>
 
-            <div className="stats" role="status" aria-live="polite">
-                {stats ? (
-                    <>
-                        <Stat n={stats.citizens} label="citizens verified" />
-                        <span className="stats__sep" aria-hidden="true">·</span>
-                        <Stat n={stats.petitions} label="petitions" />
-                        <span className="stats__sep" aria-hidden="true">·</span>
-                        <Stat n={stats.signatures} label="signatures" />
-                        <span className="stats__live">live · Sepolia</span>
-                    </>
-                ) : statsErr ? (
-                    <span className="muted small">Chain data unavailable.</span>
-                ) : (
-                    <span className="muted small">Loading on-chain stats…</span>
-                )}
+            <div className="statbar">
+                <div className="statbar__group">
+                    {stats ? (
+                        <>
+                            <span className="statbar__item">
+                                <span className="statbar__num">{stats.citizens}</span>
+                                <span className="statbar__label">{t("landing.statCitizens")}</span>
+                            </span>
+                            <span className="statbar__sep" aria-hidden="true">·</span>
+                            <span className="statbar__item">
+                                <span className="statbar__num">{stats.petitions}</span>
+                                <span className="statbar__label">{t("landing.statPolls")}</span>
+                            </span>
+                            <span className="statbar__sep" aria-hidden="true">·</span>
+                            <span className="statbar__item">
+                                <span className="statbar__num">{stats.signatures}</span>
+                                <span className="statbar__label">{t("landing.statSignatures")}</span>
+                            </span>
+                        </>
+                    ) : statsErr ? (
+                        <span className="muted small">Chain data unavailable.</span>
+                    ) : (
+                        <span className="muted small">Loading on-chain stats…</span>
+                    )}
+                </div>
+                <span className="statbar__live">LIVE · SEPOLIA</span>
             </div>
 
-            <div className="how">
-                <h2>How it works</h2>
-                <ol className="how__list">
-                    <li>
-                        <span className="how__n">1</span>
-                        <div>
-                            <strong>Verify with Diia QES, once.</strong>{" "}
-                            Your qualified electronic signature proves
-                            you're a real Ukrainian adult. The verifier
-                            never learns who you are on the chain.
-                        </div>
+            <div style={{ marginTop: 64 }}>
+                <h2 className="section__title">{t("landing.howTitle")}</h2>
+                <ol className="howlist">
+                    <li className="howlist__item">
+                        <span className="howlist__num">1</span>
+                        <p className="howlist__text">
+                            <b>{t("landing.how1title")}</b>{" "}
+                            {t("landing.how1body")}
+                        </p>
                     </li>
-                    <li>
-                        <span className="how__n">2</span>
-                        <div>
-                            <strong>A Passkey on this device locks your private key.</strong>{" "}
-                            Nothing sensitive leaves the browser. No password,
-                            no seed phrase to lose.
-                        </div>
+                    <li className="howlist__item">
+                        <span className="howlist__num">2</span>
+                        <p className="howlist__text">
+                            <b>{t("landing.how2title")}</b>{" "}
+                            {t("landing.how2body")}
+                        </p>
                     </li>
-                    <li>
-                        <span className="how__n">3</span>
-                        <div>
-                            <strong>Sign petitions anonymously.</strong>{" "}
-                            Only a nullifier reaches the chain — enough to
-                            prevent double-signing, not enough to identify you.
-                        </div>
+                    <li className="howlist__item">
+                        <span className="howlist__num">3</span>
+                        <p className="howlist__text">
+                            <b>{t("landing.how3title")}</b>{" "}
+                            {t("landing.how3body")}
+                        </p>
                     </li>
                 </ol>
             </div>
         </section>
-    );
-}
-
-function Stat({ n, label }: { n: number; label: string }) {
-    return (
-        <span className="stat">
-            <span className="stat__n">{n.toLocaleString("en-US")}</span>
-            <span className="stat__label">{label}</span>
-        </span>
     );
 }
