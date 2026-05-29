@@ -155,6 +155,28 @@ export const petitionRegistryV2Abi = [
     },
     {
         type: "function",
+        name: "voteByNullifier",
+        stateMutability: "view",
+        inputs: [
+            { name: "petitionId", type: "uint256" },
+            { name: "nullifier", type: "bytes32" },
+        ],
+        outputs: [{ name: "", type: "uint8" }],
+    },
+    {
+        type: "function",
+        name: "revokeVote",
+        stateMutability: "nonpayable",
+        inputs: [
+            { name: "petitionId", type: "uint256" },
+            { name: "nullifier", type: "bytes32" },
+            { name: "proof", type: "bytes" },
+            { name: "publicInputs", type: "bytes32[]" },
+        ],
+        outputs: [],
+    },
+    {
+        type: "function",
         name: "createPetition",
         stateMutability: "payable",
         inputs: [
@@ -199,6 +221,7 @@ export const petitionRegistryV2Abi = [
     { type: "error", name: "InvalidProof", inputs: [] },
     { type: "error", name: "InvalidEnrollmentRoot", inputs: [] },
     { type: "error", name: "NullifierAlreadyUsed", inputs: [] },
+    { type: "error", name: "NullifierNotUsed", inputs: [] },
     { type: "error", name: "InvalidVote", inputs: [] },
 ] as const;
 
