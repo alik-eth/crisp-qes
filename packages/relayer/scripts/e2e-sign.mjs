@@ -45,8 +45,8 @@ import { privateKeyToAccount } from "viem/accounts";
 
 // — Config ─────────────────────────────────────────────────────────────────
 
-const OPRF_URL = "https://crisp-qes-oprf.fly.dev";
-const RELAYER_URL = "https://crisp-qes-relayer.fly.dev";
+const OPRF_URL = "https://crisp-qes-v2-oprf.fly.dev";
+const RELAYER_URL = "https://crisp-qes-v2-relayer.fly.dev";
 const ENROLLMENT_REGISTRY = "0x4A17285f2f3035AD8bB6da86d9aB189cC33c4106";
 const PETITION_REGISTRY_V2 = "0x11561749D669791117592332B8E5373Ff60406EF";
 const RPC = "https://sepolia.base.org";
