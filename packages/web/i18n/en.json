@@ -67,8 +67,7 @@
             "upload": "1. Upload signed Diia QES",
             "oprf": "2. OPRF + commitment",
             "register": "3. Register on-chain",
-            "passkey": "4. Create Passkey",
-            "backup": "5. Future-compat backup (v3)"
+            "passkey": "4. Create Passkey"
         },
         "binding": {
             "title": "File to sign in Diia",
@@ -89,9 +88,11 @@
         "passkey": {
             "title": "Passkey on this device",
             "intro": "We'll create a Passkey with the PRF extension. The authenticator (Face ID, Touch ID, security key) syncs via iCloud / Google / Microsoft, so losing this device doesn't lose your Passkey.",
+            "recoveryNote": "Recovery: Passkey cloud sync only in v2; yearly re-enrollment via Diia from v3 onward.",
             "create": "Create Passkey",
             "creating": "Waiting for the authenticator…",
             "created": "Passkey created. PRF extension is active.",
+            "finish": "Finish enrollment",
             "error": "Passkey creation failed: {{detail}}",
             "unsupported": "This browser or device doesn't support WebAuthn PRF. Try Chrome, Safari, Firefox, or Edge."
         },
@@ -142,15 +143,6 @@
                 "userRejected": "Transaction cancelled in the wallet.",
                 "unknown": "Unknown contract error."
             }
-        },
-        "backup": {
-            "title": "Future-compat backup (v3)",
-            "disclosure": "⚠ Important: in v2 these 24 words are NOT a standalone recovery path. Without Passkey cloud sync you will need to re-enroll. The mnemonic only activates seamless cross-device recovery in v3.",
-            "intro": "Today's working recovery is your Passkey's cloud sync (iCloud, Google Password Manager, or Microsoft). Writing these words down NOW is purely a future-compat capture — once v3 ships, the same 24 words will recover your account on a new device with no further action. There is no v2.1 path where these words alone restore an account.",
-            "show": "Reveal v3 backup words",
-            "hide": "Hide words",
-            "saved": "I've written them down — finish enrollment",
-            "warning": "Never share these words. No representative of Diia, the ciphernode, or this app will ever ask for them."
         },
         "done": {
             "title": "Enrollment complete",
@@ -219,17 +211,19 @@
         }
     },
     "recover": {
-        "heading": "Account recovery",
-        "intro": "Enter the 24-word BIP-39 mnemonic you saved at enrollment. We'll recompute your commitment, ask the ciphernode for an up-to-date Merkle path, and bind the result to a fresh Passkey on this device.",
+        "heading": "Recovery",
         "back": "Back to list",
-        "mnemonic": "Mnemonic (24 words, space-separated)",
-        "invalidMnemonic": "Mnemonic is invalid. Check word order and typos.",
-        "restore": "Restore",
-        "restoring": "Looking up your commitment in the committee…",
-        "notFound": "No commitment matches this mnemonic in the ciphernode. It may have been rolled into a new epoch.",
-        "ok": "Access restored. Create a new Passkey to finish.",
-        "newPasskey": "Create a new Passkey",
-        "error": "Error: {{detail}}"
+        "backCta": "Back to petitions",
+        "v2": {
+            "title": "v2: Passkey cloud sync only",
+            "intro": "v2 has exactly one recovery primitive: cloud sync on your Passkey provider. Sign in on a new device with the same Apple / Google / Microsoft account and the Passkey is already there.",
+            "point1": "If you have cloud sync on, recovery is automatic — no action here.",
+            "point2": "If you do not have cloud sync and lose every device that holds the Passkey, your v2 enrollment is locked until v3 ships. There is no within-v2 backdoor — every candidate was either a duplicate of what Diia already provides or a new attack surface."
+        },
+        "v3": {
+            "title": "v3: yearly re-enrollment via Diia",
+            "intro": "Recovery in v3 is a property of yearly epoch rotation. Lose everything? Wait for the next epoch, re-authenticate with Diia, and a fresh `s_year` is issued — no separate recovery flow needed. This is the universal recovery primitive across the whole system, the same cadence as state-issued documents (passport renewals, driver's licence renewals). When v3 lands, this page will surface the next renewal date and the one-tap re-enroll prompt."
+        }
     },
     "done": {
         "heading": "Vote counted",

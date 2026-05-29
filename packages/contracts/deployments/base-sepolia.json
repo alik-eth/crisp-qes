@@ -7,7 +7,7 @@
   "deployer": "0xB8d121CD0B2D0AB3df2aFF0B45B2fD354FF4c1f7",
   "contracts": {
     "enrollmentRegistry": {
-      "address": "0x4a17285F2F3035AD8bB6Da86d9aB189Cc33C4106",
+      "address": "0x4A17285f2f3035AD8bB6da86d9aB189cC33c4106",
       "txHash": "0xff8df911dc4611339d7ef4366d912ad7452a05c819e288922707ed8b8fca6ffc"
     },
     "ultraVerifierV2": {

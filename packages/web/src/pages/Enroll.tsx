@@ -1,8 +1,4 @@
-// 6-step enrollment flow (re-sequenced from the original 5-step in #48 UX
-// review). The Passkey now sits AFTER the on-chain confirmation so a
-// half-completed enrollment can't leave a dangling credential on the
-// authenticator, and a "binding file to sign in Diia" precedes the
-// upload to mirror the MVP-side Sign-page pattern.
+// 5-step enrollment flow.
 //
 // 0. Download a small binding file containing
 //    `"CRISP_QES_V2_ENROLL::" || epoch_day_be8` and sign it in Diia.
@@ -11,14 +7,21 @@
 //    `N`. Pedersen-derive `s = pedersen([N_hi, N_lo], 0)` — both the
 //    enrollment secret AND the on-chain leaf AND the OPRF commitment.
 // 3. Call OPRF /register with the commitment to get Merkle path,
-//    newCommitments, and attesterSig.
-// 4. Submit `EnrollmentRegistry.updateRoot(newRoot, newCommitments[],
+//    newCommitments, and attesterSig. Submit
+//    `EnrollmentRegistry.updateRoot(newRoot, newCommitments[],
 //    attesterSig)` via the user's wallet (WalletConnect or injected).
-// 5. Create a Passkey + read PRF output, AES-GCM-wrap the local payload
+// 4. Create a Passkey + read PRF output, AES-GCM-wrap the local payload
 //    using HKDF(PRF), persist to IndexedDB.
-// 6. Offer the BIP-39 mnemonic as future-compat (v3) backup — gated
-//    behind an explicit toggle since it can NOT recover an account in
-//    v2.1 (HKDF(N) is one-way relative to `s`).
+//
+// Recovery model (per /tmp/recovery-design.md, #51, and v2 spec §3.4
+// patched at d4bb63d): v2 has exactly one recovery primitive — Passkey
+// cloud sync. The BIP-39 mnemonic UI and `lib/bip39Recovery.ts` were
+// removed (see commit log). v3 epoch rotation is the universal recovery
+// primitive — lose everything, wait for next epoch, re-enroll with
+// fresh Diia. No within-epoch fallback flow is shipped because every
+// candidate (mnemonic, multi-Passkey ceremony, QES-anchored re-derive,
+// social recovery, server backup) either duplicated the Diia anchor or
+// added attack surface for a function epoch rotation provides for free.
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -37,7 +40,6 @@ import {
     wrapPayload,
     type EnrollmentPayload,
 } from "../lib/encryptedStore";
-import { mnemonicFromN } from "../lib/bip39Recovery";
 import { buildEnrollmentBindingBytes } from "../lib/enrollmentBinding";
 import { BaseError, ContractFunctionRevertedError } from "viem";
 import {
@@ -64,7 +66,6 @@ type Stage =
     | "register"
     | "chain"
     | "passkey"
-    | "backup"
     | "done";
 
 function hexEncode(b: Uint8Array): `0x${string}` {
@@ -137,16 +138,13 @@ export function Enroll({ onBack, onDone }: Props) {
     const [chainErr, setChainErr] = useState<string | null>(null);
     const [chainTx, setChainTx] = useState<`0x${string}` | null>(null);
 
-    const [mnemonic, setMnemonic] = useState<string | null>(null);
-    const [mnemonicRevealed, setMnemonicRevealed] = useState(false);
-
-    const [stage, setStage] = useState<Stage>("upload");
+    const [stage, setStage] = useState<Stage>("binding");
 
     // Auto-advance the visible "current step" based on which artifacts
-    // exist. New 6-step sequence (see file header):
-    //   binding → upload → oprf → register → chain → passkey → backup.
+    // exist. 5-step sequence (see file header):
+    //   binding → upload → oprf → register → chain → passkey.
     useEffect(() => {
-        if (mnemonic || passkey) setStage("backup");
+        if (passkey) setStage("passkey");
         else if (chainTx) setStage("passkey");
         else if (registerResult) setStage("chain");
         else if (oprfResult) setStage("register");
@@ -160,7 +158,6 @@ export function Enroll({ onBack, onDone }: Props) {
         registerResult,
         chainTx,
         passkey,
-        mnemonic,
     ]);
 
     useEffect(() => {
@@ -302,11 +299,12 @@ export function Enroll({ onBack, onDone }: Props) {
             }
             setChainTx(txHash);
             setChainBusy("idle");
-            // Note: passkey creation + local persist + mnemonic-derivation
-            // intentionally moved to `handleCreatePasskey` (step 5). If
-            // we fail here, no credential was minted; the citizen can
-            // retry the wallet step or recover via mnemonic in a future
-            // version.
+            // Note: passkey creation + local persist run in
+            // `handleCreatePasskey` (step 4). If we fail here, no
+            // credential was minted; the citizen can retry the wallet
+            // step. No mnemonic derivation — recovery in v2 is Passkey
+            // cloud sync only; from v3 onward it's yearly re-enrollment
+            // via Diia (see v2 spec §3.4 + §3.5).
         } catch (e) {
             setChainErr(friendlyChainError(e, t));
             setChainBusy("idle");
@@ -314,11 +312,15 @@ export function Enroll({ onBack, onDone }: Props) {
     }
 
     /**
-     * Step 5: now that the enrollment root is on-chain, mint the Passkey,
-     * wrap the payload, persist to IndexedDB, and compute the v3 future-
-     * compat mnemonic. If this step fails, the enrollment is still good
-     * on-chain — the citizen can re-enter the app, recognise the existing
-     * `commitment`, and retry the local-binding step.
+     * Step 4: now that the enrollment root is on-chain, mint the Passkey,
+     * wrap the payload, persist to IndexedDB. If this step fails, the
+     * enrollment is still good on-chain — the citizen can re-enter the
+     * app and retry locally; the OPRF service's
+     * `/enrollment/:commitment/path` endpoint reconstructs everything
+     * else from the existing on-chain commitment.
+     *
+     * No mnemonic derivation — recovery in v2 is Passkey cloud sync
+     * only (see v2 spec §3.4 patched at d4bb63d).
      */
     async function handleCreatePasskey() {
         if (!oprfResult || !registerResult || !chainTx) return;
@@ -348,7 +350,6 @@ export function Enroll({ onBack, onDone }: Props) {
                 ciphertext,
             });
             setPasskey(pk);
-            setMnemonic(mnemonicFromN(oprfResult.N));
         } catch (e) {
             setPasskeyErr(e instanceof Error ? e.message : String(e));
         } finally {
@@ -434,7 +435,7 @@ export function Enroll({ onBack, onDone }: Props) {
             // via WalletConnect (NOT relayer-sponsored). We surface the
             // OPRF response here; the on-chain step (handleChainSubmit)
             // performs the EnrollmentRegistry.updateRoot call and only
-            // then persists the local enrollment + reveals the mnemonic.
+            // then mints the Passkey + persists the local enrollment.
             setRegisterResult({
                 merklePath: r.merklePath,
                 merklePathIndices: r.merklePathIndices,
@@ -470,7 +471,6 @@ export function Enroll({ onBack, onDone }: Props) {
                         "oprf",
                         "register",
                         "passkey",
-                        "backup",
                     ] as const
                 ).map((k) => {
                     const isActive = stage === k;
@@ -745,23 +745,27 @@ export function Enroll({ onBack, onDone }: Props) {
                 </div>
             ) : null}
 
-            {/* 5. Passkey — minted AFTER the chain step lands so a
-                failed enrollment can't leave a dangling credential. The
-                same handler wraps + persists the local payload and
-                derives the v3 future-compat mnemonic. */}
-            {chainTx && !passkey ? (
+            {/* 4. Passkey — minted AFTER the chain step lands so a
+                failed enrollment can't leave a dangling credential.
+                The same handler wraps + persists the local payload.
+                The recovery-tier disclosure (Passkey cloud sync is the
+                only v2 recovery; v3 introduces yearly re-enrollment
+                via Diia) is anchored on this panel — no separate
+                Backup step. See file header for #51 rationale. */}
+            {chainTx ? (
                 <div className="panel">
                     <p className="note mono">
                         {t("enroll.chain.tx")}: {chainTx}
                     </p>
                     <p className="panel__title">{t("enroll.passkey.title")}</p>
                     <p className="note">{t("enroll.passkey.intro")}</p>
+                    <p className="note">{t("enroll.passkey.recoveryNote")}</p>
                     {!probe.available ? (
                         <p className="error-line">
                             {t("enroll.passkey.unsupported")}
                             {probe.reason ? ` — ${probe.reason}` : ""}
                         </p>
-                    ) : (
+                    ) : !passkey ? (
                         <div className="actions">
                             <button
                                 className="btn btn--accent"
@@ -774,56 +778,25 @@ export function Enroll({ onBack, onDone }: Props) {
                                     : t("enroll.passkey.create")}
                             </button>
                         </div>
+                    ) : (
+                        <div className="actions">
+                            <p className="tag-ok" style={{ marginRight: 12 }}>
+                                ✓ {t("enroll.passkey.created")}
+                            </p>
+                            <button
+                                className="btn btn--accent"
+                                type="button"
+                                onClick={onDone}
+                            >
+                                {t("enroll.passkey.finish")}
+                            </button>
+                        </div>
                     )}
                     {passkeyErr ? (
                         <p className="error-line">
                             {t("enroll.passkey.error", { detail: passkeyErr })}
                         </p>
                     ) : null}
-                </div>
-            ) : null}
-
-            {/* 6. Backup — reframed as future-compat (v3) capture per
-                #48 / codex audit. Mnemonic is HKDF(N), one-way relative
-                to `s = pedersen([N_hi, N_lo], 0)`, so it CANNOT recover
-                an account in v2.1 — only in v3 once the inverse-friendly
-                rotation lands. Following team-lead's recommendation of
-                fix (a) ("strengthen copy"): keep capture as the default
-                outcome (so citizens who write the words now benefit from
-                v3 auto-migration) but make the limitation impossible to
-                miss with a ⚠ Important-tier prefix on the disclosure.
-                See `lib/bip39Recovery.ts` for the v3 anchor. */}
-            {passkey && mnemonic ? (
-                <div className="panel">
-                    <p className="panel__title">{t("enroll.backup.title")}</p>
-                    <p className="note text-warn">
-                        <strong>{t("enroll.backup.disclosure")}</strong>
-                    </p>
-                    <p className="note">{t("enroll.backup.intro")}</p>
-                    {mnemonicRevealed ? (
-                        <p className="mono" style={{ fontSize: 15, lineHeight: 1.7 }}>
-                            {mnemonic}
-                        </p>
-                    ) : null}
-                    <p className="note">{t("enroll.backup.warning")}</p>
-                    <div className="actions">
-                        <button
-                            className="btn btn--ghost"
-                            type="button"
-                            onClick={() => setMnemonicRevealed((v) => !v)}
-                        >
-                            {mnemonicRevealed
-                                ? t("enroll.backup.hide")
-                                : t("enroll.backup.show")}
-                        </button>
-                        <button
-                            className="btn btn--accent"
-                            type="button"
-                            onClick={onDone}
-                        >
-                            {t("enroll.backup.saved")}
-                        </button>
-                    </div>
                 </div>
             ) : null}
         </section>

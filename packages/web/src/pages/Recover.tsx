@@ -1,118 +1,26 @@
-// Recovery flow.
+// v2 has exactly one recovery primitive: Passkey cloud sync.
+// v3 introduces yearly re-enrollment via Diia as the universal
+// recovery primitive (see v2 spec §3.4 / §3.5 patched at d4bb63d
+// and the recovery design memo at /tmp/recovery-design.md).
 //
-// The user presents a BIP-39 mnemonic; we re-derive the entropy that
-// shipped at enrollment, treat it as `N` for the demo (see
-// `bip39Recovery.ts`), recompute the commitment, ask the OPRF service
-// for the up-to-date Merkle path, and bind everything to a fresh
-// Passkey on this device.
+// Earlier drafts of this page implemented a BIP-39 mnemonic import
+// flow. It was structurally broken in v2 (HKDF(N) is one-way relative
+// to `s = pedersen([N_hi, N_lo], 0)`) and was removed in #51.
+//
+// This page now serves as an informational placeholder: it explains the
+// two-phase recovery model so a citizen who reaches "/recover" gets a
+// straight answer instead of a non-functional form. When v3 ships,
+// this page will gain the "renew for the new epoch" prompt described
+// in v3 §6.5.
 
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-    entropyFromMnemonic,
-    isValidMnemonic,
-} from "../lib/bip39Recovery";
-import { pedersenS } from "../lib/pedersen";
-import { oprfRecoverPath } from "../lib/oprfClient";
-import {
-    registerPasskey,
-} from "../lib/webauthnPrf";
-import {
-    putEnrollment,
-    wrapPayload,
-    type EnrollmentPayload,
-} from "../lib/encryptedStore";
 
 interface Props {
     onBack: () => void;
 }
 
-function hexEncode(b: Uint8Array): `0x${string}` {
-    let s = "0x";
-    for (let i = 0; i < b.length; i++) s += b[i]!.toString(16).padStart(2, "0");
-    return s as `0x${string}`;
-}
-
 export function Recover({ onBack }: Props) {
     const { t } = useTranslation();
-
-    const [mnemonic, setMnemonic] = useState("");
-    const [phase, setPhase] = useState<
-        "idle" | "restoring" | "ok" | "passkey"
-    >("idle");
-    const [err, setErr] = useState<string | null>(null);
-    const [recovered, setRecovered] = useState<{
-        N: Uint8Array;
-        s: `0x${string}`;
-        merklePath: `0x${string}`[];
-        merklePathIndices: (0 | 1)[];
-        leafIndex: number;
-    } | null>(null);
-
-    async function handleRestore() {
-        setErr(null);
-        const m = mnemonic.trim();
-        if (!isValidMnemonic(m)) {
-            setErr(t("recover.invalidMnemonic"));
-            return;
-        }
-        setPhase("restoring");
-        try {
-            // For the demo we use the recovered 32-byte entropy directly as
-            // `N`. Production would re-run the OPRF protocol from scratch
-            // against the same RNOKPP and assert that the returned `N`
-            // matches the cached one.
-            const N = entropyFromMnemonic(m);
-            const s = await pedersenS(N);
-            const path = await oprfRecoverPath(s);
-            setRecovered({
-                N,
-                s,
-                merklePath: path.merklePath,
-                merklePathIndices: path.merklePathIndices,
-                leafIndex: path.leafIndex,
-            });
-            setPhase("ok");
-        } catch (e) {
-            setErr(e instanceof Error ? e.message : String(e));
-            setPhase("idle");
-        }
-    }
-
-    async function handleNewPasskey() {
-        if (!recovered) return;
-        setPhase("passkey");
-        setErr(null);
-        try {
-            const userId = crypto.getRandomValues(new Uint8Array(16));
-            const name = `crisp-qes-v2-recovered-${Date.now()}`;
-            const pk = await registerPasskey(
-                "CRISP-QES v2",
-                userId,
-                name,
-                name,
-            );
-            const payload: EnrollmentPayload = {
-                enrollmentSecret: recovered.s,
-                oprfOutputN: hexEncode(recovered.N),
-                merklePath: recovered.merklePath,
-                merklePathIndices: recovered.merklePathIndices,
-            };
-            const ciphertext = await wrapPayload(payload, pk.prfOutput);
-            await putEnrollment({
-                version: 1,
-                commitment: recovered.s,
-                leafIndex: recovered.leafIndex,
-                credentialId: hexEncode(pk.credentialId),
-                ciphertext,
-            });
-            setPhase("ok"); // back to ok with the credential in place
-            onBack();
-        } catch (e) {
-            setErr(e instanceof Error ? e.message : String(e));
-            setPhase("ok");
-        }
-    }
 
     return (
         <section className="section">
@@ -122,71 +30,30 @@ export function Recover({ onBack }: Props) {
             <h2 className="section__title" style={{ marginTop: 8 }}>
                 {t("recover.heading")}
             </h2>
-            <p className="note" style={{ marginBottom: 24 }}>
-                {t("recover.intro")}
-            </p>
 
             <div className="panel">
-                <label className="field-block">
-                    <span className="field-block__label">
-                        {t("recover.mnemonic")}
-                    </span>
-                    <textarea
-                        className="textarea"
-                        rows={4}
-                        spellCheck={false}
-                        value={mnemonic}
-                        onChange={(e) => setMnemonic(e.target.value)}
-                    />
-                </label>
-                <div className="actions">
-                    <button
-                        className="btn btn--accent"
-                        type="button"
-                        disabled={
-                            phase === "restoring" ||
-                            phase === "passkey" ||
-                            mnemonic.trim().length === 0
-                        }
-                        onClick={handleRestore}
-                    >
-                        {phase === "restoring"
-                            ? t("recover.restoring")
-                            : t("recover.restore")}
-                    </button>
-                </div>
-                {err ? (
-                    <p className="error-line">
-                        {t("recover.error", { detail: err })}
-                    </p>
-                ) : null}
+                <p className="panel__title">{t("recover.v2.title")}</p>
+                <p className="note">{t("recover.v2.intro")}</p>
+                <ul className="bullets">
+                    <li>{t("recover.v2.point1")}</li>
+                    <li>{t("recover.v2.point2")}</li>
+                </ul>
             </div>
 
-            {recovered ? (
-                <div className="panel">
-                    <p className="panel__title">{t("recover.ok")}</p>
-                    <dl>
-                        <div className="field-row">
-                            <dt>s (commitment)</dt>
-                            <dd className="mono">{recovered.s}</dd>
-                        </div>
-                        <div className="field-row">
-                            <dt>leafIndex</dt>
-                            <dd className="mono">{recovered.leafIndex}</dd>
-                        </div>
-                    </dl>
-                    <div className="actions">
-                        <button
-                            className="btn btn--accent"
-                            type="button"
-                            onClick={handleNewPasskey}
-                            disabled={phase === "passkey"}
-                        >
-                            {t("recover.newPasskey")}
-                        </button>
-                    </div>
-                </div>
-            ) : null}
+            <div className="panel">
+                <p className="panel__title">{t("recover.v3.title")}</p>
+                <p className="note">{t("recover.v3.intro")}</p>
+            </div>
+
+            <div className="actions">
+                <button
+                    className="btn btn--accent"
+                    type="button"
+                    onClick={onBack}
+                >
+                    {t("recover.backCta")}
+                </button>
+            </div>
         </section>
     );
 }

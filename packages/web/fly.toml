@@ -16,7 +16,7 @@ primary_region = "fra"
     # used a bytes24 digest scheme that didn't match the backend signer;
     # superseded contracts are documented in the same JSON file and will
     # never accept attesterSig from the live OPRF service.
-    VITE_ENROLLMENT_REGISTRY = "0x4a17285F2F3035AD8bB6Da86d9aB189Cc33C4106"
+    VITE_ENROLLMENT_REGISTRY = "0x4A17285f2f3035AD8bB6da86d9aB189cC33c4106"
     VITE_PETITION_REGISTRY_V2 = "0x11561749D669791117592332B8E5373Ff60406EF"
     VITE_RELAYER_URL = "https://crisp-qes-v2-relayer.fly.dev"
     VITE_CIRCUIT_URL = "/crisp_qes_v2_circuit.json"
