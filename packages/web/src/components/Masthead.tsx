@@ -35,7 +35,7 @@ export function Masthead({ state, onSignInRequest, onChipClick }: Props) {
         <header className="masthead--bar">
             <Link href="/" className="brandbox">
                 <span className="brandbox__mark" aria-hidden="true" />
-                CRISP-QES
+                CIVIC VOICE
             </Link>
             <nav className="topnav" aria-label="Primary">
                 {navItem("/petitions", t("nav.petitions"))}

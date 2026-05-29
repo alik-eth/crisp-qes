@@ -5,7 +5,7 @@
         "languageNameOther": "Українська"
     },
     "app": {
-        "name": "CRISP-QES v2",
+        "name": "Civic Voice",
         "tagline": "Enroll once, sign in seconds. No re-issuing your QES on every click, no RNOKPP on-chain.",
         "issue": "v2.1 prototype",
         "footnote": "Open service. Not an official Diia service. Site is running in Demo mode."
@@ -117,7 +117,7 @@
             "secret": "Secret (private)",
             "error": "OPRF error: {{detail}}",
             "ageBlocked": "Diia certifies you're under {{min}}.",
-            "ageBlockedHint": "CRISP-QES is for adult citizens only. You can return when you turn {{min}}."
+            "ageBlockedHint": "Civic Voice is for adult citizens only. You can return when you turn {{min}}."
         },
         "register": {
             "title": "Register in the Merkle commitment",
