@@ -15,6 +15,7 @@
 
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyCors from "@fastify/cors";
+import { sha256 } from "@noble/hashes/sha2";
 import { bytesToHex } from "@noble/hashes/utils";
 import { z } from "zod";
 
@@ -105,6 +106,34 @@ export async function buildApp(
         logger: { level: cfg.isProd ? "info" : "warn" },
     });
 
+    // Hourly cleanup of the per-epoch replay cache + blind-eval counters.
+    // Rows older than the configured TTL are pruned so the tables don't
+    // grow unbounded across multiple epochs. Interval is unref'd so it
+    // never holds the event loop open at shutdown. Skipped in tests
+    // (cfg.replayCacheTtlSec is still set; we just need to avoid leaking
+    // intervals across `buildApp` invocations — Fastify's onClose handles
+    // teardown cleanly).
+    const cleanupIntervalMs = 60 * 60 * 1000;
+    const cleanupTimer = setInterval(() => {
+        try {
+            const cutoff = Math.floor(Date.now() / 1000) - cfg.replayCacheTtlSec;
+            const replayPruned = store.prunePAhsReplayCache(cutoff);
+            const countsPruned = store.pruneBlindEvalCounts(cutoff);
+            if (replayPruned > 0 || countsPruned > 0) {
+                app.log.info(
+                    { replayPruned, countsPruned, olderThan: cutoff },
+                    "replay-cache cleanup",
+                );
+            }
+        } catch (e) {
+            app.log.warn({ err: (e as Error).message }, "cleanup failed");
+        }
+    }, cleanupIntervalMs);
+    cleanupTimer.unref();
+    app.addHook("onClose", async () => {
+        clearInterval(cleanupTimer);
+    });
+
     const allowAll = cfg.corsAllowedOrigins.includes("*");
     void app.register(fastifyCors, {
         origin: allowAll ? true : cfg.corsAllowedOrigins,
@@ -147,10 +176,13 @@ export async function buildApp(
         //    The same call extracts the DOB attribute from the leaf cert
         //    (or returns null if absent), which we gate on next.
         let dob: Date | null;
+        let subjectSerial: Uint8Array;
+        let p7sBytes: Uint8Array;
         try {
-            const p7sBytes = base64ToBytes(attestation.p7s);
+            p7sBytes = base64ToBytes(attestation.p7s);
             const verified = verifyAttestation(p7sBytes);
             dob = verified.dob;
+            subjectSerial = verified.subjectSerial;
             req.log.info(
                 { serial: verified.subjectSerialAscii },
                 "attestation ok",
@@ -189,6 +221,46 @@ export async function buildApp(
                         found: age,
                     });
                 }
+            }
+        }
+
+        // 1c. Per-epoch replay-cache check (task #31). Done BEFORE the
+        //     rate-limit increment so a replayed envelope never burns a
+        //     legitimate retry budget for the underlying RNOKPP. The
+        //     INSERT-OR-IGNORE inside the store is atomic; rowcount==0
+        //     means the row was already present — a replay.
+        const pHash = sha256(p7sBytes);
+        const nowSec = Math.floor(Date.now() / 1000);
+        const fresh = store.recordP7sHashIfFresh(pHash, nowSec);
+        if (!fresh) {
+            req.log.warn({ pHashPrefix: bytesToHex(pHash).slice(0, 16) },
+                "replay: p7s already seen this epoch");
+            return reply.code(409).send({
+                error: "ReplayedAttestation",
+                detail: "this .p7s has already been used in this epoch",
+            });
+        }
+
+        // 1d. Per-RNOKPP rate limit (task #32). Enforced BEFORE the OPRF
+        //     eval burns CPU. We hash the subject serial so the plaintext
+        //     RNOKPP never lands in the DB. count==1 is the first call;
+        //     reject once the post-increment count exceeds the cap.
+        if (cfg.maxBlindEvalPerRnokppPerEpoch > 0) {
+            const subjectHash = sha256(subjectSerial);
+            const { count } = store.incrementBlindEvalCount(subjectHash, nowSec);
+            if (count > cfg.maxBlindEvalPerRnokppPerEpoch) {
+                req.log.warn(
+                    {
+                        subjectHashPrefix: bytesToHex(subjectHash).slice(0, 16),
+                        count,
+                        cap: cfg.maxBlindEvalPerRnokppPerEpoch,
+                    },
+                    "throttle: RNOKPP exceeded per-epoch blind-eval cap",
+                );
+                return reply.code(429).send({
+                    error: "Throttled",
+                    detail: "RNOKPP exceeded blind-eval rate for this epoch",
+                });
             }
         }
 

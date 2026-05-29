@@ -46,6 +46,20 @@ export interface OprfConfig {
      * `/oprf/blind-eval` in `app.ts`. v3 multi-QTSP revisits.
      */
     ageThreshold: number;
+    /**
+     * Maximum number of `/oprf/blind-eval` calls a single RNOKPP (subject
+     * serial hash) is allowed within the current epoch (TTL =
+     * `replayCacheTtlSec`). Throttle, don't ban — generous-but-finite cap
+     * tolerates transient retry while flagging flooding. Default 3.
+     */
+    maxBlindEvalPerRnokppPerEpoch: number;
+    /**
+     * TTL in seconds for both the per-epoch p7s-hash replay cache (task #31)
+     * and the per-RNOKPP blind-eval counter (task #32). v2 uses a single
+     * long-lived epoch, so the default ~400 days subsumes the OPRF key's
+     * lifetime. Operators rotate this in lockstep with `OPRF_KEY`.
+     */
+    replayCacheTtlSec: number;
 }
 
 function encodeScalarLE(s: bigint): Uint8Array {
@@ -147,6 +161,30 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OprfConfig {
         ageThreshold = n;
     }
 
+    // Per-RNOKPP blind-eval cap. 0 disables the throttle (testing only).
+    let maxBlindEvalPerRnokppPerEpoch = 3;
+    if (env.MAX_BLIND_EVAL_PER_RNOKPP_PER_EPOCH !== undefined) {
+        const n = Number(env.MAX_BLIND_EVAL_PER_RNOKPP_PER_EPOCH);
+        if (!Number.isInteger(n) || n < 0 || n > 1_000_000) {
+            throw new Error(
+                `[oprf] MAX_BLIND_EVAL_PER_RNOKPP_PER_EPOCH must be an integer in [0, 1000000] (got ${env.MAX_BLIND_EVAL_PER_RNOKPP_PER_EPOCH})`,
+            );
+        }
+        maxBlindEvalPerRnokppPerEpoch = n;
+    }
+
+    // Replay cache + per-RNOKPP counter TTL. Default ~400d covers a v2 epoch.
+    let replayCacheTtlSec = 86400 * 400;
+    if (env.REPLAY_CACHE_TTL_SEC !== undefined) {
+        const n = Number(env.REPLAY_CACHE_TTL_SEC);
+        if (!Number.isInteger(n) || n <= 0 || n > 10 * 365 * 86400) {
+            throw new Error(
+                `[oprf] REPLAY_CACHE_TTL_SEC must be a positive integer in seconds (got ${env.REPLAY_CACHE_TTL_SEC})`,
+            );
+        }
+        replayCacheTtlSec = n;
+    }
+
     return {
         port: Number(env.PORT ?? 8788),
         isProd,
@@ -155,6 +193,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OprfConfig {
         oprfPubkey: new Uint8Array(32), // filled by buildApp once curve is loaded
         attesterKey,
         ageThreshold,
+        maxBlindEvalPerRnokppPerEpoch,
+        replayCacheTtlSec,
         chainId,
         enrollmentRegistry,
         corsAllowedOrigins,
