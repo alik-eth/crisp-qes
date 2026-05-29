@@ -116,21 +116,29 @@ the scalar field of the prime-order group):
 
 ## 3. Recovery design
 
-Recovery is not a separate mechanism in v3. It is a property of
-yearly epoch rotation — see §6 for the full design.
+Two layers, by timeframe:
 
-In one sentence: lose everything → wait for the next epoch → re-enroll
-with fresh Diia QES → fresh `s_year`. The bridge from v2 (no epoch
-rotation) to v3 is described in v2 spec §3.4 (during v2 bridge,
-citizens have Passkey cloud sync only; at the v3 cutover, all
-citizens — including bridge-lockout citizens — recover by enrolling
-fresh in epoch_2026).
+- **Within-epoch (shipped in v2):** re-running Verify with Diia
+  deterministically re-derives the same commitment (OPRF is
+  deterministic on RNOKPP), so a citizen on a new or wiped device
+  rebuilds their vault from the existing on-chain leaf — no new
+  leaf, no duplicate identity. Same-device return is the cheaper
+  Passkey re-unlock. This is sound because the signing path only
+  ever checked the ZK membership proof, never the Passkey — control
+  of the Diia QES was always sufficient to sign, so a recovery flow
+  lowers attacker friction, not the cryptographic floor (full
+  analysis in v2 spec §3.4 and §11.1 below).
+- **Cross-year (v3, this scope):** yearly epoch rotation (§6) is the
+  *rotation* primitive — a fresh `s_year` retires the old identity,
+  bounding the blast radius of any Diia compromise and dropping
+  revoked certs. In one sentence: each year → re-enroll with fresh
+  Diia QES → fresh `s_year`; cross-epoch unlinkability is a feature.
 
-Earlier drafts of this section proposed mnemonic recovery (Path A
-"mnemonic 2FA" + Path B "raw `N` in mnemonic") and a three-tier
-client-side design (cloud sync + multi-Passkey + within-epoch
-QES-anchored). All were rejected after design review. See §11.1
-postmortem and `/tmp/recovery-design.md` for the full analysis.
+Rejected throughout: mnemonic recovery (Path A "mnemonic 2FA" +
+Path B "raw `N` in mnemonic"), required multi-Passkey ceremony,
+server-encrypted backup, Shamir social recovery. See §11.1 for the
+reasoning (and the note on why the earlier blanket rejection of
+within-epoch Diia re-derivation was reversed).
 
 ## 4. On-chain `K_pub` registry
 
@@ -507,10 +515,13 @@ the full v3 protocol shape is documented.
 ### 11.1 Postmortem — recovery design candidates rejected
 
 Earlier drafts of v2 spec §3.4 and v3 spec §3 explored several
-recovery designs. All were rejected after design review on
-2026-05-29. The final design is one mechanism: **epoch rotation
-(§6) is the recovery primitive**. No client-side or service-side
-recovery flow ships outside epoch boundaries.
+recovery designs. The final design has **two layers**: within-epoch
+Diia re-derivation (shipped in v2 — restores a citizen's existing
+identity on a new/wiped device) and epoch rotation (§6, the
+cross-year *rotation* primitive). The bearer-credential and
+backup-blob candidates below remain rejected; one earlier
+rejection (within-epoch Diia re-derivation) was **reversed** — see
+the note after the list.
 
 Rejected candidates and why:
 
@@ -530,12 +541,6 @@ Rejected candidates and why:
 - **Multi-Passkey enrollment ceremony.** Adds friction to a 2-second
   enrollment for marginal coverage. Citizens with a second device
   already have cloud-sync coverage; citizens without one just skip.
-- **QES-anchored within-epoch re-derivation** (`/oprf/blind-eval`
-  with fresh blinding to recover `N`). Creates an abuse surface:
-  anyone holding a stolen Diia QES can recover the citizen's `s`
-  and sign as them. OPRF can't distinguish legitimate from stolen.
-  Advertising "recovery via Diia" is also advertising an attack
-  path.
 - **Server-encrypted backup blob with citizen passphrase.** Either
   auto-generated (mnemonic-equivalent UX failure) or user-chosen
   (weak passphrase, brute-forceable).
@@ -543,19 +548,33 @@ Rejected candidates and why:
   citizens don't have a crypto-native trustee network.
 - **Hardware-token backup (YubiKey).** Subsumed by Passkey.
 
-**The retained design — single mechanism, no client-side flow.**
-Recovery is yearly epoch rotation (§6). v2 bridge inherits Passkey
-cloud sync as the only working recovery; bridge-lockout citizens
-recover at the v3 cutover by enrolling fresh. The recovery floor
-is the Diia QES recovery floor — anyone who can re-issue Diia
-through state channels recovers at the next epoch transition. We
-do not attempt to solve the state's ID-recovery problem in-protocol.
+**Reversal — within-epoch Diia re-derivation (now shipped in v2).**
+The earlier rejection argued "anyone holding a stolen Diia QES can
+recover `s` and sign — advertising recovery is advertising an
+attack." On review the premise was wrong: the *signing* path only
+ever checked the ZK membership proof (`enrollment_secret` + the
+**public** Merkle path), never the Passkey. So control of the Diia
+QES was *already* sufficient to derive `s` (via `/oprf/blind-eval`,
+rate-limited per epoch) + fetch the public path + sign — with or
+without a recovery feature. The Passkey is at-rest vault encryption
++ UX, not a protocol-level second factor. A "recover with Diia" flow
+therefore does not lower the cryptographic floor; it lowers attacker
+*friction* and unblocks legitimate returning citizens. Honest
+framing: control of the Diia QES = ability to sign — guard Diia like
+a passport. v3 epoch rotation (§6) bounds the blast radius across
+years. Shipped in the v2 client; the OPRF's `GET
+/enrollment/:commitment/path` rail already existed for it.
 
-Full design memo: `/tmp/recovery-design.md` (researcher,
-2026-05-29). For future readers: the state-issued QES is the right
-anchor for civic-identity recovery; self-sovereign-crypto recovery
-patterns (mnemonics, social recovery, encrypted backups) do not
-transfer. Don't bring them back.
+**Still single-mechanism for cross-year:** rotation is epoch
+rotation (§6). We do not attempt to solve the state's ID-recovery
+problem in-protocol — re-issuing Diia is the floor.
+
+For future readers: the state-issued QES is the right anchor for
+civic-identity recovery, and re-deriving from it within an epoch is
+acceptable (the floor is "control the QES"). The patterns that stay
+rejected are the *bearer-credential and backup* ones —
+mnemonics, social recovery, server-encrypted blobs. Don't bring
+those back.
 
 ## 12. References
 

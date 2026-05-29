@@ -40,7 +40,8 @@ Three layers, each using the production-ready primitive for its job:
 │ Layer 2 — Signature (per petition, in browser)              │
 │ primitive: Noir ZK proof (Plonkish, UltraHonk)              │
 │ proves:   membership in enrollment_tree + nullifier         │
-│ consumes: enrollment_secret (from Passkey PRF or mnemonic)  │
+│ consumes: enrollment_secret (Passkey-wrapped, or re-derived │
+│           from Diia QES on recovery)                        │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -300,42 +301,54 @@ Primary: **WebAuthn PRF extension** (Passkey).
   the credential across devices via OS-level encrypted backup.
   Citizens don't see the seed.
 
-Disaster-recovery backup: **none — mnemonic deleted, no replacement
-added in v2.** Earlier v2 drafts shipped a non-functional BIP-39
-mnemonic backup placeholder. It has been removed from the UI and the
-codebase.
+Disaster-recovery backup: **none of the bearer-credential kind —
+mnemonic deleted, no replacement added.** Earlier v2 drafts shipped
+a non-functional BIP-39 mnemonic backup placeholder. It has been
+removed from the UI and the codebase.
 
-**v2 recovery, in one sentence:** Passkey cloud sync is the only
-recovery path during the v2 bridge window. Citizens who lose access
-without cloud sync wait for the v3 epoch transition to re-enroll
-under fresh Diia QES.
+**v2 recovery, in one sentence:** two paths — same-device re-unlock
+with your Passkey (the vault stays encrypted at rest; the Passkey
+re-derives the key), and, for a new or wiped device, **re-running
+Verify with Diia**, which deterministically re-derives the same
+commitment and rebuilds the local vault from the existing on-chain
+leaf (no new leaf, no duplicate identity).
 
-Why we don't add multi-Passkey ceremony, server-encrypted backup,
-or QES-anchored within-epoch recovery in v2:
+**Why Diia within-epoch recovery is sound (and why earlier drafts
+wrongly rejected it).** The decisive fact is what the *signing* path
+actually checks: only a ZK proof of membership (`enrollment_secret`
++ the **public** Merkle path) — never the Passkey. The Passkey is
+at-rest vault encryption plus UX; it is **not** a protocol-level
+second factor. Consequently anyone who can make a citizen's Diia
+produce a fresh challenge signature could *already* derive `s`
+(`/oprf/blind-eval`, rate-limited to a few per epoch) + fetch the
+public Merkle path + sign — with or without a recovery button. A
+"recover with Diia" flow therefore does **not** lower the
+cryptographic floor; it lowers attacker *friction* (one tap vs.
+hand-rolling the crypto) and removes a dead-end for legitimate
+returning citizens. The true eligibility model has always been:
+**control of the Diia QES = ability to sign.** Honest disclosure to
+citizens is "guard your Diia like your passport," not a false
+promise of an extra factor.
 
-- **Multi-Passkey ceremony** adds friction to an enrollment that
-  should take 2 seconds. Citizens with a second device already have
-  cloud-sync coverage (Tier 1). Citizens without one just skip.
-  Net UX negative for marginal coverage.
-- **QES-anchored within-epoch recovery** (re-running
-  `/oprf/blind-eval` with fresh blinding to re-derive `N`) creates
-  an abuse surface: anyone holding a stolen Diia QES can recover
-  the citizen's `s` and sign as them. The OPRF service can't
-  distinguish legitimate from stolen — both look like a valid QES
-  + fresh blind-eval. Advertising "recovery via Diia" is also
-  advertising an attack path.
-- **Server-encrypted backup**, **Shamir social recovery**,
-  **mnemonic** — all rejected for the reasons documented in
-  `/tmp/recovery-design.md`.
+What v3 adds on top: yearly epoch rotation (§6) **bounds the blast
+radius** — a fresh `epoch_2027` retires the old identity, so a Diia
+compromise cannot follow a citizen across years.
 
-**The recovery primitive is epoch rotation** (v3 spec §6). Recovery
-isn't a separate mechanism in this system; it's a property of yearly
-re-enrollment with fresh Diia QES. The v2 bridge inherits the
-state's Diia recovery floor for now — anyone who can re-issue Diia
-through state channels recovers at the next epoch transition.
+Still rejected (no upside, real downside):
 
-Honest disclosure to citizens: *"Recovery: Passkey cloud sync only
-in v2; yearly re-enrollment in v3 onward."*
+- **Multi-Passkey ceremony as a *required* step** — friction on a
+  2-second enrollment; cloud sync already covers the multi-device
+  case.
+- **Server-encrypted backup blob** — honeypot + passphrase
+  brute-force surface, and redundant now that Diia re-derivation
+  recovers the vault.
+- **Shamir social recovery** — wrong target population.
+- **Mnemonic / raw-`N` bearer credential** — non-rotatable, sub-30%
+  civic-tech recall, net regression vs. Passkey-wrapped vault.
+
+Note the IndexedDB vault does **not** cloud-sync (only the Passkey
+credential does), so cross-device return always goes through the
+Diia path; same-device return is the cheap Passkey re-unlock.
 
 Browser support (target Q3 2026):
 
@@ -358,37 +371,42 @@ no syncable backup. Unacceptable for a civic-grade tool.
 
 | Loss scenario                                       | v2 recovery path                                                 |
 | --------------------------------------------------- | ---------------------------------------------------------------- |
-| Lost phone, signed into iCloud / Google             | Passkey syncs in on next device                                  |
-| Lost phone, no cloud sync                           | Wait for v3 epoch rotation (v3 spec §6) — re-enroll under fresh Diia QES |
-| Lost Diia QES (re-issuable through state channels)  | Re-issue Diia → wait for v3 epoch rotation → fresh enrollment    |
-| Compromised device (key stolen)                     | Wait for v3 epoch rotation — old `s` orphans, new `s_year` issued under fresh QES |
+| Signed out / locked, same device                    | Sign in → Passkey re-unlocks the on-device vault (no Diia)       |
+| Lost phone, signed into iCloud / Google             | Passkey syncs to the new device; then re-run Verify with Diia to rebuild the vault (the vault itself doesn't sync) |
+| Lost phone, no cloud sync                           | Set up a fresh Passkey → re-run Verify with Diia → identity restored from the existing on-chain leaf |
+| Lost Diia QES (re-issuable through state channels)  | Re-issue Diia → re-run Verify → restored (deterministic re-derivation) |
+| Compromised device (key stolen)                     | The capability follows the QES, not the device; rotate at the next epoch (v3 §6) to retire the old `s` |
 
-The "re-enroll under new commitment" path **does not** reintroduce
-the cert-renewal Sybil hole, because the OPRF is deterministic on
-RNOKPP: a second enrollment for the same RNOKPP would collide with the
-old commitment and be rejected. Recovery requires the ciphernode
-committee to roll the old commitment forward into a successor
-commitment, with attestation, under an epoch transition.
+The Diia recovery path **does not** reintroduce the cert-renewal
+Sybil hole, because the OPRF is deterministic on RNOKPP: re-presenting
+Diia re-derives the *same* commitment, so `/oprf/register` returns
+`AlreadyEnrolled` and the client fetches the existing leaf's Merkle
+path (`GET /enrollment/:commitment/path`) instead of appending a new
+leaf. One RNOKPP → one leaf per epoch, always. Cross-year rotation to
+a fresh `s_year` is the v3 epoch-transition mechanism (§6), not a v2
+within-epoch operation.
 
 ## 4. Layer 3 — Tally + threshold via FHE
 
 ### 4.1 Goal
 
-Aggregate per-petition signatures (each carrying a 1-bit ciphertext
-"I support / I oppose / abstain") under threshold-FHE such that:
+A petition is support-only: signing = supporting it (revoke to
+withdraw). Aggregate the per-petition support signatures (each a
+1-bit "supported" ciphertext) under threshold-FHE such that:
 
-- nobody, including the ciphernode committee, sees per-citizen votes;
+- nobody, including the ciphernode committee, sees *who* signed or
+  the running count;
 - the committee can decrypt only the *threshold predicate* (e.g.
   "count > 25 000" → reveal `true`, "count ≤ 25 000" → reveal
   nothing else) and an opt-in aggregate count;
 - per-petition unlinkability is preserved (nullifier blinds the
-  signature, FHE blinds the vote).
+  signature; FHE blinds the count until a decryption event).
 
 ### 4.2 Why FHE works here
 
 This is the exact shape Vitalik's bar accepts:
 
-- Per-signature ciphertext is 1 bit (or 2 bits for yes/no/abstain).
+- Per-signature ciphertext is 1 bit (a support flag).
 - The committee never runs arbitrary computation under FHE — only
   *additive aggregation* of bit ciphertexts and a final
   *comparison* against a public threshold.
@@ -396,16 +414,25 @@ This is the exact shape Vitalik's bar accepts:
 - Interfold (formerly Enclave) has already deployed this exact shape via CRISP — reusing their
   infrastructure, not inventing it.
 
-### 4.3 Voting modes
+### 4.3 Support tally under FHE
 
-| Mode                | Layer 2 output            | Layer 3 op             | Decryption        |
+There is one ballot shape: **support**. A petition gathers support
+signatures; not signing is the dissent (a petition is a one-directional
+instrument, not a referendum — multi-option polling is a different
+artifact, out of scope, see §11). The tally is therefore a single
+additive aggregation:
+
+| Action              | Layer 2 output            | Layer 3 op             | Decryption        |
 | ------------------- | ------------------------- | ---------------------- | ----------------- |
-| Petition signature  | ZK proof + nullifier      | Counter ++             | Aggregate count   |
-| Yes / no            | Above + Enc(0 or 1)       | Sum, compare to threshold | Threshold predicate |
-| Yes / no / abstain  | Above + Enc(00 / 01 / 10) | Sum 2-bit, compare     | Threshold predicate |
+| Sign (support)      | ZK proof + nullifier      | Encrypted counter ++   | Threshold predicate / aggregate count |
+| Revoke (withdraw)   | ZK proof + nullifier      | Encrypted counter −−   | (same)            |
 
-Citizens choose the ballot mode at creation time (creator on
-PetitionRegistry sets a `mode` flag).
+The earlier `BallotMode` enum (`signature / yes-no / yes-no-abstain`)
+was removed: the nullifier already enforces one signature per citizen
+per petition regardless of any vote value, so multi-option "modes"
+added contract/UX surface for an instrument (a referendum) with
+different legitimacy requirements. What varies per petition is the
+*decryption policy* (§4.4), not the ballot.
 
 ### 4.4 Decryption events
 
@@ -431,7 +458,7 @@ be upgraded mid-petition.
 | Cross-petition unlinkability      | ✓ per-petition                              |
 | Coercion resistance               | ✗ (deferred to v3)                          |
 | Tally privacy                     | ✓ optional threshold-only decryption        |
-| Ballot modes                      | signature / yes-no / yes-no-abstain         |
+| Petition model                    | support-only (sign = support; revoke to withdraw) |
 | Operator trust                    | t-of-n ciphernode honesty (typical 5-of-7; single-node in v2 demo, threshold in v3) |
 | Onboarding friction               | one-time enrollment (~ 2 s + Passkey reg)   |
 
@@ -500,7 +527,7 @@ Within the $25 k envelope, plausible deliverables:
 | Layer 2 web SPA: Passkey enrollment + signature flow       | 3     |
 | Layer 1 OPRF prototype (single-node, not threshold)        | 2     |
 | Layer 3 stub: tally counter (no FHE yet, just transparent) | 1     |
-| Integration testnet deployment on Base Sepolia             | 1     |
+| Integration testnet deployment on Ethereum Sepolia         | 1     |
 | Documentation + Interfold partnership scoping memo         | 1     |
 
 Total: ~10 weeks of focused work for a 2-person student team.
@@ -573,9 +600,12 @@ behind it.
 4. **Passkey PRF salt management**: each origin needs a stable salt,
    but the salt should not be globally guessable. Recommend a per-user
    salt fetched on first registration.
-5. **Recovery committee for lost mnemonic + lost Passkey + lost cloud
-   account**: is there an out for citizens in this state? Probably yes,
-   via re-enrollment with proof of Diia QES + waiting an epoch.
+5. **Recovery for lost Passkey + lost cloud account**: resolved in
+   v2 — re-running Verify with Diia deterministically re-derives the
+   commitment and rebuilds the vault (no new leaf). The only residual
+   case is loss of Diia access itself, which is the state's
+   ID-recovery floor; cross-year rotation to a fresh `s_year` is the
+   v3 epoch mechanism (§6).
 
 ## 11. Status
 

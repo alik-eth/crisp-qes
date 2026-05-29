@@ -91,4 +91,4 @@ Testnet demo live on Ethereum Sepolia. See
 [v2-refined spec §5](docs/specs/2026-05-29-crisp-qes-v2-refined.md) for the
 in-scope items and
 [v3-funded-scope](docs/specs/2026-05-29-crisp-qes-v3-funded-scope.md) for
-the funded hardening track (threshold OPRF + FHE tally + recovery).
+the funded hardening track (threshold OPRF + FHE tally + epoch rotation).
