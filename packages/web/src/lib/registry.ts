@@ -75,6 +75,31 @@ export async function readHasNullifier(
     });
 }
 
+/**
+ * Returns the stored ballot for a (petitionId, nullifier) pair.
+ *
+ *   0           — nullifier has never voted on this petition.
+ *   1 + vote    — nullifier has voted; subtract 1 to get the original
+ *                 vote value (Signature: 0 = sign; YesNo: 0=No,1=Yes;
+ *                 YesNoAbstain: 0=No,1=Yes,2=Abstain).
+ *
+ * The +1 offset is what lets a single uint8 slot encode both "unused"
+ * and "voted-No" without ambiguity — matches `voteByNullifier` in the
+ * v2 contract.
+ */
+export async function readVoteByNullifier(
+    petitionId: bigint,
+    nullifier: `0x${string}`,
+): Promise<number> {
+    const raw = await publicClient.readContract({
+        address: config.petitionRegistryV2,
+        abi: petitionRegistryV2Abi,
+        functionName: "voteByNullifier",
+        args: [petitionId, nullifier],
+    });
+    return Number(raw);
+}
+
 export async function readCreationDeposit(): Promise<bigint> {
     return publicClient.readContract({
         address: config.petitionRegistryV2,
