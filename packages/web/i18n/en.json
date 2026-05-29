@@ -12,7 +12,10 @@
     },
     "nav": {
         "petitions": "Polls",
-        "enroll": "Enroll"
+        "enroll": "Enroll",
+        "verified": "Verified",
+        "notVerified": "Not verified",
+        "signIn": "Sign in"
     },
     "landing": {
         "hero": "Anonymous, private voting with results in a <b>public registry</b>.",
@@ -36,6 +39,12 @@
         "error": "Could not read the poll registry.",
         "errorFallback": "The poll registry is temporarily unreachable. This is usually a transient RPC issue — try again in a moment.",
         "errorRetry": "Retry",
+        "notVerifiedBefore": "Your account is registered but not verified.",
+        "notVerifiedLink": "Verify with QES",
+        "notVerifiedAfter": "to sign or create polls.",
+        "ctaNew": "New poll",
+        "ctaVerify": "Verify to create",
+        "ctaSignIn": "Sign in to create",
         "card": {
             "id": "Poll #{{id}}",
             "deadline": "Deadline",

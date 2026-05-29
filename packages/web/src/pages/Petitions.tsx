@@ -55,9 +55,9 @@ export function Petitions({ state, onSignIn }: Props) {
             {state.kind === "account" ? (
                 <div className="notice notice--info" style={{ marginBottom: 20 }}>
                     <div>
-                        Your account is registered but not verified.{" "}
-                        <Link href="/verify">Verify with QES</Link>{" "}
-                        to sign or create petitions.
+                        {t("list.notVerifiedBefore")}{" "}
+                        <Link href="/verify">{t("list.notVerifiedLink")}</Link>{" "}
+                        {t("list.notVerifiedAfter")}
                     </div>
                 </div>
             ) : null}
@@ -131,17 +131,18 @@ function CreateCta({
     state: AccountState;
     onSignIn: () => void;
 }) {
+    const { t } = useTranslation();
     if (state.kind === "verified") {
         return (
             <Link href="/p/new" className="btn btn--primary btn--sm">
-                New petition
+                {t("list.ctaNew")}
             </Link>
         );
     }
     if (state.kind === "account") {
         return (
             <Link href="/verify" className="btn btn--ghost btn--sm">
-                Verify to create
+                {t("list.ctaVerify")}
             </Link>
         );
     }
@@ -151,7 +152,7 @@ function CreateCta({
             className="btn btn--ghost btn--sm"
             onClick={onSignIn}
         >
-            Sign in to create
+            {t("list.ctaSignIn")}
         </button>
     );
 }

@@ -65,7 +65,7 @@ export function Masthead({ state, onSignInRequest, onChipClick }: Props) {
                         className="btn btn--sm"
                         onClick={onSignInRequest}
                     >
-                        Sign in
+                        {t("nav.signIn")}
                     </button>
                 ) : (
                     <AccountChip state={state} onClick={onChipClick} />
@@ -86,7 +86,8 @@ function AccountChip({
         state.kind === "verified"
             ? "chip__dot chip__dot--verified"
             : "chip__dot chip__dot--account";
-    const label = state.kind === "verified" ? "Verified" : "Not verified";
+    const { t } = useTranslation();
+    const label = state.kind === "verified" ? t("nav.verified") : t("nav.notVerified");
     const id = state.commitment ?? state.credentialId;
     return (
         <button type="button" className="chip" onClick={onClick}>
