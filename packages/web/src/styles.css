@@ -277,6 +277,14 @@ button:disabled {
     margin-top: 36px;
 }
 
+/* Variant used on Landing to surface the primary CTA above the .two-col
+ * block so it's reachable above the fold on mobile (see RED-3 in
+ * bench/ux-results-2026-05-29.md). Tighter spacing to the lede above. */
+.cta-row--hoisted {
+    margin-top: 20px;
+    margin-bottom: 24px;
+}
+
 /* -------------------- buttons -------------------- */
 
 .btn {

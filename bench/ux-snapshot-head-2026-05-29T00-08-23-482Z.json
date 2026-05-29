@@ -1,0 +1,1271 @@
+{
+  "url": "http://localhost:4173",
+  "tag": "head",
+  "capturedAt": "2026-05-29T00-08-23-482Z",
+  "records": [
+    {
+      "label": "mobile-landing",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollHeight": 2020,
+      "screensTall": 2.39,
+      "interactiveCount": {
+        "all": 5,
+        "visible": 5,
+        "primary": 1,
+        "secondary": 0
+      },
+      "panelCount": 0,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Що гарантує v2",
+        "Чого не гарантує цей демо"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "Відновити доступ",
+        "English"
+      ],
+      "textChars": 1926,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 117,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 190,
+            "w": 79,
+            "h": 19
+          }
+        },
+        {
+          "text": "Відновити доступ",
+          "cls": "",
+          "rect": {
+            "top": 121,
+            "left": 287,
+            "w": 71,
+            "h": 36
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 376,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "До петицій",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 1782,
+            "left": 28,
+            "w": 125,
+            "h": 44
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "До петицій",
+          "rect": {
+            "top": 1782,
+            "left": 28,
+            "w": 125,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [],
+      "firstPrimaryTop": 1782,
+      "firstPrimaryRequiresScroll": true,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head/mobile-landing.png"
+    },
+    {
+      "label": "mobile-petitions",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollHeight": 844,
+      "screensTall": 1,
+      "interactiveCount": {
+        "all": 4,
+        "visible": 4,
+        "primary": 0,
+        "secondary": 0
+      },
+      "panelCount": 0,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Відкриті петиції"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "Відновити доступ",
+        "English"
+      ],
+      "textChars": 806,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 117,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 190,
+            "w": 79,
+            "h": 19
+          }
+        },
+        {
+          "text": "Відновити доступ",
+          "cls": "",
+          "rect": {
+            "top": 121,
+            "left": 287,
+            "w": 71,
+            "h": 36
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 376,
+            "w": 55,
+            "h": 19
+          }
+        }
+      ],
+      "primaryRects": [],
+      "panelInfo": [],
+      "firstPrimaryTop": null,
+      "firstPrimaryRequiresScroll": null,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head/mobile-petitions.png"
+    },
+    {
+      "label": "mobile-enroll-initial",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollHeight": 1667,
+      "screensTall": 1.98,
+      "interactiveCount": {
+        "all": 9,
+        "visible": 8,
+        "primary": 1,
+        "secondary": 3
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Реєстрація v2"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "Відновити доступ",
+        "English"
+      ],
+      "textChars": 1340,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 117,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 190,
+            "w": 79,
+            "h": 19
+          }
+        },
+        {
+          "text": "Відновити доступ",
+          "cls": "",
+          "rect": {
+            "top": 121,
+            "left": 287,
+            "w": 71,
+            "h": 36
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 376,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "← До списку петицій",
+          "cls": "btn--link",
+          "rect": {
+            "top": 215,
+            "left": 28,
+            "w": 131,
+            "h": 18
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 932,
+            "left": 53,
+            "w": 272,
+            "h": 44
+          }
+        },
+        {
+          "text": "Що це за файл?",
+          "cls": "btn--link",
+          "rect": {
+            "top": 993,
+            "left": 53,
+            "w": 99,
+            "h": 18
+          }
+        },
+        {
+          "text": "sign.upload.browse",
+          "cls": "btn btn--ghost btn--small",
+          "rect": {
+            "top": 1373,
+            "left": 121,
+            "w": 149,
+            "h": 34
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Завантажити файл для підпису",
+          "rect": {
+            "top": 932,
+            "left": 53,
+            "w": 272,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "Файл для підпису в Дії",
+          "rect": {
+            "top": 660,
+            "left": 28,
+            "w": 334,
+            "h": 393
+          },
+          "textChars": 411,
+          "buttons": [
+            {
+              "text": "Завантажити файл для підпису",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Що це за файл?",
+              "cls": "btn--link"
+            }
+          ]
+        },
+        {
+          "title": "Файл .p7s з Дія QES",
+          "rect": {
+            "top": 1077,
+            "left": 28,
+            "w": 334,
+            "h": 396
+          },
+          "textChars": 280,
+          "buttons": [
+            {
+              "text": "sign.upload.browse",
+              "cls": "btn btn--ghost btn--small"
+            }
+          ]
+        }
+      ],
+      "firstPrimaryTop": 932,
+      "firstPrimaryRequiresScroll": true,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head/mobile-enroll-initial.png"
+    },
+    {
+      "label": "mobile-enroll-after-first-cta",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollHeight": 1763,
+      "screensTall": 2.09,
+      "interactiveCount": {
+        "all": 9,
+        "visible": 8,
+        "primary": 1,
+        "secondary": 3
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Реєстрація v2"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "Відновити доступ",
+        "English"
+      ],
+      "textChars": 1480,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": -403,
+            "left": 117,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": -403,
+            "left": 190,
+            "w": 79,
+            "h": 19
+          }
+        },
+        {
+          "text": "Відновити доступ",
+          "cls": "",
+          "rect": {
+            "top": -411,
+            "left": 287,
+            "w": 71,
+            "h": 36
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": -403,
+            "left": 376,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "← До списку петицій",
+          "cls": "btn--link",
+          "rect": {
+            "top": -317,
+            "left": 28,
+            "w": 131,
+            "h": 18
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 400,
+            "left": 53,
+            "w": 272,
+            "h": 44
+          }
+        },
+        {
+          "text": "Що це за файл?",
+          "cls": "btn--link",
+          "rect": {
+            "top": 556,
+            "left": 53,
+            "w": 99,
+            "h": 18
+          }
+        },
+        {
+          "text": "sign.upload.browse",
+          "cls": "btn btn--ghost btn--small",
+          "rect": {
+            "top": 937,
+            "left": 121,
+            "w": 149,
+            "h": 34
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Завантажити файл для підпису",
+          "rect": {
+            "top": 400,
+            "left": 53,
+            "w": 272,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "Файл для підпису в Дії",
+          "rect": {
+            "top": 128,
+            "left": 28,
+            "w": 334,
+            "h": 489
+          },
+          "textChars": 551,
+          "buttons": [
+            {
+              "text": "Завантажити файл для підпису",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Що це за файл?",
+              "cls": "btn--link"
+            }
+          ]
+        },
+        {
+          "title": "Файл .p7s з Дія QES",
+          "rect": {
+            "top": 640,
+            "left": 28,
+            "w": 334,
+            "h": 396
+          },
+          "textChars": 280,
+          "buttons": [
+            {
+              "text": "sign.upload.browse",
+              "cls": "btn btn--ghost btn--small"
+            }
+          ]
+        }
+      ],
+      "firstPrimaryTop": 400,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head/mobile-enroll-after-first-cta.png"
+    },
+    {
+      "label": "mobile-recover",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollHeight": 1535,
+      "screensTall": 1.82,
+      "interactiveCount": {
+        "all": 6,
+        "visible": 6,
+        "primary": 1,
+        "secondary": 1
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Відновлення"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "Відновити доступ",
+        "English"
+      ],
+      "textChars": 1423,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 117,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 190,
+            "w": 79,
+            "h": 19
+          }
+        },
+        {
+          "text": "Відновити доступ",
+          "cls": "",
+          "rect": {
+            "top": 121,
+            "left": 287,
+            "w": 71,
+            "h": 36
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 376,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "← До списку",
+          "cls": "btn--link",
+          "rect": {
+            "top": 215,
+            "left": 28,
+            "w": 80,
+            "h": 18
+          }
+        },
+        {
+          "text": "До списку петицій",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 1297,
+            "left": 28,
+            "w": 177,
+            "h": 44
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "До списку петицій",
+          "rect": {
+            "top": 1297,
+            "left": 28,
+            "w": 177,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "v2: лише хмарна синхронізація Passkey",
+          "rect": {
+            "top": 291,
+            "left": 28,
+            "w": 334,
+            "h": 577
+          },
+          "textChars": 601,
+          "buttons": []
+        },
+        {
+          "title": "v3: щорічна перереєстрація через Дію",
+          "rect": {
+            "top": 892,
+            "left": 28,
+            "w": 334,
+            "h": 381
+          },
+          "textChars": 491,
+          "buttons": []
+        }
+      ],
+      "firstPrimaryTop": 1297,
+      "firstPrimaryRequiresScroll": true,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head/mobile-recover.png"
+    },
+    {
+      "label": "mobile-lang-toggle",
+      "beforeLabel": "English",
+      "afterLabel": "Українська",
+      "charsBefore": 1926,
+      "charsAfter": 1885,
+      "charDelta": -41,
+      "elapsedMs": 275
+    },
+    {
+      "label": "desktop-landing",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "scrollHeight": 1126,
+      "screensTall": 1.25,
+      "interactiveCount": {
+        "all": 5,
+        "visible": 5,
+        "primary": 1,
+        "secondary": 0
+      },
+      "panelCount": 0,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Що гарантує v2",
+        "Чого не гарантує цей демо"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "Відновити доступ",
+        "English"
+      ],
+      "textChars": 1926,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 885,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 958,
+            "w": 79,
+            "h": 19
+          }
+        },
+        {
+          "text": "Відновити доступ",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1055,
+            "w": 126,
+            "h": 19
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1199,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "До петицій",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 889,
+            "left": 186,
+            "w": 123,
+            "h": 44
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "До петицій",
+          "rect": {
+            "top": 889,
+            "left": 186,
+            "w": 123,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [],
+      "firstPrimaryTop": 889,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head/desktop-landing.png"
+    },
+    {
+      "label": "desktop-petitions",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "scrollHeight": 900,
+      "screensTall": 1,
+      "interactiveCount": {
+        "all": 4,
+        "visible": 4,
+        "primary": 0,
+        "secondary": 0
+      },
+      "panelCount": 0,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Відкриті петиції"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "Відновити доступ",
+        "English"
+      ],
+      "textChars": 806,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 885,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 958,
+            "w": 79,
+            "h": 19
+          }
+        },
+        {
+          "text": "Відновити доступ",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1055,
+            "w": 126,
+            "h": 19
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1199,
+            "w": 55,
+            "h": 19
+          }
+        }
+      ],
+      "primaryRects": [],
+      "panelInfo": [],
+      "firstPrimaryTop": null,
+      "firstPrimaryRequiresScroll": null,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head/desktop-petitions.png"
+    },
+    {
+      "label": "desktop-enroll-initial",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "scrollHeight": 1332,
+      "screensTall": 1.48,
+      "interactiveCount": {
+        "all": 9,
+        "visible": 8,
+        "primary": 1,
+        "secondary": 3
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Реєстрація v2"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "Відновити доступ",
+        "English"
+      ],
+      "textChars": 1340,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 885,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 958,
+            "w": 79,
+            "h": 19
+          }
+        },
+        {
+          "text": "Відновити доступ",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1055,
+            "w": 126,
+            "h": 19
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1199,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "← До списку петицій",
+          "cls": "btn--link",
+          "rect": {
+            "top": 197,
+            "left": 186,
+            "w": 127,
+            "h": 18
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 628,
+            "left": 219,
+            "w": 263,
+            "h": 44
+          }
+        },
+        {
+          "text": "Що це за файл?",
+          "cls": "btn--link",
+          "rect": {
+            "top": 689,
+            "left": 219,
+            "w": 96,
+            "h": 18
+          }
+        },
+        {
+          "text": "sign.upload.browse",
+          "cls": "btn btn--ghost btn--small",
+          "rect": {
+            "top": 1036,
+            "left": 644,
+            "w": 152,
+            "h": 34
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Завантажити файл для підпису",
+          "rect": {
+            "top": 628,
+            "left": 219,
+            "w": 263,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "Файл для підпису в Дії",
+          "rect": {
+            "top": 436,
+            "left": 186,
+            "w": 1068,
+            "h": 317
+          },
+          "textChars": 411,
+          "buttons": [
+            {
+              "text": "Завантажити файл для підпису",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Що це за файл?",
+              "cls": "btn--link"
+            }
+          ]
+        },
+        {
+          "title": "Файл .p7s з Дія QES",
+          "rect": {
+            "top": 777,
+            "left": 186,
+            "w": 1068,
+            "h": 363
+          },
+          "textChars": 280,
+          "buttons": [
+            {
+              "text": "sign.upload.browse",
+              "cls": "btn btn--ghost btn--small"
+            }
+          ]
+        }
+      ],
+      "firstPrimaryTop": 628,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head/desktop-enroll-initial.png"
+    },
+    {
+      "label": "desktop-enroll-after-first-cta",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "scrollHeight": 1385,
+      "screensTall": 1.54,
+      "interactiveCount": {
+        "all": 9,
+        "visible": 8,
+        "primary": 1,
+        "secondary": 3
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Реєстрація v2"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "Відновити доступ",
+        "English"
+      ],
+      "textChars": 1480,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 885,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 958,
+            "w": 79,
+            "h": 19
+          }
+        },
+        {
+          "text": "Відновити доступ",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1055,
+            "w": 126,
+            "h": 19
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1199,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "← До списку петицій",
+          "cls": "btn--link",
+          "rect": {
+            "top": 197,
+            "left": 186,
+            "w": 127,
+            "h": 18
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 628,
+            "left": 219,
+            "w": 263,
+            "h": 44
+          }
+        },
+        {
+          "text": "Що це за файл?",
+          "cls": "btn--link",
+          "rect": {
+            "top": 743,
+            "left": 219,
+            "w": 96,
+            "h": 18
+          }
+        },
+        {
+          "text": "sign.upload.browse",
+          "cls": "btn btn--ghost btn--small",
+          "rect": {
+            "top": 1089,
+            "left": 644,
+            "w": 152,
+            "h": 34
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Завантажити файл для підпису",
+          "rect": {
+            "top": 628,
+            "left": 219,
+            "w": 263,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "Файл для підпису в Дії",
+          "rect": {
+            "top": 436,
+            "left": 186,
+            "w": 1068,
+            "h": 371
+          },
+          "textChars": 551,
+          "buttons": [
+            {
+              "text": "Завантажити файл для підпису",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Що це за файл?",
+              "cls": "btn--link"
+            }
+          ]
+        },
+        {
+          "title": "Файл .p7s з Дія QES",
+          "rect": {
+            "top": 831,
+            "left": 186,
+            "w": 1068,
+            "h": 363
+          },
+          "textChars": 280,
+          "buttons": [
+            {
+              "text": "sign.upload.browse",
+              "cls": "btn btn--ghost btn--small"
+            }
+          ]
+        }
+      ],
+      "firstPrimaryTop": 628,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head/desktop-enroll-after-first-cta.png"
+    },
+    {
+      "label": "desktop-recover",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "scrollHeight": 1099,
+      "screensTall": 1.22,
+      "interactiveCount": {
+        "all": 6,
+        "visible": 6,
+        "primary": 1,
+        "secondary": 1
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES v2",
+        "Відновлення"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Реєстрація",
+        "Відновити доступ",
+        "English"
+      ],
+      "textChars": 1423,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 885,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Реєстрація",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 958,
+            "w": 79,
+            "h": 19
+          }
+        },
+        {
+          "text": "Відновити доступ",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1055,
+            "w": 126,
+            "h": 19
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 119,
+            "left": 1199,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "← До списку",
+          "cls": "btn--link",
+          "rect": {
+            "top": 197,
+            "left": 186,
+            "w": 77,
+            "h": 18
+          }
+        },
+        {
+          "text": "До списку петицій",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 863,
+            "left": 186,
+            "w": 173,
+            "h": 44
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "До списку петицій",
+          "rect": {
+            "top": 863,
+            "left": 186,
+            "w": 173,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "v2: лише хмарна синхронізація Passkey",
+          "rect": {
+            "top": 273,
+            "left": 186,
+            "w": 1068,
+            "h": 284
+          },
+          "textChars": 601,
+          "buttons": []
+        },
+        {
+          "title": "v3: щорічна перереєстрація через Дію",
+          "rect": {
+            "top": 581,
+            "left": 186,
+            "w": 1068,
+            "h": 258
+          },
+          "textChars": 491,
+          "buttons": []
+        }
+      ],
+      "firstPrimaryTop": 863,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/head/desktop-recover.png"
+    },
+    {
+      "label": "desktop-lang-toggle",
+      "beforeLabel": "English",
+      "afterLabel": "Українська",
+      "charsBefore": 1926,
+      "charsAfter": 1885,
+      "charDelta": -41,
+      "elapsedMs": 289
+    }
+  ]
+}

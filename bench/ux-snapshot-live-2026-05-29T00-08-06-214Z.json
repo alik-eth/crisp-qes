@@ -1,0 +1,1515 @@
+{
+  "url": "https://crisp-qes-web.fly.dev",
+  "tag": "live",
+  "capturedAt": "2026-05-29T00-08-06-214Z",
+  "records": [
+    {
+      "label": "mobile-landing",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollHeight": 1992,
+      "screensTall": 2.36,
+      "interactiveCount": {
+        "all": 4,
+        "visible": 4,
+        "primary": 1,
+        "secondary": 0
+      },
+      "panelCount": 0,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES",
+        "Що гарантовано",
+        "Що не гарантовано"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Створити петицію",
+        "English"
+      ],
+      "textChars": 1771,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 107,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Створити петицію",
+          "cls": "",
+          "rect": {
+            "top": 121,
+            "left": 180,
+            "w": 109,
+            "h": 36
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 307,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Переглянути петиції",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 1771,
+            "left": 28,
+            "w": 191,
+            "h": 44
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Переглянути петиції",
+          "rect": {
+            "top": 1771,
+            "left": 28,
+            "w": 191,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [],
+      "firstPrimaryTop": 1771,
+      "firstPrimaryRequiresScroll": true,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/live/mobile-landing.png"
+    },
+    {
+      "label": "mobile-petitions",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollHeight": 1233,
+      "screensTall": 1.46,
+      "interactiveCount": {
+        "all": 4,
+        "visible": 4,
+        "primary": 0,
+        "secondary": 0
+      },
+      "panelCount": 0,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES",
+        "Відкриті петиції"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Створити петицію",
+        "English"
+      ],
+      "textChars": 609,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 107,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Створити петицію",
+          "cls": "",
+          "rect": {
+            "top": 121,
+            "left": 180,
+            "w": 109,
+            "h": 36
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 307,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Підписати",
+          "cls": "btn btn--small",
+          "rect": {
+            "top": 976,
+            "left": 204,
+            "w": 95,
+            "h": 34
+          }
+        }
+      ],
+      "primaryRects": [],
+      "panelInfo": [],
+      "firstPrimaryTop": null,
+      "firstPrimaryRequiresScroll": null,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/live/mobile-petitions.png"
+    },
+    {
+      "label": "mobile-sign-initial",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollHeight": 1564,
+      "screensTall": 1.85,
+      "interactiveCount": {
+        "all": 8,
+        "visible": 7,
+        "primary": 1,
+        "secondary": 3
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES",
+        "Підписання петиції №2"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Створити петицію",
+        "English"
+      ],
+      "textChars": 889,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": -591,
+            "left": 107,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Створити петицію",
+          "cls": "",
+          "rect": {
+            "top": -599,
+            "left": 180,
+            "w": 109,
+            "h": 36
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": -591,
+            "left": 307,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "← До списку петицій",
+          "cls": "btn--link",
+          "rect": {
+            "top": -505,
+            "left": 28,
+            "w": 131,
+            "h": 18
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 127,
+            "left": 53,
+            "w": 272,
+            "h": 44
+          }
+        },
+        {
+          "text": "Що це за файл?",
+          "cls": "btn--link",
+          "rect": {
+            "top": 188,
+            "left": 53,
+            "w": 99,
+            "h": 18
+          }
+        },
+        {
+          "text": "Обрати файл",
+          "cls": "btn btn--ghost btn--small",
+          "rect": {
+            "top": 567,
+            "left": 138,
+            "w": 114,
+            "h": 34
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Завантажити файл для підпису",
+          "rect": {
+            "top": 127,
+            "left": 53,
+            "w": 272,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "0. Файл для підпису в Дії",
+          "rect": {
+            "top": -82,
+            "left": 28,
+            "w": 334,
+            "h": 330
+          },
+          "textChars": 299,
+          "buttons": [
+            {
+              "text": "Завантажити файл для підпису",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Що це за файл?",
+              "cls": "btn--link"
+            }
+          ]
+        },
+        {
+          "title": "1. Завантажити файл Дія QES",
+          "rect": {
+            "top": 273,
+            "left": 28,
+            "w": 334,
+            "h": 395
+          },
+          "textChars": 209,
+          "buttons": [
+            {
+              "text": "Обрати файл",
+              "cls": "btn btn--ghost btn--small"
+            }
+          ]
+        }
+      ],
+      "firstPrimaryTop": 127,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/live/mobile-sign-initial.png"
+    },
+    {
+      "label": "mobile-sign-after-vote",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollHeight": 1660,
+      "screensTall": 1.97,
+      "interactiveCount": {
+        "all": 8,
+        "visible": 7,
+        "primary": 1,
+        "secondary": 3
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES",
+        "Підписання петиції №2"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Створити петицію",
+        "English"
+      ],
+      "textChars": 1029,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": -591,
+            "left": 107,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Створити петицію",
+          "cls": "",
+          "rect": {
+            "top": -599,
+            "left": 180,
+            "w": 109,
+            "h": 36
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": -591,
+            "left": 307,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "← До списку петицій",
+          "cls": "btn--link",
+          "rect": {
+            "top": -505,
+            "left": 28,
+            "w": 131,
+            "h": 18
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 127,
+            "left": 53,
+            "w": 272,
+            "h": 44
+          }
+        },
+        {
+          "text": "Що це за файл?",
+          "cls": "btn--link",
+          "rect": {
+            "top": 284,
+            "left": 53,
+            "w": 99,
+            "h": 18
+          }
+        },
+        {
+          "text": "Обрати файл",
+          "cls": "btn btn--ghost btn--small",
+          "rect": {
+            "top": 663,
+            "left": 138,
+            "w": 114,
+            "h": 34
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Завантажити файл для підпису",
+          "rect": {
+            "top": 127,
+            "left": 53,
+            "w": 272,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "0. Файл для підпису в Дії",
+          "rect": {
+            "top": -82,
+            "left": 28,
+            "w": 334,
+            "h": 426
+          },
+          "textChars": 439,
+          "buttons": [
+            {
+              "text": "Завантажити файл для підпису",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Що це за файл?",
+              "cls": "btn--link"
+            }
+          ]
+        },
+        {
+          "title": "1. Завантажити файл Дія QES",
+          "rect": {
+            "top": 368,
+            "left": 28,
+            "w": 334,
+            "h": 395
+          },
+          "textChars": 209,
+          "buttons": [
+            {
+              "text": "Обрати файл",
+              "cls": "btn btn--ghost btn--small"
+            }
+          ]
+        }
+      ],
+      "firstPrimaryTop": 127,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/live/mobile-sign-after-vote.png"
+    },
+    {
+      "label": "mobile-create-initial",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollHeight": 1996,
+      "screensTall": 2.36,
+      "interactiveCount": {
+        "all": 9,
+        "visible": 9,
+        "primary": 1,
+        "secondary": 1
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES",
+        "Створити петицію",
+        "Зміст петиції",
+        "Гаманець і публікація"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Створити петицію",
+        "English"
+      ],
+      "textChars": 1191,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 107,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Створити петицію",
+          "cls": "",
+          "rect": {
+            "top": 121,
+            "left": 180,
+            "w": 109,
+            "h": 36
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 129,
+            "left": 307,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "WCWalletConnectQR-код для мобільного гаманця",
+          "cls": "wallet-pick",
+          "rect": {
+            "top": 1337,
+            "left": 53,
+            "w": 284,
+            "h": 66
+          }
+        },
+        {
+          "text": "Опублікувати петицію · 0.001 ETH",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 1615,
+            "left": 53,
+            "w": 283,
+            "h": 44
+          }
+        },
+        {
+          "text": "Назад до списку",
+          "cls": "btn btn--link",
+          "rect": {
+            "top": 1673,
+            "left": 53,
+            "w": 119,
+            "h": 18
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Опублікувати петицію · 0.001 ETH",
+          "rect": {
+            "top": 1615,
+            "left": 53,
+            "w": 283,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "Зміст петиції",
+          "rect": {
+            "top": 393,
+            "left": 28,
+            "w": 334,
+            "h": 775
+          },
+          "textChars": 286,
+          "buttons": []
+        },
+        {
+          "title": "Гаманець і публікація",
+          "rect": {
+            "top": 1192,
+            "left": 28,
+            "w": 334,
+            "h": 567
+          },
+          "textChars": 521,
+          "buttons": [
+            {
+              "text": "WCWalletConnectQR-код для мобільного гам",
+              "cls": "wallet-pick"
+            },
+            {
+              "text": "Опублікувати петицію · 0.001 ETH",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Назад до списку",
+              "cls": "btn btn--link"
+            }
+          ]
+        }
+      ],
+      "firstPrimaryTop": 1615,
+      "firstPrimaryRequiresScroll": true,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/live/mobile-create-initial.png"
+    },
+    {
+      "label": "mobile-create-after-first-cta",
+      "viewport": {
+        "w": 390,
+        "h": 844
+      },
+      "scrollHeight": 1996,
+      "screensTall": 2.36,
+      "interactiveCount": {
+        "all": 9,
+        "visible": 9,
+        "primary": 1,
+        "secondary": 1
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES",
+        "Створити петицію",
+        "Зміст петиції",
+        "Гаманець і публікація"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Створити петицію",
+        "English"
+      ],
+      "textChars": 1191,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": -1023,
+            "left": 107,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Створити петицію",
+          "cls": "",
+          "rect": {
+            "top": -1031,
+            "left": 180,
+            "w": 109,
+            "h": 36
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": -1023,
+            "left": 307,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "WCWalletConnectQR-код для мобільного гаманця",
+          "cls": "wallet-pick",
+          "rect": {
+            "top": 185,
+            "left": 53,
+            "w": 284,
+            "h": 66
+          }
+        },
+        {
+          "text": "Опублікувати петицію · 0.001 ETH",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 463,
+            "left": 53,
+            "w": 283,
+            "h": 44
+          }
+        },
+        {
+          "text": "Назад до списку",
+          "cls": "btn btn--link",
+          "rect": {
+            "top": 521,
+            "left": 53,
+            "w": 119,
+            "h": 18
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Опублікувати петицію · 0.001 ETH",
+          "rect": {
+            "top": 463,
+            "left": 53,
+            "w": 283,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "Зміст петиції",
+          "rect": {
+            "top": -759,
+            "left": 28,
+            "w": 334,
+            "h": 775
+          },
+          "textChars": 286,
+          "buttons": []
+        },
+        {
+          "title": "Гаманець і публікація",
+          "rect": {
+            "top": 40,
+            "left": 28,
+            "w": 334,
+            "h": 567
+          },
+          "textChars": 521,
+          "buttons": [
+            {
+              "text": "WCWalletConnectQR-код для мобільного гам",
+              "cls": "wallet-pick"
+            },
+            {
+              "text": "Опублікувати петицію · 0.001 ETH",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Назад до списку",
+              "cls": "btn btn--link"
+            }
+          ]
+        }
+      ],
+      "firstPrimaryTop": 463,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/live/mobile-create-after-first-cta.png"
+    },
+    {
+      "label": "mobile-lang-toggle",
+      "beforeLabel": "English",
+      "afterLabel": "Українська",
+      "charsBefore": 1771,
+      "charsAfter": 1688,
+      "charDelta": -83,
+      "elapsedMs": 282
+    },
+    {
+      "label": "desktop-landing",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "scrollHeight": 1131,
+      "screensTall": 1.26,
+      "interactiveCount": {
+        "all": 4,
+        "visible": 4,
+        "primary": 1,
+        "secondary": 0
+      },
+      "panelCount": 0,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES",
+        "Що гарантовано",
+        "Що не гарантовано"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Створити петицію",
+        "English"
+      ],
+      "textChars": 1771,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 96,
+            "left": 982,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Створити петицію",
+          "cls": "",
+          "rect": {
+            "top": 96,
+            "left": 1055,
+            "w": 126,
+            "h": 19
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 96,
+            "left": 1199,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Переглянути петиції",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 895,
+            "left": 186,
+            "w": 188,
+            "h": 44
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Переглянути петиції",
+          "rect": {
+            "top": 895,
+            "left": 186,
+            "w": 188,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [],
+      "firstPrimaryTop": 895,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/live/desktop-landing.png"
+    },
+    {
+      "label": "desktop-petitions",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "scrollHeight": 1040,
+      "screensTall": 1.16,
+      "interactiveCount": {
+        "all": 4,
+        "visible": 4,
+        "primary": 0,
+        "secondary": 0
+      },
+      "panelCount": 0,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES",
+        "Відкриті петиції"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Створити петицію",
+        "English"
+      ],
+      "textChars": 609,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 96,
+            "left": 982,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Створити петицію",
+          "cls": "",
+          "rect": {
+            "top": 96,
+            "left": 1055,
+            "w": 126,
+            "h": 19
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 96,
+            "left": 1199,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Підписати",
+          "cls": "btn btn--small",
+          "rect": {
+            "top": 772,
+            "left": 935,
+            "w": 96,
+            "h": 34
+          }
+        }
+      ],
+      "primaryRects": [],
+      "panelInfo": [],
+      "firstPrimaryTop": null,
+      "firstPrimaryRequiresScroll": null,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/live/desktop-petitions.png"
+    },
+    {
+      "label": "desktop-sign-initial",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "scrollHeight": 1194,
+      "screensTall": 1.33,
+      "interactiveCount": {
+        "all": 8,
+        "visible": 7,
+        "primary": 1,
+        "secondary": 3
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES",
+        "Підписання петиції №2"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Створити петицію",
+        "English"
+      ],
+      "textChars": 889,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 96,
+            "left": 982,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Створити петицію",
+          "cls": "",
+          "rect": {
+            "top": 96,
+            "left": 1055,
+            "w": 126,
+            "h": 19
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 96,
+            "left": 1199,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "← До списку петицій",
+          "cls": "btn--link",
+          "rect": {
+            "top": 173,
+            "left": 186,
+            "w": 127,
+            "h": 18
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 546,
+            "left": 219,
+            "w": 263,
+            "h": 44
+          }
+        },
+        {
+          "text": "Що це за файл?",
+          "cls": "btn--link",
+          "rect": {
+            "top": 607,
+            "left": 219,
+            "w": 96,
+            "h": 18
+          }
+        },
+        {
+          "text": "Обрати файл",
+          "cls": "btn btn--ghost btn--small",
+          "rect": {
+            "top": 898,
+            "left": 663,
+            "w": 114,
+            "h": 34
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Завантажити файл для підпису",
+          "rect": {
+            "top": 546,
+            "left": 219,
+            "w": 263,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "0. Файл для підпису в Дії",
+          "rect": {
+            "top": 375,
+            "left": 186,
+            "w": 1068,
+            "h": 296
+          },
+          "textChars": 299,
+          "buttons": [
+            {
+              "text": "Завантажити файл для підпису",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Що це за файл?",
+              "cls": "btn--link"
+            }
+          ]
+        },
+        {
+          "title": "1. Завантажити файл Дія QES",
+          "rect": {
+            "top": 695,
+            "left": 186,
+            "w": 1068,
+            "h": 307
+          },
+          "textChars": 209,
+          "buttons": [
+            {
+              "text": "Обрати файл",
+              "cls": "btn btn--ghost btn--small"
+            }
+          ]
+        }
+      ],
+      "firstPrimaryTop": 546,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/live/desktop-sign-initial.png"
+    },
+    {
+      "label": "desktop-sign-after-vote",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "scrollHeight": 1247,
+      "screensTall": 1.39,
+      "interactiveCount": {
+        "all": 8,
+        "visible": 7,
+        "primary": 1,
+        "secondary": 3
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES",
+        "Підписання петиції №2"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Створити петицію",
+        "English"
+      ],
+      "textChars": 1029,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 96,
+            "left": 982,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Створити петицію",
+          "cls": "",
+          "rect": {
+            "top": 96,
+            "left": 1055,
+            "w": 126,
+            "h": 19
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 96,
+            "left": 1199,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "← До списку петицій",
+          "cls": "btn--link",
+          "rect": {
+            "top": 173,
+            "left": 186,
+            "w": 127,
+            "h": 18
+          }
+        },
+        {
+          "text": "Завантажити файл для підпису",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 546,
+            "left": 219,
+            "w": 263,
+            "h": 44
+          }
+        },
+        {
+          "text": "Що це за файл?",
+          "cls": "btn--link",
+          "rect": {
+            "top": 661,
+            "left": 219,
+            "w": 96,
+            "h": 18
+          }
+        },
+        {
+          "text": "Обрати файл",
+          "cls": "btn btn--ghost btn--small",
+          "rect": {
+            "top": 951,
+            "left": 663,
+            "w": 114,
+            "h": 34
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Завантажити файл для підпису",
+          "rect": {
+            "top": 546,
+            "left": 219,
+            "w": 263,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "0. Файл для підпису в Дії",
+          "rect": {
+            "top": 375,
+            "left": 186,
+            "w": 1068,
+            "h": 350
+          },
+          "textChars": 439,
+          "buttons": [
+            {
+              "text": "Завантажити файл для підпису",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Що це за файл?",
+              "cls": "btn--link"
+            }
+          ]
+        },
+        {
+          "title": "1. Завантажити файл Дія QES",
+          "rect": {
+            "top": 749,
+            "left": 186,
+            "w": 1068,
+            "h": 307
+          },
+          "textChars": 209,
+          "buttons": [
+            {
+              "text": "Обрати файл",
+              "cls": "btn btn--ghost btn--small"
+            }
+          ]
+        }
+      ],
+      "firstPrimaryTop": 546,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/live/desktop-sign-after-vote.png"
+    },
+    {
+      "label": "desktop-create-initial",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "scrollHeight": 1759,
+      "screensTall": 1.95,
+      "interactiveCount": {
+        "all": 9,
+        "visible": 9,
+        "primary": 1,
+        "secondary": 1
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES",
+        "Створити петицію",
+        "Зміст петиції",
+        "Гаманець і публікація"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Створити петицію",
+        "English"
+      ],
+      "textChars": 1191,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": 96,
+            "left": 982,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Створити петицію",
+          "cls": "",
+          "rect": {
+            "top": 96,
+            "left": 1055,
+            "w": 126,
+            "h": 19
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": 96,
+            "left": 1199,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "WCWalletConnectQR-код для мобільного гаманця",
+          "cls": "wallet-pick",
+          "rect": {
+            "top": 1175,
+            "left": 219,
+            "w": 1002,
+            "h": 66
+          }
+        },
+        {
+          "text": "Опублікувати петицію · 0.001 ETH",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 1391,
+            "left": 219,
+            "w": 280,
+            "h": 44
+          }
+        },
+        {
+          "text": "Назад до списку",
+          "cls": "btn btn--link",
+          "rect": {
+            "top": 1391,
+            "left": 513,
+            "w": 114,
+            "h": 44
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Опублікувати петицію · 0.001 ETH",
+          "rect": {
+            "top": 1391,
+            "left": 219,
+            "w": 280,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "Зміст петиції",
+          "rect": {
+            "top": 331,
+            "left": 186,
+            "w": 1068,
+            "h": 693
+          },
+          "textChars": 286,
+          "buttons": []
+        },
+        {
+          "title": "Гаманець і публікація",
+          "rect": {
+            "top": 1047,
+            "left": 186,
+            "w": 1068,
+            "h": 459
+          },
+          "textChars": 521,
+          "buttons": [
+            {
+              "text": "WCWalletConnectQR-код для мобільного гам",
+              "cls": "wallet-pick"
+            },
+            {
+              "text": "Опублікувати петицію · 0.001 ETH",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Назад до списку",
+              "cls": "btn btn--link"
+            }
+          ]
+        }
+      ],
+      "firstPrimaryTop": 1391,
+      "firstPrimaryRequiresScroll": true,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/live/desktop-create-initial.png"
+    },
+    {
+      "label": "desktop-create-after-first-cta",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "scrollHeight": 1759,
+      "screensTall": 1.95,
+      "interactiveCount": {
+        "all": 9,
+        "visible": 9,
+        "primary": 1,
+        "secondary": 1
+      },
+      "panelCount": 2,
+      "sectionCount": 1,
+      "headings": [
+        "CRISP-QES",
+        "Створити петицію",
+        "Зміст петиції",
+        "Гаманець і публікація"
+      ],
+      "navLabels": [
+        "Петиції",
+        "Створити петицію",
+        "English"
+      ],
+      "textChars": 1191,
+      "buttonLabels": [
+        {
+          "text": "Петиції",
+          "cls": "",
+          "rect": {
+            "top": -763,
+            "left": 982,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "Створити петицію",
+          "cls": "",
+          "rect": {
+            "top": -763,
+            "left": 1055,
+            "w": 126,
+            "h": 19
+          }
+        },
+        {
+          "text": "English",
+          "cls": "",
+          "rect": {
+            "top": -763,
+            "left": 1199,
+            "w": 55,
+            "h": 19
+          }
+        },
+        {
+          "text": "WCWalletConnectQR-код для мобільного гаманця",
+          "cls": "wallet-pick",
+          "rect": {
+            "top": 316,
+            "left": 219,
+            "w": 1002,
+            "h": 66
+          }
+        },
+        {
+          "text": "Опублікувати петицію · 0.001 ETH",
+          "cls": "btn btn--accent",
+          "rect": {
+            "top": 532,
+            "left": 219,
+            "w": 280,
+            "h": 44
+          }
+        },
+        {
+          "text": "Назад до списку",
+          "cls": "btn btn--link",
+          "rect": {
+            "top": 532,
+            "left": 513,
+            "w": 114,
+            "h": 44
+          }
+        }
+      ],
+      "primaryRects": [
+        {
+          "text": "Опублікувати петицію · 0.001 ETH",
+          "rect": {
+            "top": 532,
+            "left": 219,
+            "w": 280,
+            "h": 44
+          }
+        }
+      ],
+      "panelInfo": [
+        {
+          "title": "Зміст петиції",
+          "rect": {
+            "top": -528,
+            "left": 186,
+            "w": 1068,
+            "h": 693
+          },
+          "textChars": 286,
+          "buttons": []
+        },
+        {
+          "title": "Гаманець і публікація",
+          "rect": {
+            "top": 188,
+            "left": 186,
+            "w": 1068,
+            "h": 459
+          },
+          "textChars": 521,
+          "buttons": [
+            {
+              "text": "WCWalletConnectQR-код для мобільного гам",
+              "cls": "wallet-pick"
+            },
+            {
+              "text": "Опублікувати петицію · 0.001 ETH",
+              "cls": "btn btn--accent"
+            },
+            {
+              "text": "Назад до списку",
+              "cls": "btn btn--link"
+            }
+          ]
+        }
+      ],
+      "firstPrimaryTop": 532,
+      "firstPrimaryRequiresScroll": false,
+      "screenshot": "/data/Develop/crisp-qes/bench/ux-screens/live/desktop-create-after-first-cta.png"
+    },
+    {
+      "label": "desktop-lang-toggle",
+      "beforeLabel": "English",
+      "afterLabel": "Українська",
+      "charsBefore": 1771,
+      "charsAfter": 1688,
+      "charDelta": -83,
+      "elapsedMs": 289
+    }
+  ]
+}

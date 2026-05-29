@@ -13,7 +13,7 @@
     "nav": {
         "petitions": "Petitions",
         "enroll": "Enroll",
-        "recover": "Recover"
+        "recover": "Already enrolled?"
     },
     "landing": {
         "lede": "v2.1 splits identification from signing. Enrollment with a Diia QES + Passkey happens once. After that, every petition signature is just a Passkey tap — no fresh QES, no identity reveal. The chain sees a commitment, never an RNOKPP; the guarantee is still 'one RNOKPP, one vote'.",
@@ -28,7 +28,7 @@
         "limits": [
             "This demo runs the ciphernode as a single server, not a 5-of-7 committee. A compromised admin of that single server could mount a Sybil attack. In production this trust is split across seven independent operators via TSS.",
             "Proof generation runs in your browser in ~5–10 seconds (target). A modern device with SharedArrayBuffer and WebAuthn PRF support is required.",
-            "The BIP-39 mnemonic is shown once at enrollment. Save it — without it and without a synced Passkey, recovery is only possible after the next epoch.",
+            "Recovery in v2 relies on Passkey cloud sync (Apple / Google / Microsoft). If you lose every device and your Passkey is not synced, the v2 enrollment is locked until v3's yearly re-enrollment via Diia.",
             "Vote tallying is transparent in this demo. v2.2 will add FHE-aggregated ciphertexts: per-vote counts will be encrypted, and only the final result will be revealed after the deadline."
         ],
         "cta": "Browse petitions"
@@ -38,6 +38,8 @@
         "empty": "No petitions yet.",
         "loading": "Loading petitions…",
         "error": "Could not read the petition registry.",
+        "errorFallback": "The petition registry is temporarily unreachable. This is usually a transient RPC issue — try again in a moment.",
+        "errorRetry": "Retry",
         "card": {
             "id": "Petition #{{id}}",
             "deadline": "Deadline",
@@ -81,6 +83,10 @@
         "upload": {
             "title": "Diia QES (.p7s)",
             "intro": "Upload the file the Diia app produced under «Накласти КЕП». The file is needed for one thing: to prove to the ciphernode committee that you hold a valid RNOKPP. The RNOKPP itself never leaves your browser in the clear.",
+            "headline": "Drop your signed .p7s here",
+            "hint": "or click to choose a file",
+            "browse": "Choose file",
+            "parsing": "Parsing…",
             "wrongPrefix": "Not a Diia QES — subjectSerial does not start with TINUA-.",
             "parseError": "Failed to parse .p7s: {{detail}}",
             "parsed": "File parsed successfully"
@@ -146,7 +152,7 @@
         },
         "done": {
             "title": "Enrollment complete",
-            "body": "Your commitment is in the tree and the mnemonic is saved. You can now sign any open petition in seconds.",
+            "body": "Your commitment is in the tree and your Passkey is bound to this device. You can now sign any open petition in seconds.",
             "goto": "To petitions"
         }
     },
@@ -166,7 +172,7 @@
             "no": "No",
             "abstain": "Abstain",
             "signOnly": "Sign",
-            "missingEnrollment": "No enrollment on this device. Run «Enroll» or recover from your mnemonic."
+            "missingEnrollment": "No enrollment on this device. Run «Enroll», or sign in with the same Apple / Google / Microsoft account if your Passkey is cloud-synced."
         },
         "unlock": {
             "title": "Unlock your Passkey",

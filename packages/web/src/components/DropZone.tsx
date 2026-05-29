@@ -38,10 +38,10 @@ export function DropZone({ onFile, accept = ".p7s", busy }: Props) {
                 if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
             }}
         >
-            <p className="drop__headline">{t("sign.upload.headline")}</p>
-            <p className="drop__hint">{t("sign.upload.hint")}</p>
+            <p className="drop__headline">{t("enroll.upload.headline")}</p>
+            <p className="drop__hint">{t("enroll.upload.hint")}</p>
             <button className="btn btn--ghost btn--small" type="button" disabled={busy}>
-                {busy ? t("sign.upload.parsing") : t("sign.upload.browse")}
+                {busy ? t("enroll.upload.parsing") : t("enroll.upload.browse")}
             </button>
             <input
                 ref={inputRef}

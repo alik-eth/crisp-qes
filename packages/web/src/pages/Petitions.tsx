@@ -27,29 +27,45 @@ function totalVotes(p: PetitionView): number {
 export function Petitions({ onSign }: Props) {
     const { t, i18n } = useTranslation();
     const [items, setItems] = useState<PetitionView[] | null>(null);
-    const [err, setErr] = useState<string | null>(null);
+    const [err, setErr] = useState<boolean>(false);
+    const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
         let alive = true;
+        setErr(false);
+        setItems(null);
         (async () => {
             try {
                 const all = await readAllPetitions();
                 if (alive) setItems(all);
             } catch (e) {
-                if (alive) setErr(e instanceof Error ? e.message : String(e));
+                // Raw viem / RPC detail stays in console for debugging;
+                // the UI shows a translated, calm fallback (see RED-2 in
+                // bench/ux-results-2026-05-29.md).
+                console.error("[Petitions] readAllPetitions failed:", e);
+                if (alive) setErr(true);
             }
         })();
         return () => {
             alive = false;
         };
-    }, []);
+    }, [reloadKey]);
 
     if (err) {
         return (
             <section className="section">
                 <h2 className="section__title">{t("list.heading")}</h2>
                 <p className="error-line">{t("list.error")}</p>
-                <p className="note mono">{err}</p>
+                <p className="note">{t("list.errorFallback")}</p>
+                <div className="actions">
+                    <button
+                        className="btn"
+                        type="button"
+                        onClick={() => setReloadKey((k) => k + 1)}
+                    >
+                        {t("list.errorRetry")}
+                    </button>
+                </div>
             </section>
         );
     }
