@@ -74,6 +74,26 @@ export interface OprfConfig {
      * lifetime. Operators rotate this in lockstep with `OPRF_KEY`.
      */
     replayCacheTtlSec: number;
+    /**
+     * Enrollment epoch string baked into the .p7s payload-binding artifact
+     * (task #29). The citizen signs a JSON blob of the form
+     *   {"intent":"crisp-qes-enroll-v2","epoch":"<epoch>","blindedInput":"0x…"}
+     * in Diia; the OPRF service reconstructs those exact bytes from the
+     * request and asserts `signedAttrs.messageDigest == sha256(bytes)`. This
+     * binds the citizen's QES to THIS enrollment intent + THIS blinded
+     * input. Operators rotate this in lockstep with `OPRF_KEY` rotations so
+     * captured signatures from a previous epoch can't be replayed. Default
+     * `"v2-2026"`.
+     */
+    enrollmentEpoch: string;
+    /**
+     * When true (default), `/oprf/blind-eval` computes the expected
+     * messageDigest from the request's `blindedInput` + `enrollmentEpoch`
+     * and asserts the .p7s signedAttrs match. Set to false to skip the
+     * binding check — useful for tests against fixtures whose binding
+     * source isn't reconstructible. Env: `OPRF_ENFORCE_PAYLOAD_BINDING`.
+     */
+    enforcePayloadBinding: boolean;
 }
 
 function encodeScalarLE(s: bigint): Uint8Array {
@@ -241,6 +261,30 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OprfConfig {
         replayCacheTtlSec = n;
     }
 
+    // Enrollment epoch — interpolated verbatim into the JSON payload-binding
+    // artifact the citizen signs in Diia. Forbid control chars, space, quote,
+    // backslash so reconstruction stays byte-exact across client + server.
+    // `-` IS allowed so the default "v2-2026" works.
+    const enrollmentEpoch = env.OPRF_ENROLLMENT_EPOCH ?? "v2-2026";
+    if (
+        enrollmentEpoch.length === 0 ||
+        /[\x00-\x20"\\]/.test(enrollmentEpoch)
+    ) {
+        throw new Error(
+            "[oprf] OPRF_ENROLLMENT_EPOCH must be a non-empty ASCII string " +
+                "without quotes, backslashes, spaces, or control characters " +
+                `(got ${JSON.stringify(enrollmentEpoch)})`,
+        );
+    }
+
+    // Payload-binding enforcement. Defaults to true; operators set
+    // OPRF_ENFORCE_PAYLOAD_BINDING=false only when bridging legacy clients
+    // that don't yet sign over the canonical JSON binding.
+    const enforcePayloadBinding =
+        env.OPRF_ENFORCE_PAYLOAD_BINDING === undefined
+            ? true
+            : env.OPRF_ENFORCE_PAYLOAD_BINDING !== "false";
+
     return {
         port: Number(env.PORT ?? 8788),
         isProd,
@@ -253,6 +297,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): OprfConfig {
         signingTimeMaxAgeSec,
         maxBlindEvalPerRnokppPerEpoch,
         replayCacheTtlSec,
+        enrollmentEpoch,
+        enforcePayloadBinding,
         chainId,
         enrollmentRegistry,
         corsAllowedOrigins,

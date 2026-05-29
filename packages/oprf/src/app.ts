@@ -33,6 +33,7 @@ import {
 } from "./oprf.js";
 import {
     AttestationError,
+    buildEnrollmentBindingBytes,
     verifyAttestation,
 } from "./attestation.js";
 import { ageInYears } from "./dob.js";
@@ -171,8 +172,14 @@ export async function buildApp(
 
         const { blindedInput, attestation } = parsed.data;
 
-        // 1. Diia attestation gate. v2.1-prod also binds attestation
-        //    payload → blindedInput; demo only checks the TINUA- prefix.
+        // 1. Diia attestation gate. Verifies the .p7s envelope AND binds
+        //    `signedAttrs.messageDigest` to sha256 of the canonical
+        //    enrollment-binding artifact reconstructed from THIS request
+        //    + the server's enrollment epoch. The reconstruction must be
+        //    byte-exact (see buildEnrollmentBindingBytes); any divergence
+        //    means the citizen signed a different document and we
+        //    fail-closed with PayloadMismatch.
+        //
         //    The same call extracts the DOB attribute from the leaf cert
         //    (or returns null if absent), which we gate on next.
         let dob: Date | null;
@@ -180,9 +187,18 @@ export async function buildApp(
         let p7sBytes: Uint8Array;
         try {
             p7sBytes = base64ToBytes(attestation.p7s);
+            const expectedDigest = cfg.enforcePayloadBinding
+                ? sha256(
+                      buildEnrollmentBindingBytes(
+                          cfg.enrollmentEpoch,
+                          blindedInput,
+                      ),
+                  )
+                : null;
             const verified = verifyAttestation(p7sBytes, {
                 trustRoots: cfg.trustRoots,
                 signingTimeMaxAgeSec: cfg.signingTimeMaxAgeSec,
+                expectedDigest,
             });
             dob = verified.dob;
             subjectSerial = verified.subjectSerial;

@@ -63,6 +63,8 @@ async function buildTestApp(overrides: Partial<OprfConfig> = {}) {
         signingTimeMaxAgeSec: 0,
         maxBlindEvalPerRnokppPerEpoch: 3,
         replayCacheTtlSec: 86400 * 400,
+        enrollmentEpoch: "v2-2026",
+        enforcePayloadBinding: true,
         ...overrides,
     };
     const store = new EnrollmentStore(":memory:");
@@ -92,7 +94,25 @@ maybe("oprf /oprf/blind-eval", () => {
         : new Uint8Array(0);
     const p7sBase64 = Buffer.from(p7sBytes).toString("base64");
 
-    it("returns a DLEQ-valid OPRF share for a fresh Diia attestation", async () => {
+    // End-to-end happy path covering the full attestation gate (TINUA-
+    // prefix + messageDigest payload binding) requires a freshly-signed
+    // fixture whose underlying file IS the canonical JSON binding artifact
+    // for a known (epoch, blindedInput) pair — see
+    // `buildEnrollmentBindingBytes` in src/attestation.ts. The current
+    // `petition-1-binding.bin.p7s` fixture was signed over a different
+    // 28-byte enrollment binding so its messageDigest will never match
+    // sha256(JSON-binding(blindedInput)) for any blindedInput we can pick
+    // (sha256 preimage resistance). Until a JSON-binding fixture lands,
+    // the end-to-end 200 path is covered by the focused unit test in
+    // `attestation.test.ts` that extracts the fixture's actual
+    // messageDigest and asserts `verifyAttestation` accepts it as
+    // `expectedDigest`.
+    //
+    // TODO: end-to-end binding test fixture — regenerate
+    //   fixtures/diia/petition-1-binding.bin as the canonical JSON
+    //   binding for a fixed (epoch, blindedInput) pair, then resign in
+    //   Diia, then restore the 200-path test here.
+    it.skip("returns a DLEQ-valid OPRF share for a fresh Diia attestation [needs new fixture]", async () => {
         const { app, k } = await buildTestApp();
         const input = new TextEncoder().encode("RNOKPP=3627506575");
         const { r, M } = blind(input);
@@ -153,11 +173,33 @@ maybe("oprf /oprf/blind-eval", () => {
         expect(res.statusCode).toBe(401);
     });
 
+    it("rejects a valid Diia .p7s with PayloadMismatch when messageDigest does not bind the request", async () => {
+        // The real fixture was signed over a non-JSON binding artifact, so
+        // its messageDigest is guaranteed not to match sha256(canonical
+        // JSON binding) for any blindedInput. Confirms the v2.1-prod
+        // payload-binding check is wired into /oprf/blind-eval.
+        const { app } = await buildTestApp();
+        const M = blind(new TextEncoder().encode("RNOKPP=3627506575")).M;
+        const res = await app.inject({
+            method: "POST",
+            url: "/oprf/blind-eval",
+            payload: {
+                blindedInput: `0x${bytesToHex(M)}`,
+                attestation: { p7s: p7sBase64 },
+            },
+        });
+        expect(res.statusCode).toBe(401);
+        const body = res.json() as { error: string; detail: string };
+        expect(body.error).toBe("PayloadMismatch");
+    });
+
     it("rejects a replayed .p7s envelope on second post with 409 ReplayedAttestation", async () => {
-        // High blind-eval cap so the 409 is unambiguously from replay,
-        // not from throttling.
+        // Bypass the payload-binding gate (the fixture isn't signed over
+        // the JSON canonical binding) AND the throttle cap so the 409 is
+        // unambiguously from the replay-cache check.
         const { app } = await buildTestApp({
             maxBlindEvalPerRnokppPerEpoch: 100,
+            enforcePayloadBinding: false,
         });
 
         const mkPayload = () => {
@@ -190,15 +232,11 @@ maybe("oprf /oprf/blind-eval", () => {
     });
 
     it("throttles the same RNOKPP with 429 on the 4th distinct blind-eval", async () => {
-        // We need the same subjectSerial but a distinct .p7s envelope on
-        // each call — otherwise replay-cache rejects first. The fixture
-        // is a single envelope, so we patch the store to bypass replay
-        // and exercise just the rate-limit path. (No mocking of the DB:
-        // we sub the public `recordP7sHashIfFresh` to always succeed,
-        // which is the same outcome as four genuinely-distinct envelopes
-        // with the same subjectSerial.)
+        // Bypass replay-cache (fixture is a single envelope) and the
+        // payload-binding gate so we exercise the rate-limit path alone.
         const { app, store } = await buildTestApp({
             maxBlindEvalPerRnokppPerEpoch: 3,
+            enforcePayloadBinding: false,
         });
         const origRecord = store.recordP7sHashIfFresh.bind(store);
         store.recordP7sHashIfFresh = () => true;

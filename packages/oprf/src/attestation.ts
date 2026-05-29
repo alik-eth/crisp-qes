@@ -20,8 +20,8 @@
 //
 // Still TODO (out of scope for this commit):
 //
-//   * messageDigest payload-binding (task #29): assert
-//     `messageDigest == sha256(blindedInput || enrollment_intent || epoch)`.
+// Still TODO (out of scope for this commit):
+//
 //   * Multi-level chain (leaf -> intermediate -> root CA). The Diia bundle
 //     in `@crisp-qes/lotl-flattener` carries the intermediates that issue
 //     citizen leaves; matching those directly is sufficient for v2 demo.
@@ -63,6 +63,55 @@ export interface VerifyAttestationOpts {
     signingTimeClockSkewSec?: number;
     /** Reference clock; defaults to wall clock. Injected for tests. */
     now?: Date;
+    /**
+     * sha256 of the canonical enrollment-binding bytes — see
+     * `buildEnrollmentBindingBytes`. When non-null, the inner
+     * `messageDigest` attribute extracted from `signedAttrs` must equal
+     * these bytes verbatim, otherwise we throw
+     * `AttestationError("PayloadMismatch", …)`. Pass `null` to disable
+     * the check (back-compat for tests against fixtures whose binding
+     * source isn't reconstructible).
+     */
+    expectedDigest?: Uint8Array | null;
+}
+
+/**
+ * The canonical enrollment-binding artifact the citizen signs in Diia.
+ *
+ * Wire format — UTF-8 bytes of compact JSON, NO whitespace, NO trailing
+ * newline, keys in this EXACT order: `intent`, `epoch`, `blindedInput`:
+ *
+ *   {"intent":"crisp-qes-enroll-v2","epoch":"<epoch>","blindedInput":"0x<64-hex>"}
+ *
+ * Server-side reconstruction MUST be byte-exact — anything else breaks
+ * the messageDigest binding. The web client builds the same bytes from
+ * the same components.
+ *
+ * `blindedInput` is the request field as received: a "0x"-prefixed
+ * lowercase hex of exactly 64 chars (32 bytes). The function asserts
+ * that shape and fail-closes on anything else.
+ */
+export function buildEnrollmentBindingBytes(
+    epoch: string,
+    blindedInputHex: string,
+): Uint8Array {
+    if (!/^0x[0-9a-f]{64}$/.test(blindedInputHex)) {
+        throw new AttestationError(
+            "PayloadMismatch",
+            "buildEnrollmentBindingBytes: blindedInput must be a " +
+                "lowercase 0x-prefixed 64-hex-char string",
+        );
+    }
+    if (epoch.length === 0 || /["\\]/.test(epoch)) {
+        throw new AttestationError(
+            "PayloadMismatch",
+            "buildEnrollmentBindingBytes: epoch must be non-empty and " +
+                'must not contain `"` or `\\`',
+        );
+    }
+    return new TextEncoder().encode(
+        `{"intent":"crisp-qes-enroll-v2","epoch":"${epoch}","blindedInput":"${blindedInputHex}"}`,
+    );
 }
 
 export interface VerifiedAttestation {
@@ -132,6 +181,30 @@ export function verifyAttestation(
             opts.now ?? new Date(),
         );
     }
+
+    // Task #29 — messageDigest payload-binding. Bind the .p7s to THIS
+    // enrollment intent + blinded input. Caller computes
+    // `sha256(buildEnrollmentBindingBytes(epoch, blindedInputHex))` from
+    // the request; we compare against `parsed.messageDigest` (the 32-byte
+    // value of the PKCS#9 messageDigest attribute inside signedAttrs).
+    // Passing `expectedDigest: null` disables the check for back-compat
+    // with fixtures whose binding source isn't reconstructible.
+    if (opts.expectedDigest != null) {
+        if (opts.expectedDigest.length !== 32) {
+            throw new AttestationError(
+                "PayloadMismatch",
+                `expectedDigest must be 32 bytes (got ${opts.expectedDigest.length})`,
+            );
+        }
+        if (!bytesEq(parsed.messageDigest, opts.expectedDigest)) {
+            throw new AttestationError(
+                "PayloadMismatch",
+                "signedAttrs.messageDigest does not match the expected " +
+                    "sha256(enrollment binding) for this request",
+            );
+        }
+    }
+
 
     const dob = extractDOB(parsed.leafCertDer);
     return {
