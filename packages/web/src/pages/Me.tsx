@@ -3,7 +3,11 @@ import { Link, useLocation } from "wouter";
 import type { AccountState } from "../lib/account.js";
 import { clearAccount, shortId } from "../lib/account.js";
 import { listEnrollments, clearAll as clearEnrollments } from "../lib/encryptedStore.js";
-import { clearSessionPrf, getSessionVault } from "../lib/passkeySession.js";
+import {
+    clearSessionPrf,
+    clearSessionVault,
+    getSessionVault,
+} from "../lib/passkeySession.js";
 import { unlockVault } from "../lib/unlock.js";
 import {
     readAllPetitions,
@@ -81,10 +85,22 @@ export function Me({ state, refresh }: Props) {
         }
     }, [state.kind]);
 
-    const signOut = async () => {
+    // Lock: clear the decrypted key from memory only. Vault + account row
+    // stay on disk (still Verified); the next signing action re-prompts the
+    // Passkey. Non-destructive — this is just the fresh-tab state.
+    const lock = () => {
+        clearSessionPrf();
+        clearSessionVault();
+        navigate("/petitions");
+    };
+
+    // Forget: wipe local vault + Passkey reference -> Guest. Recoverable
+    // later via Diia on any device. Destructive; two-step confirm.
+    const forgetDevice = async () => {
         setSigningOut(true);
         try {
             clearSessionPrf();
+            clearSessionVault();
             await clearEnrollments();
             await clearAccount();
             await refresh();
@@ -280,11 +296,27 @@ export function Me({ state, refresh }: Props) {
 
             <hr className="hairline" />
 
-            <h2 style={{ color: "var(--bad)" }}>Sign out</h2>
+            <h2>Lock</h2>
             <p className="muted small" style={{ marginTop: 8, marginBottom: 16 }}>
-                Wipes your local vault and Passkey reference on this device.
-                Your on-chain enrollment stays — you can recover with your
-                Diia QES.
+                Clears your decrypted signing key from memory. You stay verified
+                on this device — just tap your Passkey next time you sign.
+                Nothing is deleted. Use this when you step away.
+            </p>
+            <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={lock}
+            >
+                Lock now
+            </button>
+
+            <hr className="hairline" />
+
+            <h2 style={{ color: "var(--bad)" }}>Forget this device</h2>
+            <p className="muted small" style={{ marginTop: 8, marginBottom: 16 }}>
+                Wipes your local vault and Passkey reference from this device.
+                Your on-chain enrollment stays — recover later with your Diia
+                QES on any device. Use this on a shared or public computer.
             </p>
             {!confirmOut ? (
                 <button
@@ -292,7 +324,7 @@ export function Me({ state, refresh }: Props) {
                     className="btn btn--ghost"
                     onClick={() => setConfirmOut(true)}
                 >
-                    Sign out of this device
+                    Forget this device
                 </button>
             ) : (
                 <div className="row">
@@ -302,10 +334,10 @@ export function Me({ state, refresh }: Props) {
                         style={{
                             background: "var(--bad)",
                         }}
-                        onClick={() => void signOut()}
+                        onClick={() => void forgetDevice()}
                         disabled={signingOut}
                     >
-                        {signingOut ? "Signing out…" : "Yes, wipe local data"}
+                        {signingOut ? "Wiping…" : "Yes, wipe local data"}
                     </button>
                     <button
                         type="button"
