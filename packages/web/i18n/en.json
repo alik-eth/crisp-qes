@@ -116,7 +116,6 @@
             "intro": "The ciphernode appends your commitment to the Merkle tree and signs the new root. You then submit that signature to EnrollmentRegistry — for the demo via WalletConnect; in production a relayer does it without your wallet.",
             "running": "Waiting for the ciphernode response…",
             "alreadyEnrolled": "This RNOKPP is already enrolled. v2 forbids Sybil — that's the whole point.",
-            "submit": "Confirm the transaction in your wallet",
             "submitting": "Signing in wallet…",
             "mining": "Waiting for confirmation…",
             "newRoot": "New root",
@@ -241,6 +240,7 @@
         "copy": "Copy",
         "copied": "Copied",
         "cancel": "Cancel",
-        "continue": "Continue"
+        "continue": "Continue",
+        "retry": "Retry"
     }
 }

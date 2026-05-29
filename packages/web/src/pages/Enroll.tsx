@@ -167,6 +167,29 @@ export function Enroll({ onBack, onDone }: Props) {
         return () => clearTimeout(id);
     }, []);
 
+    // R3-5 intermediate ship — auto-chain server-side steps (OPRF →
+    // register) so the citizen only confronts a button at points where
+    // they actually make a decision: binding-download, .p7s drop,
+    // wallet-connect, wallet-sign, passkey-tap. The OPRF call and the
+    // ciphernode register round-trip carry no decision — the citizen
+    // committed to enrollment at .p7s upload. Errors break the chain
+    // and surface a Retry button so control is preserved on the unhappy
+    // path. Survives #55 cleanly (the wallet-presence rework keeps the
+    // same auto-chain logic and additionally collapses the chain step).
+    useEffect(() => {
+        if (parsed && p7sBytes && !oprfResult && !oprfBusy && !oprfErr) {
+            void runOprf();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [parsed, p7sBytes, oprfResult, oprfBusy, oprfErr]);
+
+    useEffect(() => {
+        if (oprfResult && !registerResult && !registerBusy && !registerErr) {
+            void runRegister();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [oprfResult, registerResult, registerBusy, registerErr]);
+
     /** Step 0: write the binding file to disk for Diia. */
     function handleDownloadBinding() {
         const bytes = buildEnrollmentBindingBytes();
@@ -558,7 +581,7 @@ export function Enroll({ onBack, onDone }: Props) {
                 ) : null}
             </div>
 
-            {/* 2. OPRF — no longer gated on Passkey (#48 reorder). */}
+            {/* 2. OPRF — auto-fires on `parsed`. Error surfaces Retry. */}
             {parsed ? (
                 <div className="panel">
                     <p className="panel__title">{t("enroll.oprf.title")}</p>
@@ -570,33 +593,36 @@ export function Enroll({ onBack, onDone }: Props) {
                                 <dd className="mono">{oprfResult.s}</dd>
                             </div>
                         </dl>
-                    ) : oprfBusy ? (
+                    ) : oprfErr ? (
+                        <>
+                            <p className="error-line">
+                                {t("enroll.oprf.error", { detail: oprfErr })}
+                            </p>
+                            <div className="actions">
+                                <button
+                                    className="btn"
+                                    type="button"
+                                    onClick={() => {
+                                        setOprfErr(null);
+                                        void runOprf();
+                                    }}
+                                >
+                                    {t("common.retry")}
+                                </button>
+                            </div>
+                        </>
+                    ) : (
                         <p className="progress">
                             {t("enroll.oprf.running")}
                             <span className="progress__line">
                                 <span />
                             </span>
                         </p>
-                    ) : (
-                        <div className="actions">
-                            <button
-                                className="btn btn--accent"
-                                type="button"
-                                onClick={runOprf}
-                            >
-                                {t("enroll.oprf.running")}
-                            </button>
-                        </div>
                     )}
-                    {oprfErr ? (
-                        <p className="error-line">
-                            {t("enroll.oprf.error", { detail: oprfErr })}
-                        </p>
-                    ) : null}
                 </div>
             ) : null}
 
-            {/* 3. Register with committee — no Passkey dependency yet. */}
+            {/* 3. Register — auto-fires on `oprfResult`. Error surfaces Retry. */}
             {oprfResult ? (
                 <div className="panel">
                     <p className="panel__title">{t("enroll.register.title")}</p>
@@ -612,29 +638,32 @@ export function Enroll({ onBack, onDone }: Props) {
                                 <dd className="mono">{registerResult.leafIndex}</dd>
                             </div>
                         </dl>
-                    ) : registerBusy ? (
+                    ) : registerErr ? (
+                        <>
+                            <p className="error-line">
+                                {t("enroll.register.error", { detail: registerErr })}
+                            </p>
+                            <div className="actions">
+                                <button
+                                    className="btn"
+                                    type="button"
+                                    onClick={() => {
+                                        setRegisterErr(null);
+                                        void runRegister();
+                                    }}
+                                >
+                                    {t("common.retry")}
+                                </button>
+                            </div>
+                        </>
+                    ) : (
                         <p className="progress">
                             {t("enroll.register.running")}
                             <span className="progress__line">
                                 <span />
                             </span>
                         </p>
-                    ) : (
-                        <div className="actions">
-                            <button
-                                className="btn btn--accent"
-                                type="button"
-                                onClick={runRegister}
-                            >
-                                {t("enroll.register.submit")}
-                            </button>
-                        </div>
                     )}
-                    {registerErr ? (
-                        <p className="error-line">
-                            {t("enroll.register.error", { detail: registerErr })}
-                        </p>
-                    ) : null}
                 </div>
             ) : null}
 
