@@ -47,6 +47,22 @@ function post(msg: OutMsg) {
     (self as unknown as DedicatedWorkerGlobalScope).postMessage(msg);
 }
 
+// Pick a thread count for the bb.js threaded prover. bb defaults to the
+// hardware max (up to 32); each extra thread holds its own polynomial
+// buffers during proving, so peak WASM memory grows with thread count.
+// iOS Safari has a hard per-tab memory ceiling that the default blows
+// past on real devices (e.g. iPhone 14 Pro → "Out of memory"), so we cap
+// aggressively there and modestly elsewhere. Fewer threads = slower, but
+// it actually completes instead of getting the tab killed.
+function pickThreads(): number {
+    const nav = (self as unknown as { navigator?: WorkerNavigator }).navigator;
+    const hw = nav?.hardwareConcurrency ?? 4;
+    const ua = nav?.userAgent ?? "";
+    const isIOS = /iP(hone|od|ad)/.test(ua);
+    if (isIOS) return Math.max(1, Math.min(hw, 2));
+    return Math.max(1, Math.min(hw, 8));
+}
+
 self.addEventListener("message", (ev: MessageEvent<InMsg>) => {
     const msg = ev.data;
     if (!msg || msg.type !== "prove") return;
@@ -68,7 +84,7 @@ self.addEventListener("message", (ev: MessageEvent<InMsg>) => {
             );
 
             post({ type: "stage", stage: "proving" });
-            const api = await Barretenberg.new();
+            const api = await Barretenberg.new({ threads: pickThreads() });
             try {
                 const backend = new UltraHonkBackend(circuit.bytecode, api);
                 const { proof, publicInputs } = await backend.generateProof(
