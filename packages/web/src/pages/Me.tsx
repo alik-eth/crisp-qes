@@ -270,13 +270,12 @@ export function Me({ state, refresh }: Props) {
 
             <h2>Recovery</h2>
             <p className="muted small" style={{ marginTop: 8 }}>
-                The only v2 recovery is Passkey cloud sync (iCloud Keychain,
-                1Password, Bitwarden, Google Password Manager). If your
-                Passkey is in one of those, it will reappear on a new device
-                when you sign in. We do NOT offer a "recover with Diia QES"
-                flow — re-running OPRF would let anyone with a stolen QES
-                sign as you. See{" "}
-                <Link href="/recover">why &amp; what to do if you're stuck →</Link>
+                Two ways back if you lose access: same device → unlock with
+                your Passkey (instant); new or wiped device → set up a Passkey
+                and re-run Verify with Diia, which restores your existing
+                anonymous identity. Heads-up: Diia recovery needs only your
+                Diia signature, so guard it like your passport. See{" "}
+                <Link href="/recover">how recovery works &amp; the tradeoff →</Link>
             </p>
 
             <hr className="hairline" />

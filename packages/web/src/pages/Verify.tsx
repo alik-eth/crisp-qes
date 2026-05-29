@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { parseP7s, type ParsedP7s } from "@crisp-qes/sdk";
 import { extractRnokpp, tinuaPrefixOk } from "../lib/rnokpp.js";
 import { blind, unblind, verifyBlindEval } from "../lib/voprf.js";
-import { oprfBlindEval, oprfRegister } from "../lib/oprfClient.js";
+import { oprfBlindEval, oprfRegister, oprfRecoverPath } from "../lib/oprfClient.js";
 import { pedersenS } from "../lib/pedersen.js";
 import { submitEnrollment, explorerTxUrl } from "../lib/relayer.js";
 import {
@@ -55,7 +55,12 @@ interface OprfArtifacts {
     leafIndex: number;
     merklePath: `0x${string}`[];
     merklePathIndices: (0 | 1)[];
-    txHash: `0x${string}`;
+    // `null` in the recovery path: this Diia identity was already enrolled
+    // on-chain, so no fresh leaf was appended and there's no enrollment tx.
+    txHash: `0x${string}` | null;
+    // true => we rebuilt the local vault from the existing on-chain leaf
+    // (device-loss recovery), false => fresh first-time enrollment.
+    recovered: boolean;
 }
 
 function hexEncode(b: Uint8Array): `0x${string}` {
@@ -181,27 +186,53 @@ export function Verify({ onDone }: Props) {
             if (!ok) throw new Error("OPRF DLEQ proof did not verify");
             const N = unblind(hexDecode(resp.Y), blindState.r);
             const s = await pedersenS(N);
-            const reg = await oprfRegister({
-                commitment: s,
-                blindedInputUsed: blindState.blindedElement,
-                unblindedOutput: N,
-            });
-            const tx = await submitEnrollment({
-                newRoot: reg.newRoot,
-                newCommitments: reg.newCommitments,
-                signature: reg.attesterSig,
-            });
-            if (!tx.ok) {
-                throw new Error(tx.detail ?? tx.code ?? "chain submit failed");
+
+            // Try a fresh enrollment first. If this Diia identity is already
+            // on-chain (same RNOKPP + epoch → same deterministic commitment),
+            // the OPRF returns 409 AlreadyEnrolled — that's the device-loss
+            // recovery case: fetch the existing leaf's Merkle path and rebuild
+            // the local vault, no new leaf, no chain write. The blind-eval
+            // gates (fresh .p7s, age, rate-limit, dedup) already ran above, so
+            // recovery is no easier to abuse than a first enrollment.
+            let artifacts: Omit<OprfArtifacts, "N" | "s">;
+            try {
+                const reg = await oprfRegister({
+                    commitment: s,
+                    blindedInputUsed: blindState.blindedElement,
+                    unblindedOutput: N,
+                });
+                const tx = await submitEnrollment({
+                    newRoot: reg.newRoot,
+                    newCommitments: reg.newCommitments,
+                    signature: reg.attesterSig,
+                });
+                if (!tx.ok) {
+                    throw new Error(tx.detail ?? tx.code ?? "chain submit failed");
+                }
+                artifacts = {
+                    leafIndex: reg.leafIndex,
+                    merklePath: reg.merklePath,
+                    merklePathIndices: reg.merklePathIndices,
+                    txHash: tx.txHash,
+                    recovered: false,
+                };
+            } catch (regErr) {
+                const re = regErr as { status?: number; code?: string };
+                if (re?.status === 409 && re.code === "AlreadyEnrolled") {
+                    const rec = await oprfRecoverPath(s);
+                    artifacts = {
+                        leafIndex: rec.leafIndex,
+                        merklePath: rec.merklePath,
+                        merklePathIndices: rec.merklePathIndices,
+                        txHash: null,
+                        recovered: true,
+                    };
+                } else {
+                    throw regErr;
+                }
             }
-            setOprfResult({
-                N,
-                s,
-                leafIndex: reg.leafIndex,
-                merklePath: reg.merklePath,
-                merklePathIndices: reg.merklePathIndices,
-                txHash: tx.txHash,
-            });
+
+            setOprfResult({ N, s, ...artifacts });
             setStage("verified");
         } catch (e) {
             const eo = e as {
@@ -583,17 +614,27 @@ function VerifiedPanel({
 }) {
     return (
         <div className="card">
-            <h3>Verified on chain.</h3>
-            <p className="muted small" style={{ marginTop: 8 }}>
-                Your anonymous commitment is now on Sepolia.{" "}
-                <a
-                    href={explorerTxUrl(oprfResult.txHash)}
-                    target="_blank"
-                    rel="noreferrer"
-                >
-                    View transaction →
-                </a>
-            </p>
+            <h3>{oprfResult.recovered ? "Welcome back." : "Verified on chain."}</h3>
+            {oprfResult.recovered ? (
+                <p className="muted small" style={{ marginTop: 8 }}>
+                    This Diia identity is already enrolled this epoch — no new
+                    commitment was created. We re-derived your existing
+                    anonymous identity from your Diia signature.
+                </p>
+            ) : (
+                <p className="muted small" style={{ marginTop: 8 }}>
+                    Your anonymous commitment is now on Sepolia.{" "}
+                    {oprfResult.txHash ? (
+                        <a
+                            href={explorerTxUrl(oprfResult.txHash)}
+                            target="_blank"
+                            rel="noreferrer"
+                        >
+                            View transaction →
+                        </a>
+                    ) : null}
+                </p>
+            )}
             <p style={{ marginTop: 20, marginBottom: 16 }}>
                 Last step: encrypt your private signing material with your
                 Passkey and save it to this device.
@@ -603,7 +644,7 @@ function VerifiedPanel({
                 className="btn btn--primary"
                 onClick={onSave}
             >
-                Encrypt and save
+                {oprfResult.recovered ? "Restore on this device" : "Encrypt and save"}
             </button>
         </div>
     );

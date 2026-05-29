@@ -4,15 +4,24 @@ interface Props {
     onDone: () => Promise<void>;
 }
 
-// v2 has no within-protocol recovery. Re-running OPRF on a re-presented
-// Diia QES would give the same anonymous identity (the math allows it),
-// but that means anyone with a stolen QES can sign as the citizen — OPRF
-// can't distinguish them. We refuse to advertise that path.
+// v2 recovery, two paths:
 //
-// The only v2 recovery is Passkey cloud sync (iCloud Keychain, 1Password,
-// Bitwarden Premium, etc) — handled transparently by the OS/extension
-// without any UI from us. v3 introduces yearly epoch rotation as the
-// universal recovery primitive.
+//   1. Passkey re-unlock — if the encrypted vault is still on this device
+//      (you only locked / signed out, didn't wipe), a Passkey assertion
+//      decrypts it. No Diia needed.
+//   2. Diia recovery — on a wiped device or a new one, re-present your Diia
+//      QES. The OPRF is deterministic on your RNOKPP, so it re-derives the
+//      SAME anonymous commitment you enrolled with; we fetch the existing
+//      Merkle leaf's path and rebuild the local vault under a fresh Passkey.
+//      No new on-chain leaf is created.
+//
+// Honest tradeoff (surfaced in the copy below): because recovery needs only
+// a fresh Diia signature, anyone who can make your Diia sign can restore —
+// and sign — as you. That capability is inherent to "Diia QES = eligibility
+// anchor" (control of the QES already lets someone derive your secret and
+// sign at the protocol level); the recovery flow just makes it convenient.
+// v3 yearly epoch rotation bounds the blast radius (a fresh epoch retires
+// the old identity).
 //
 // See [[project-recovery-design]] and docs/specs/2026-05-29-crisp-qes-v2-
 // refined.md §3.4 / §3.5.
@@ -24,62 +33,59 @@ export function Recover({ onDone: _onDone }: Props) {
                 <Link href="/petitions">← All petitions</Link>
             </div>
 
-            <h1>Lost your device?</h1>
+            <h1>Lost access?</h1>
             <p className="muted" style={{ marginTop: 8, maxWidth: 560 }}>
-                Honest answer: there's no recovery button here, and that's
-                by design.
+                There are two ways back, depending on what you still have.
             </p>
 
             <div className="card" style={{ marginTop: 24 }}>
-                <h3>Use Passkey cloud sync</h3>
+                <h3>1 · Same device — just unlock with your Passkey</h3>
                 <p style={{ marginTop: 12 }}>
-                    Your Passkey is the only way back into your account. If
-                    you created it inside a password manager that syncs
-                    Passkeys — iCloud Keychain, 1Password, Bitwarden, Google
-                    Password Manager — log into that manager on the new
-                    device and your Passkey will reappear there. Then come
-                    back here and sign in normally.
+                    If you only signed out (and didn't wipe), your encrypted
+                    vault is still on this device. Sign in with your Passkey
+                    and it unlocks instantly — no Diia step needed.
                 </p>
                 <p className="muted small" style={{ marginTop: 12 }}>
-                    Hardware-key Passkeys (YubiKey and similar) only live on
-                    that one key. If you lost the key itself, see the next
-                    section.
+                    If your Passkey lives in a cloud-synced manager (iCloud
+                    Keychain, 1Password, Bitwarden, Google Password Manager),
+                    it follows you to a new device too — but the vault itself
+                    doesn't sync, so on a fresh device use option 2.
                 </p>
             </div>
 
             <div className="card" style={{ marginTop: 16 }}>
-                <h3>Why we don't offer a "recover with Diia" button</h3>
+                <h3>2 · New or wiped device — recover with Diia</h3>
                 <p style={{ marginTop: 12 }}>
-                    Re-running OPRF on the same Diia QES would deterministically
-                    yield the same anonymous identity — that's how the math
-                    works. But it would also let anyone holding a stolen Diia
-                    signature recover the same identity and sign as you.
-                    OPRF can't tell the two cases apart.
+                    Set up a Passkey, then run{" "}
+                    <Link href="/verify">Verify with Diia</Link> again. The OPRF
+                    re-derives the same anonymous identity you enrolled with, we
+                    pull your existing on-chain leaf, and your account is
+                    restored on this device. No new enrollment, no duplicate
+                    identity, no extra transaction.
                 </p>
-                <p style={{ marginTop: 12 }}>
-                    Advertising "recovery via Diia" is the same as advertising
-                    "lose your QES to anyone and they become you." So we
-                    don't. The state's Diia recovery process is the floor:
-                    anyone who can re-issue Diia through state channels gets
-                    a fresh identity at the next yearly epoch rotation
-                    (shipping in v3).
-                </p>
+                <Link
+                    href="/verify"
+                    className="btn btn--primary"
+                    style={{ marginTop: 16 }}
+                >
+                    Recover with Diia
+                </Link>
             </div>
 
             <div className="card" style={{ marginTop: 16 }}>
-                <h3>If you have neither</h3>
+                <h3>The honest tradeoff</h3>
                 <p style={{ marginTop: 12 }}>
-                    No Passkey cloud sync, no hardware key, no fresh Diia
-                    QES on a new device — you wait for the next epoch.
-                    During v2 you're locked out; from v3, you re-enroll with
-                    a fresh Diia QES in <span className="mono">epoch_2026</span>{" "}
-                    and your old anonymous identity simply retires.
+                    Diia recovery needs only a fresh Diia signature — so anyone
+                    who can make your Diia sign can restore, and sign, as you.
+                    That isn't new: your Diia QES is the eligibility anchor, and
+                    whoever controls it can already derive your signing secret.
+                    Recovery just makes that convenient instead of manual.
                 </p>
                 <p className="muted small" style={{ marginTop: 12 }}>
-                    Yes — this is honestly worse than a typical app, and
-                    honestly better than the alternative (a recovery button
-                    that doubles as a takeover button for anyone with your
-                    QES).
+                    Guard your Diia the way you guard your passport. v3's yearly
+                    epoch rotation bounds the blast radius: a fresh{" "}
+                    <span className="mono">epoch_2027</span> retires the old
+                    identity, so a compromise can't follow you across years.
                 </p>
             </div>
 
