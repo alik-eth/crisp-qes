@@ -242,6 +242,160 @@ describe("GET /healthz", () => {
     });
 });
 
+// — POST /v2/enroll ──────────────────────────────────────────────────────
+//
+// Wire shape: { newRoot, newCommitments[], signature } verbatim relayed to
+// EnrollmentRegistry.updateRoot(...). No citizen auth. Replay / stale-
+// oldRoot / bad-sig all collapse into BadSignature() at simulate time
+// and map to 409 — the citizen can then re-fetch from /oprf/register.
+
+const VALID_ENROLL = {
+    newRoot: "0x" + "ab".repeat(32),
+    newCommitments: ["0x" + "cd".repeat(32)],
+    signature: "0x" + "ee".repeat(64) + "1c", // r||s||v, 65 bytes
+};
+
+describe("POST /v2/enroll validation", () => {
+    it("rejects malformed JSON with 400", async () => {
+        const app = buildApp({ config: cfg(), clientsFactory: () => fakeClients() });
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/enroll",
+            payload: { newRoot: "not-hex" },
+        });
+        expect(res.statusCode).toBe(400);
+        await app.close();
+    });
+
+    it("rejects empty newCommitments with 400", async () => {
+        const app = buildApp({ config: cfg(), clientsFactory: () => fakeClients() });
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/enroll",
+            payload: { ...VALID_ENROLL, newCommitments: [] },
+        });
+        expect(res.statusCode).toBe(400);
+        await app.close();
+    });
+
+    it("rejects short signature with 400", async () => {
+        const app = buildApp({ config: cfg(), clientsFactory: () => fakeClients() });
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/enroll",
+            payload: { ...VALID_ENROLL, signature: "0xdead" },
+        });
+        expect(res.statusCode).toBe(400);
+        await app.close();
+    });
+});
+
+describe("POST /v2/enroll happy path", () => {
+    it("returns 200 + txHash when simulate + write succeed", async () => {
+        const fakeHash = ("0x" + "11".repeat(32)) as Hex;
+        const write = vi.fn().mockResolvedValue(fakeHash);
+        const clients = fakeClients({ write });
+        const app = buildApp({ config: cfg(), clientsFactory: () => clients });
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/enroll",
+            payload: VALID_ENROLL,
+        });
+        expect(res.statusCode).toBe(200);
+        const json = res.json() as { txHash: string; blockExplorerUrl: string };
+        expect(json.txHash).toBe(fakeHash);
+        expect(json.blockExplorerUrl).toBe(`https://example.test/tx/${fakeHash}`);
+        // simulate + write each called exactly once
+        expect(write).toHaveBeenCalledTimes(1);
+        await app.close();
+    });
+});
+
+describe("POST /v2/enroll replay / bad sig", () => {
+    function badSigRevert(): ContractFunctionRevertedError {
+        const selector = toFunctionSelector("error BadSignature()");
+        return new ContractFunctionRevertedError({
+            abi: [{ type: "error", name: "BadSignature", inputs: [] }],
+            data: selector,
+            functionName: "updateRoot",
+        });
+    }
+
+    it("simulate reverting BadSignature → 409, no chain write", async () => {
+        const write = vi.fn().mockResolvedValue("0x" + "ff".repeat(32));
+        const simulate = vi.fn().mockRejectedValue(badSigRevert());
+        const clients = fakeClients({ simulate, write });
+        const app = buildApp({ config: cfg(), clientsFactory: () => clients });
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/enroll",
+            payload: VALID_ENROLL,
+        });
+        expect(res.statusCode).toBe(409);
+        const body = res.json() as { error: string; detail: string };
+        expect(body.error).toBe("BadSignature");
+        // multi-cause explanation surfaced for the caller
+        expect(body.detail).toContain("oprfAttester");
+        // crucially, no write was issued
+        expect(write).not.toHaveBeenCalled();
+        await app.close();
+    });
+
+    it("submitting the same sig twice both end in 409 (no double-submit)", async () => {
+        // Simulate the chain-state-advance pattern: first call succeeds,
+        // then chain advances oldRoot, then second call's simulate sees
+        // BadSignature because the stored oldRoot no longer matches what
+        // the attesterSig was over.
+        const fakeHash = ("0x" + "22".repeat(32)) as Hex;
+        const simulate = vi
+            .fn()
+            .mockResolvedValueOnce({ request: {} })
+            .mockRejectedValue(badSigRevert());
+        const write = vi.fn().mockResolvedValue(fakeHash);
+        const clients = fakeClients({ simulate, write });
+        const app = buildApp({ config: cfg(), clientsFactory: () => clients });
+
+        const first = await app.inject({
+            method: "POST",
+            url: "/v2/enroll",
+            payload: VALID_ENROLL,
+            remoteAddress: "10.0.0.1",
+        });
+        expect(first.statusCode).toBe(200);
+
+        const second = await app.inject({
+            method: "POST",
+            url: "/v2/enroll",
+            payload: VALID_ENROLL,
+            remoteAddress: "10.0.0.2", // different IP so we don't 429 first
+        });
+        expect(second.statusCode).toBe(409);
+        // Exactly one write — first request only.
+        expect(write).toHaveBeenCalledTimes(1);
+        await app.close();
+    });
+
+    it("write-side failure with unknown selector → 502 retryable", async () => {
+        const simulate = vi.fn().mockResolvedValue({ request: {} });
+        const write = vi.fn().mockRejectedValue(new Error("nonce too low"));
+        const clients = fakeClients({ simulate, write });
+        const app = buildApp({ config: cfg(), clientsFactory: () => clients });
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/enroll",
+            payload: VALID_ENROLL,
+        });
+        expect(res.statusCode).toBe(502);
+        const body = res.json() as { error: string; retryable: boolean };
+        expect(body.error).toBe("RelayerEnrollFailed");
+        expect(body.retryable).toBe(true);
+        await app.close();
+    });
+});
+
 describe("rateLimit", () => {
     it("bucket exhaustion returns 429", async () => {
         const rateLimiter = makeRateLimiter(60_000);

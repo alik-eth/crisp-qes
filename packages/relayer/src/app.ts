@@ -1,6 +1,13 @@
 // v2 relayer Fastify app.
 //
-// Two-route surface:
+// Three-route surface:
+//   POST /v2/enroll  — relay an attester-signed root update to
+//                      EnrollmentRegistry.updateRoot. No citizen auth —
+//                      the attester signature IS the auth (contract-level
+//                      ecrecover gate). Per-IP token bucket + simulate-
+//                      before-write keeps replay/stale-sig attempts off
+//                      the chain. Added in #55 to drop the citizen-side
+//                      wallet step from the enrollment ceremony.
 //   POST /v2/submit  — relay a v2 UltraHonk signature proof to
 //                      PetitionRegistryV2.signPetition.
 //   GET  /tx/:hash   — same shape as MVP relayer; decodes the new
@@ -33,11 +40,14 @@ import { z } from "zod";
 import { enrollmentRegistryAbi, petitionRegistryV2Abi } from "./abi.js";
 import { makeClients, type Clients } from "./chain.js";
 import type { RelayerConfig } from "./config.js";
-import { mapContractError } from "./errors.js";
+import { mapContractError, mapEnrollmentError } from "./errors.js";
 import { makeRateLimiter, type RateLimiter } from "./rateLimit.js";
 
 const hex32 = z.string().regex(/^0x[0-9a-fA-F]{64}$/, "expected 32-byte hex");
 const hex = z.string().regex(/^0x[0-9a-fA-F]+$/, "expected hex string");
+const sig65 = z
+    .string()
+    .regex(/^0x[0-9a-fA-F]{130}$/, "expected 65-byte hex signature (r||s||v)");
 const decimalUint = z.string().regex(/^\d+$/, "expected decimal integer");
 
 // Body shape pinned by web's submit() — see N4 wire contract:
@@ -48,6 +58,18 @@ const SubmitBody = z.object({
     nullifier: hex32,
     proof: hex,
     publicInputs: z.array(hex32).length(3),
+});
+
+// `/v2/enroll` body — verbatim relay of the OPRF service's
+// `/oprf/register` output's `(newRoot, newCommitments, attesterSig)` to
+// `EnrollmentRegistry.updateRoot(...)`. No citizen-supplied fields. No
+// oldRoot here — the contract reads it from storage; if the OPRF service
+// signed against a different one we'll trip `BadSignature` at simulate
+// time and surface 409.
+const EnrollBody = z.object({
+    newRoot: hex32,
+    newCommitments: z.array(hex32).min(1),
+    signature: sig65,
 });
 
 const TxParams = z.object({
@@ -85,6 +107,84 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
         enrollmentRegistry: config.enrollmentRegistry,
         relayerAddr: clients.account.address,
     }));
+
+    app.post("/v2/enroll", async (req, reply) => {
+        // Auth model: none from citizen. The attester signature inside
+        // the body is the auth — `EnrollmentRegistry.updateRoot` only
+        // accepts updates where `ecrecover(ethSigned, sig) == oprfAttester`.
+        // The same per-IP token-bucket as `/v2/submit` is sufficient to
+        // bound spam; replay of a previously-landed sig is naturally
+        // rejected at simulate time (chain advances oldRoot; the next
+        // recompute of `inner` no longer matches → BadSignature → 409).
+        const ip = req.ip ?? "unknown";
+        if (!rateLimiter.take(ip)) {
+            return reply.code(429).send({
+                error: "RateLimited",
+                retryAfterMs: config.rateLimitWindowMs,
+            });
+        }
+
+        const parsed = EnrollBody.safeParse(req.body);
+        if (!parsed.success) {
+            return reply
+                .code(400)
+                .send({ error: "BadRequest", detail: parsed.error.flatten() });
+        }
+        const body = parsed.data;
+
+        const args = [
+            body.newRoot as Hex,
+            body.newCommitments as Hex[],
+            body.signature as Hex,
+        ] as const;
+
+        // Simulate first so the common failure modes (replay, stale
+        // oldRoot, malformed sig — all collapse into BadSignature on the
+        // contract side) surface as 4xx, with no chain write.
+        try {
+            await clients.publicClient.simulateContract({
+                address: config.enrollmentRegistry,
+                abi: enrollmentRegistryAbi,
+                functionName: "updateRoot",
+                args: args as unknown as readonly [Hex, readonly Hex[], Hex],
+                account: clients.account,
+            });
+        } catch (err) {
+            const mapped = mapEnrollmentError(err);
+            req.log.warn({ err: mapped.body }, "enroll simulate revert");
+            return reply.code(mapped.status).send(mapped.body);
+        }
+
+        let txHash: Hex;
+        try {
+            txHash = await clients.walletClient.writeContract({
+                address: config.enrollmentRegistry,
+                abi: enrollmentRegistryAbi,
+                functionName: "updateRoot",
+                args: args as unknown as readonly [Hex, readonly Hex[], Hex],
+                account: clients.account,
+                chain: clients.chain,
+            });
+        } catch (err) {
+            const mapped = mapEnrollmentError(err);
+            req.log.error({ err: mapped.body }, "enroll write revert");
+            // Default unrecognised write-side failures to 502 + retryable
+            // so the citizen-side caller can retry without bothering the
+            // user — RPC blips and gas-spike rejections fall here.
+            const status = mapped.status === 500 ? 502 : mapped.status;
+            return reply.code(status).send({
+                ...mapped.body,
+                retryable: status >= 500,
+            });
+        }
+
+        return reply.code(200).send({
+            txHash,
+            blockExplorerUrl: config.blockExplorerBase
+                ? `${config.blockExplorerBase}${txHash}`
+                : null,
+        });
+    });
 
     app.post("/v2/submit", async (req, reply) => {
         const ip = req.ip ?? "unknown";

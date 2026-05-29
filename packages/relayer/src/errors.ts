@@ -29,6 +29,34 @@ const SELECTOR_TO_NAME: Map<Hex, SignerErrorName> = new Map(
     ]),
 );
 
+// — EnrollmentRegistry custom errors ───────────────────────────────────────
+//
+// Surface on `POST /v2/enroll`. `BadSignature` is the multi-cause bucket:
+// replay (citizen retried after a previous successful submit), stale oldRoot
+// (OPRF DB drifted from chain by another concurrent enroll), or genuinely
+// malformed sig. All three look the same to the contract — ecrecover yields
+// the wrong address. From the relayer's POV they collapse into "the same
+// attesterSig won't land this update", which is a 409 Conflict semantically:
+// the citizen can resolve by re-fetching a fresh sig from `/oprf/register`.
+const ENROLL_ERROR_NAMES = [
+    "BadSignature",
+    "EmptyBatch",
+] as const;
+
+type EnrollErrorName = (typeof ENROLL_ERROR_NAMES)[number];
+
+const ENROLL_SELECTOR_TO_NAME: Map<Hex, EnrollErrorName> = new Map(
+    ENROLL_ERROR_NAMES.map((name) => [
+        toFunctionSelector(`error ${name}()`),
+        name,
+    ]),
+);
+
+const ENROLL_STATUS_BY_NAME: Record<EnrollErrorName, number> = {
+    BadSignature: 409,
+    EmptyBatch: 400,
+};
+
 export interface RelayerErrorResponse {
     status: number;
     body: {
@@ -101,6 +129,50 @@ export function mapContractError(err: unknown): RelayerErrorResponse {
     };
 }
 
-export { SIGNER_ERROR_NAMES, SELECTOR_TO_NAME };
+// Same shape as `mapContractError`, but bound to the EnrollmentRegistry
+// error set. Lives in this module so the chain-walk + selector-fallback
+// behaviour stays consistent across endpoints.
+export function mapEnrollmentError(err: unknown): RelayerErrorResponse {
+    const selector = findRevertSelector(err);
+    const name = selector
+        ? ENROLL_SELECTOR_TO_NAME.get(selector)
+        : undefined;
+    const detail = err instanceof Error ? err.message.split("\n")[0] : undefined;
+
+    if (name) {
+        const baseBody: RelayerErrorResponse["body"] = {
+            error: name,
+            selector,
+            detail,
+        };
+        if (name === "BadSignature") {
+            // Expand the multi-cause bucket for the caller.
+            baseBody.detail =
+                (detail ? detail + " — " : "") +
+                "the attester signature does not recover to the registered oprfAttester. " +
+                "Most common cause: the OPRF service's view of currentRoot has drifted from " +
+                "the on-chain enrollmentRoot (concurrent enrollment landed in between), " +
+                "or the same attesterSig was already used. Re-fetch a fresh sig from " +
+                "/oprf/register and retry.";
+        }
+        return { status: ENROLL_STATUS_BY_NAME[name], body: baseBody };
+    }
+
+    return {
+        status: 500,
+        body: {
+            error: "RelayerEnrollFailed",
+            selector,
+            detail,
+        },
+    };
+}
+
+export {
+    SIGNER_ERROR_NAMES,
+    SELECTOR_TO_NAME,
+    ENROLL_ERROR_NAMES,
+    ENROLL_SELECTOR_TO_NAME,
+};
 // Re-export the ABI so `app.ts` can wire it without a second import path.
 export { petitionRegistryV2Abi };

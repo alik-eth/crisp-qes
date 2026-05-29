@@ -99,4 +99,29 @@ export const enrollmentRegistryAbi = [
         inputs: [],
         outputs: [{ type: "uint256" }],
     },
+    {
+        type: "function",
+        name: "updateRoot",
+        stateMutability: "nonpayable",
+        inputs: [
+            { name: "newRoot", type: "bytes32" },
+            { name: "newCommitments", type: "bytes32[]" },
+            { name: "signature", type: "bytes" },
+        ],
+        outputs: [],
+    },
+    {
+        type: "event",
+        name: "RootUpdated",
+        inputs: [
+            { name: "oldRoot", type: "bytes32", indexed: false },
+            { name: "newRoot", type: "bytes32", indexed: false },
+            { name: "blockNumber", type: "uint256", indexed: false },
+        ],
+    },
+    // Custom errors — matched by selector in `mapEnrollmentError`.
+    { type: "error", name: "BadSignature", inputs: [] },
+    { type: "error", name: "EmptyBatch", inputs: [] },
+    { type: "error", name: "NotAdmin", inputs: [] },
+    { type: "error", name: "ZeroAddress", inputs: [] },
 ] as const;
