@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
+import { useTranslation } from "react-i18next";
 import type { AccountState } from "../lib/account.js";
 import {
     readAllPetitions,
@@ -25,6 +26,7 @@ function timeRemaining(deadline: bigint): string {
 }
 
 export function Petitions({ state, onSignIn }: Props) {
+    const { t } = useTranslation();
     const [petitions, setPetitions] = useState<PetitionView[] | null>(null);
     const [err, setErr] = useState<string | null>(null);
 
@@ -46,7 +48,7 @@ export function Petitions({ state, onSignIn }: Props) {
     return (
         <section>
             <header className="petitions__head">
-                <h1>Petitions</h1>
+                <h1>{t("list.heading")}</h1>
                 <CreateCta state={state} onSignIn={onSignIn} />
             </header>
 
@@ -61,16 +63,15 @@ export function Petitions({ state, onSignIn }: Props) {
             ) : null}
 
             {err ? (
-                <p className="muted">Could not load petitions: {err}</p>
+                <p className="muted">{t("list.error")}: {err}</p>
             ) : petitions === null ? (
-                <p className="muted">Loading…</p>
+                <p className="muted">{t("list.loading")}</p>
             ) : petitions.length === 0 ? (
                 <p className="muted">
-                    No petitions yet. {state.kind === "verified" ? (
+                    {t("list.empty")}{" "}
+                    {state.kind === "verified" ? (
                         <Link href="/p/new">Create the first one.</Link>
-                    ) : (
-                        "Be the first to register and create one."
-                    )}
+                    ) : null}
                 </p>
             ) : (
                 <ul className="petitions">
@@ -91,7 +92,7 @@ export function Petitions({ state, onSignIn }: Props) {
                                         </div>
                                         <div className="petitions__meta">
                                             <span className="muted">
-                                                {p.signatureCount} signatures
+                                                {p.signatureCount} {t("list.card.count")}
                                             </span>
                                             <span className="muted">·</span>
                                             <span className="muted">
@@ -114,14 +115,13 @@ function firstLine(text: string): string {
 }
 
 function StatusBadge({ status }: { status: PetitionView["status"] }) {
+    const { t } = useTranslation();
     const cls =
         status === "Open" ? "badge badge--ok"
         : status === "ThresholdReached" ? "badge badge--ok"
         : status === "Closed" ? "badge badge--muted"
         : "badge";
-    const label =
-        status === "ThresholdReached" ? "Threshold met" : status;
-    return <span className={cls}>{label}</span>;
+    return <span className={cls}>{t(`list.status.${status}`)}</span>;
 }
 
 function CreateCta({

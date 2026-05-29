@@ -11,7 +11,7 @@
         "footnote": "Open service. Not an official Diia service. Site is running in Demo mode."
     },
     "nav": {
-        "petitions": "Petitions",
+        "petitions": "Polls",
         "enroll": "Enroll"
     },
     "landing": {
@@ -30,14 +30,14 @@
         "how3body": "Only a nullifier reaches the chain — enough to prevent double-voting, not enough to identify you."
     },
     "list": {
-        "heading": "Open petitions",
-        "empty": "No petitions yet.",
-        "loading": "Loading petitions…",
-        "error": "Could not read the petition registry.",
-        "errorFallback": "The petition registry is temporarily unreachable. This is usually a transient RPC issue — try again in a moment.",
+        "heading": "All polls",
+        "empty": "No polls yet.",
+        "loading": "Loading polls…",
+        "error": "Could not read the poll registry.",
+        "errorFallback": "The poll registry is temporarily unreachable. This is usually a transient RPC issue — try again in a moment.",
         "errorRetry": "Retry",
         "card": {
-            "id": "Petition #{{id}}",
+            "id": "Poll #{{id}}",
             "deadline": "Deadline",
             "threshold": "Threshold",
             "count": "Votes",
@@ -58,8 +58,8 @@
     },
     "enroll": {
         "heading": "v2 enrollment",
-        "intro": "Done once. You prove your identity with a Diia QES, bind it to a Passkey on this device, and from then on every signature is a sub-second tap — no fresh KEP.",
-        "back": "Back to petitions",
+        "intro": "Done once. You prove your identity with a Diia QES, bind it to a Passkey on this device, and from then on every vote is a sub-second tap — no fresh KEP.",
+        "back": "Back to polls",
         "steps": {
             "binding": "File to sign in Diia",
             "upload": "1. Upload signed Diia QES",
@@ -103,7 +103,7 @@
         "done": {
             "title": "Enrollment complete",
             "persisting": "Sealing your Passkey-encrypted store on this device…",
-            "ready": "You're enrolled. Ready to sign petitions.",
+            "ready": "You're enrolled. Ready to sign polls.",
             "persistError": "Could not write the local store: {{detail}}"
         },
         "oprf": {
@@ -117,7 +117,7 @@
             "secret": "Secret (private)",
             "error": "OPRF error: {{detail}}",
             "ageBlocked": "Diia certifies you're under {{min}}.",
-            "ageBlockedHint": "CRISP-QES is for adult civic petitions only. You can return when you turn {{min}}."
+            "ageBlockedHint": "CRISP-QES is for adult citizens only. You can return when you turn {{min}}."
         },
         "register": {
             "title": "Register in the Merkle commitment",
@@ -162,13 +162,13 @@
         },
         "done": {
             "title": "Enrollment complete",
-            "body": "Your commitment is in the tree and your Passkey is bound to this device. You can now sign any open petition in seconds.",
-            "goto": "To petitions"
+            "body": "Your commitment is in the tree and your Passkey is bound to this device. You can now sign any open poll in seconds.",
+            "goto": "To polls"
         }
     },
     "sign": {
-        "heading": "Signing petition #{{id}}",
-        "back": "Back to petitions",
+        "heading": "Poll #{{id}}",
+        "back": "Back to polls",
         "steps": {
             "select": "1. Pick a vote",
             "unlock": "2. Unlock Passkey",
@@ -217,11 +217,11 @@
             "send": "Submit vote",
             "sending": "Submitting…",
             "errors": {
-                "NullifierAlreadyUsed": "You have already voted on this petition.",
-                "PetitionClosed": "The petition's deadline has passed.",
+                "NullifierAlreadyUsed": "You have already voted on this poll.",
+                "PetitionClosed": "The poll's deadline has passed.",
                 "InvalidProof": "ZK proof did not verify.",
                 "InvalidEnrollmentRoot": "enrollment-root mismatch versus contract state.",
-                "InvalidVote": "This vote value is not allowed for the petition's mode.",
+                "InvalidVote": "This vote value is not allowed for the poll's mode.",
                 "Network": "Network error contacting the relayer.",
                 "Unknown": "Unknown relayer error."
             }
@@ -230,7 +230,7 @@
     "recover": {
         "heading": "Recovery",
         "back": "Back to list",
-        "backCta": "Back to petitions",
+        "backCta": "Back to polls",
         "v2": {
             "title": "v2: Passkey cloud sync only",
             "intro": "v2 has exactly one recovery primitive: cloud sync on your Passkey provider. Sign in on a new device with the same Apple / Google / Microsoft account and the Passkey is already there.",
@@ -244,10 +244,10 @@
     },
     "done": {
         "heading": "Vote counted",
-        "lede": "Your vote on petition #{{id}} is in the contract.",
+        "lede": "Your vote on poll #{{id}} is in the contract.",
         "tx": "Transaction",
         "viewOnExplorer": "View on Etherscan",
-        "signAnother": "Vote on another petition"
+        "signAnother": "Vote on another poll"
     },
     "common": {
         "copy": "Copy",
