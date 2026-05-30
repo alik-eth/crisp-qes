@@ -568,6 +568,27 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
     letter-spacing: 0.06em;
     color: var(--muted);
 }
+.footnote__inner {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+.footnote__links {
+    display: flex;
+    gap: 16px;
+}
+.footnote__links a,
+.footnote__links a:visited {
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 1px solid var(--line);
+}
+.footnote__links a:hover {
+    color: var(--ink);
+    border-bottom-color: var(--ink);
+}
 
 /* ─── card / section ─── */
 .card {

@@ -401,6 +401,35 @@
         "forgetConfirm": "Yes, wipe local data",
         "forgetWiping": "Wiping…"
     },
+    "about": {
+        "heading": "About the project",
+        "disclaimer": "Open voting service. Not an official Diia service. Results have no legal consequences and serve as a tool for expressing public opinion.",
+        "body": "Civic Voice was created so that every citizen can freely express their position — anonymously, privately, and with a guarantee that their vote will be counted fairly. We combine state identification (Diia QES) with zero-knowledge cryptography so that nobody — neither the organizer, nor the platform, nor any third party — can find out who voted and how. Results are available to everyone in a public distributed registry (blockchain), where they cannot be changed, deleted, or falsified. The project's code is open — anyone can verify that the system works exactly as stated.",
+        "techIntro": "Civic Voice is the first solution that combines state electronic identification (Diia QES) with zero-knowledge proofs and homomorphic encryption for conducting civic polls. For the first time, a citizen can confirm their uniqueness via their tax ID (IPN) without revealing it to anyone — not the platform, not the blockchain, not even Diia. One person — one vote, mathematically guaranteed, with no way to find out who voted and how.",
+        "techStack": "Noir (ZK proofs) · VOPRF (RFC 9497) · Solidity/Foundry (Ethereum) · CRISP/FHE (encrypted tally) · Diia QES integration",
+        "techLabel": "Technology · In simple terms",
+        "techTitle": "Real privacy is mathematics.",
+        "tech1title": "Diia QES signature",
+        "tech1body": "A qualified electronic signature that every Ukrainian already has. Confirms citizenship and adulthood — without transmitting personal data.",
+        "tech2title": "ZK Proof",
+        "tech2body": "A zero-knowledge proof confirms you have the right to vote without revealing who you are. Created on your device in 10 seconds.",
+        "tech3title": "Distributed public registry",
+        "tech3body": "Blockchain infrastructure is stored in a distributed public registry. Results are verifiable by anyone — without a server owner.",
+        "tech4title": "Open source",
+        "tech4body": "All code is open. Open source means the ability to verify. And even better — to look at how it works, choose what to choose — and change more.",
+        "teamLabel": "Team",
+        "team1name": "alik.eth",
+        "team1role": "Engineer",
+        "team1desc": "System developer: architecture, ZK circuits and registry smart contract.",
+        "team2name": "dorgo.eth",
+        "team2role": "PhD Student, NaUKMA, Theory of Law",
+        "team2desc": "Dissertation research topic: \"Network consensus as a source of law\"."
+    },
+    "footer": {
+        "github": "GitHub",
+        "polls": "Polls",
+        "about": "About"
+    },
     "common": {
         "copy": "Copy",
         "copied": "Copied",
