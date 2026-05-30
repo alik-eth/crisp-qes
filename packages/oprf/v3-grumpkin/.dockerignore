@@ -1,0 +1,18 @@
+# Build context = packages/oprf/v3-grumpkin. Keep it lean; deps are reinstalled
+# in the image. IMPORTANT: do NOT ignore circuits/enroll_commit_v2/target —
+# the compiled ACIR (enroll_commit_v2.json) is required by the proof gate, and
+# its test proof is used to pre-bake the verifier CRS at build time.
+node_modules
+**/node_modules
+.git
+*.log
+
+# Vendor + threshold scratch the service does not need at runtime.
+vendor
+threshold
+
+# Other circuits' build outputs are not needed (only enroll_commit_v2/target is).
+circuits/qes_frontend/target
+circuits/oprf_commitment/target
+circuits/enroll_commit/target
+circuits/oprf_nullifier/target

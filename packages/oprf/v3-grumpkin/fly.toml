@@ -1,0 +1,36 @@
+app = "crisp-qes-oprf-grumpkin"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8788"
+  # bb.js verifier CRS is baked into the image at /app/.bb-crs (no runtime fetch).
+  CRS_PATH = "/app/.bb-crs"
+  BB_BACKEND = "Wasm"
+  BB_THREADS = "1"
+  # GRUMPKIN_OPRF_KEY (32-byte hex node secret) is REQUIRED in production and is
+  # set via `flyctl secrets set GRUMPKIN_OPRF_KEY=...`, NOT here.
+
+[http_service]
+  internal_port = 8788
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[http_service.checks]]
+  method = "GET"
+  path = "/healthz"
+  interval = "15s"
+  timeout = "5s"
+  grace_period = "10s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  # bb.js wasm/NAPI verifier needs more headroom than the v2 ristretto node;
+  # 1GB keeps UltraHonk verification comfortable on a shared-cpu VM.
+  memory_mb = 1024
