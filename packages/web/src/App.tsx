@@ -90,6 +90,15 @@ export function App() {
                             ) : state.kind === "verified" ? (
                                 <Redirect to="/petitions" />
                             ) : (
+                                <V3Enroll onDone={refresh} />
+                            )}
+                        </Route>
+                        <Route path="/verify-legacy">
+                            {state.kind === "guest" ? (
+                                <Redirect to="/" />
+                            ) : state.kind === "verified" ? (
+                                <Redirect to="/petitions" />
+                            ) : (
                                 <Verify onDone={refresh} />
                             )}
                         </Route>
@@ -104,7 +113,7 @@ export function App() {
                             )}
                         </Route>
                         <Route path="/v3">
-                            <V3Enroll />
+                            <Redirect to="/verify" />
                         </Route>
                         <Route>
                             <NotFound />

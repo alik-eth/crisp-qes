@@ -30,9 +30,11 @@ import {
     type Pt,
     type SvdWHints,
 } from "./grumpkin.js";
+import { buildP7sEnrollWitness } from "./p7sWitness.js";
 
 export const OPRF_SERVICE_URL = "https://crisp-qes-oprf-grumpkin.fly.dev";
 const BLIND_EVAL_PATH = "/v3/blind-eval";
+const REGISTER_PATH = "/v3/register";
 
 const ENROLL_CIRCUIT_URL = "/v3/enroll_commit_v2.json";
 const NULLIFIER_CIRCUIT_URL = "/v3/oprf_nullifier.json";
@@ -316,6 +318,12 @@ export interface RunResult {
     totalMs: number;
 }
 
+// Legacy SYNTHETIC demo run (no route wires this anymore — the primary flow
+// is runRealEnrollment below). NOTE: buildEnrollWitness() still emits the old
+// bare-`13 0A` RNOKPP synthetic encoding, which the current enroll_commit_v2
+// circuit (updated to the real Diia `13 10 "TINUA-"` layout) NO LONGER accepts;
+// this helper is kept only for reference/timing and will fail to prove against
+// the shipped circuit JSON. Use runRealEnrollment for the real flow.
 // Full end-to-end run. Emits progress per stage with timings.
 export async function runEnrollment(
     onStage: (stage: RunStage) => void,
@@ -412,6 +420,279 @@ export async function runEnrollment(
     return {
         commitment: commitmentHex,
         M: pointToHex(M),
+        totalMs: performance.now() - t0,
+    };
+}
+
+// =====================================================================
+// REAL .p7s OPERATOR-BLIND ENROLLMENT — the PRIMARY on-chain path.
+// =====================================================================
+//
+// Same in-browser pipeline as runEnrollment(), but driven by a REAL Diia
+// .p7s (witness from p7sWitness.buildP7sEnrollWitness) and carried all the
+// way to chain + vault:
+//
+//   build witness (real .p7s) -> prove enroll_commit_v2 -> POST /v3/blind-eval
+//   -> prove oprf_nullifier -> POST /v3/register (BOTH proofs) -> take
+//   {newRoot,newCommitments,attesterSig} -> POST relayer /v2/enroll (on-chain)
+//   -> return the vault material the caller persists via encryptedStore.
+//
+// The commitment we register == pedersen([N.x, N.y]) (grumpkin.nullifierCommitment),
+// which the service stores as the Merkle leaf. We persist that same value as
+// enrollment_secret `s`. The v2 sign circuit (packages/circuit/src/main.nr)
+// treats the leaf as `s` DIRECTLY (formula pin (a)) and derives the nullifier
+// as pedersen([s, petition_id, DOMAIN_PETITION_V2]) — so storing s == leaf ==
+// commitment makes the EXISTING sign/revoke flow work unchanged.
+
+// /v3/register response — shape per the live Grumpkin service.
+export interface V3RegisterResponse {
+    leafIndex: number;
+    merklePath: `0x${string}`[];
+    merklePathIndices: (0 | 1)[];
+    oldRoot: `0x${string}`;
+    newRoot: `0x${string}`;
+    newCommitments: `0x${string}`[];
+    attesterSig: `0x${string}`;
+    attesterAddr: `0x${string}`;
+}
+
+// POST both proofs + the commitment to the live service's /v3/register. The
+// service appends the leaf to the enrollment tree and pre-signs the on-chain
+// updateRoot batch.
+export async function v3Register(args: {
+    commitment: `0x${string}`;
+    enrollProof: Uint8Array;
+    enrollPublicInputs: string[];
+    nullifierProof: Uint8Array;
+    nullifierPublicInputs: string[];
+}): Promise<V3RegisterResponse> {
+    const body = {
+        commitment: args.commitment,
+        enrollProof: Array.from(args.enrollProof),
+        enrollPublicInputs: args.enrollPublicInputs,
+        nullifierProof: Array.from(args.nullifierProof),
+        nullifierPublicInputs: args.nullifierPublicInputs,
+    };
+    const res = await fetch(`${OPRF_SERVICE_URL}${REGISTER_PATH}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        const err = new Error(
+            `v3/register HTTP ${res.status}: ${text.slice(0, 300)}`,
+        ) as Error & { status: number; bodyText: string };
+        err.status = res.status;
+        err.bodyText = text;
+        throw err;
+    }
+    return (await res.json()) as V3RegisterResponse;
+}
+
+export interface RealRunStage {
+    key:
+        | "parseWitness"
+        | "enrollProve"
+        | "serviceEval"
+        | "nullifierProve"
+        | "register"
+        | "chain";
+    label: string;
+    status: "running" | "done" | "error";
+    detail?: string;
+    ms?: number;
+}
+
+// Everything the caller needs to (a) write the vault exactly like the v2
+// Verify flow and (b) flip the account to `verified`.
+export interface RealEnrollResult {
+    /** s = pedersen([N.x,N.y]) — enrollment_secret AND on-chain Merkle leaf. */
+    commitment: `0x${string}`;
+    /** Unblinded grumpkin OPRF point N, 64-byte (x||y BE) hex — informational. */
+    oprfOutputN: `0x${string}`;
+    leafIndex: number;
+    merklePath: `0x${string}`[];
+    merklePathIndices: (0 | 1)[];
+    /** On-chain enrollment tx (relayer-submitted updateRoot). */
+    txHash: `0x${string}`;
+    totalMs: number;
+}
+
+// Relayer submit signature, injected by the page (reuses lib/relayer.ts
+// submitEnrollment unchanged) so this module stays free of config/relayer
+// coupling and unit-testable.
+export type SubmitEnrollmentFn = (args: {
+    newRoot: `0x${string}`;
+    newCommitments: `0x${string}`[];
+    signature: `0x${string}`;
+}) => Promise<
+    | { ok: true; txHash: `0x${string}` }
+    | { ok: false; code?: string; detail?: string }
+>;
+
+// 64-byte (x||y, each 32B BE) hex of a grumpkin point — informational N store.
+function pointToOutputHex(p: Pt): `0x${string}` {
+    return pointToHex(p) as `0x${string}`;
+}
+
+// Full REAL-cert end-to-end run. The caller supplies the .p7s bytes, the
+// citizen's DOB (YYYYMMDD — same source the v2 age check uses, see report),
+// and the relayer submit fn. Emits progress per stage.
+export async function runRealEnrollment(
+    p7sBytes: Uint8Array,
+    dobDigits: string,
+    submitEnrollment: SubmitEnrollmentFn,
+    onStage: (stage: RealRunStage) => void,
+): Promise<RealEnrollResult> {
+    const t0 = performance.now();
+    const stage = (
+        key: RealRunStage["key"],
+        label: string,
+        status: RealRunStage["status"],
+        extra?: Partial<RealRunStage>,
+    ) => onStage({ key, label, status, ...extra });
+
+    // 1. Parse the .p7s and build the enroll_commit_v2 witness.
+    let t = performance.now();
+    stage("parseWitness", "Parse .p7s + build witness", "running");
+    let bundle: ReturnType<typeof buildP7sEnrollWitness>;
+    try {
+        bundle = buildP7sEnrollWitness(p7sBytes, dobDigits);
+    } catch (err) {
+        stage("parseWitness", "Parse .p7s + build witness", "error", {
+            detail: String(err),
+        });
+        throw err;
+    }
+    const { witness: enrollWitness, r, M } = bundle;
+    stage("parseWitness", "Parse .p7s + build witness", "done", {
+        ms: performance.now() - t,
+    });
+
+    // 2. Prove enroll_commit_v2 (~118k gates).
+    t = performance.now();
+    stage("enrollProve", "Prove enroll_commit_v2 (~118k gates)", "running");
+    let enroll: ProveResult;
+    try {
+        enroll = await runProof("enroll", enrollWitness, ENROLL_CIRCUIT_URL, () => {});
+    } catch (err) {
+        stage("enrollProve", "Prove enroll_commit_v2 (~118k gates)", "error", {
+            detail: String(err),
+        });
+        throw err;
+    }
+    stage("enrollProve", "Prove enroll_commit_v2 (~118k gates)", "done", {
+        ms: performance.now() - t,
+    });
+
+    // Sanity: public M is at publicInputs [12],[13].
+    const Maff = M.toAffine();
+    const pubMx = enroll.publicInputs[12];
+    const pubMy = enroll.publicInputs[13];
+    if (pubMx === undefined || pubMy === undefined) {
+        throw new Error("enroll proof missing public M (publicInputs[12,13])");
+    }
+    if (BigInt(pubMx) !== Maff.x || BigInt(pubMy) !== Maff.y) {
+        throw new Error("public M mismatch (proof publicInputs[12,13] != local M)");
+    }
+
+    // 3. Round-trip the LIVE service (proof-gated).
+    t = performance.now();
+    stage("serviceEval", "Live OPRF blind-eval (Grumpkin)", "running");
+    let ev: BlindEvalResponse;
+    try {
+        ev = await blindEval(M, enroll.proofBytes, enroll.publicInputs);
+    } catch (err) {
+        stage("serviceEval", "Live OPRF blind-eval (Grumpkin)", "error", {
+            detail: String(err),
+        });
+        throw err;
+    }
+    stage("serviceEval", "Live OPRF blind-eval (Grumpkin)", "done", {
+        ms: performance.now() - t,
+    });
+
+    // 4. Prove oprf_nullifier (unblind + DLEQ).
+    t = performance.now();
+    stage("nullifierProve", "Prove oprf_nullifier (DLEQ + unblind)", "running");
+    const nullifierWitness = buildNullifierWitness(M, r, ev);
+    let nullifier: ProveResult;
+    try {
+        nullifier = await runProof(
+            "nullifier",
+            nullifierWitness,
+            NULLIFIER_CIRCUIT_URL,
+            () => {},
+        );
+    } catch (err) {
+        stage("nullifierProve", "Prove oprf_nullifier (DLEQ + unblind)", "error", {
+            detail: String(err),
+        });
+        throw err;
+    }
+    stage("nullifierProve", "Prove oprf_nullifier (DLEQ + unblind)", "done", {
+        ms: performance.now() - t,
+    });
+
+    // Derive the commitment s = pedersen([N.x, N.y]) locally; it must equal
+    // the nullifier proof's public output (publicInputs[last]).
+    const { N: Npt, commitment } = await deriveCommitment(r, ev);
+    const commitmentHex = `0x${commitment.toString(16).padStart(64, "0")}` as `0x${string}`;
+    const pubOut = nullifier.publicInputs[nullifier.publicInputs.length - 1];
+    if (pubOut !== undefined && BigInt(pubOut) !== commitment) {
+        throw new Error(
+            "nullifier proof commitment != locally derived commitment",
+        );
+    }
+
+    // 5. POST /v3/register (BOTH proofs) — service appends the leaf + signs.
+    t = performance.now();
+    stage("register", "Register leaf (operator-blind)", "running");
+    let reg: V3RegisterResponse;
+    try {
+        reg = await v3Register({
+            commitment: commitmentHex,
+            enrollProof: enroll.proofBytes,
+            enrollPublicInputs: enroll.publicInputs,
+            nullifierProof: nullifier.proofBytes,
+            nullifierPublicInputs: nullifier.publicInputs,
+        });
+    } catch (err) {
+        stage("register", "Register leaf (operator-blind)", "error", {
+            detail: String(err),
+        });
+        throw err;
+    }
+    stage("register", "Register leaf (operator-blind)", "done", {
+        ms: performance.now() - t,
+    });
+
+    // 6. Land it on-chain via the relayer (reuses /v2/enroll unchanged).
+    t = performance.now();
+    stage("chain", "Submit on-chain (relayer)", "running");
+    const tx = await submitEnrollment({
+        newRoot: reg.newRoot,
+        newCommitments: reg.newCommitments,
+        signature: reg.attesterSig,
+    });
+    if (!tx.ok) {
+        stage("chain", "Submit on-chain (relayer)", "error", {
+            detail: tx.detail ?? tx.code ?? "chain submit failed",
+        });
+        throw new Error(tx.detail ?? tx.code ?? "chain submit failed");
+    }
+    stage("chain", "Submit on-chain (relayer)", "done", {
+        ms: performance.now() - t,
+    });
+
+    return {
+        commitment: commitmentHex,
+        oprfOutputN: pointToOutputHex(Npt),
+        leafIndex: reg.leafIndex,
+        merklePath: reg.merklePath,
+        merklePathIndices: reg.merklePathIndices,
+        txHash: tx.txHash,
         totalMs: performance.now() - t0,
     };
 }

@@ -7,7 +7,9 @@
 // PROVES in ONE proof, over a (synthetic) Diia-style P-256 cert held privately:
 //   (1) ECDSA-P256 signature over signedAttrs verifies (stdlib blackbox).
 //   (2) RNOKPP (10 ASCII digits) extracted from cert DER behind OID 2.5.4.5
-//       (06 03 55 04 05) + PrintableString (13 0A) + 10 digits.
+//       (06 03 55 04 05) + PrintableString (13 10) + "TINUA-" (54 49 4E 55 41
+//       2D) + 10 digits. The "TINUA-" prefix is asserted but NOT hashed; only
+//       the 10 digits feed hash_to_field (matches web extractRnokpp()).
 //   (3) DOB (8 ASCII digits YYYYMMDD) proves age >= 18 vs PUBLIC today.
 //   (4) u0, u1 = hash_to_field(RNOKPP) via expand_message_xmd(SHA-256),
 //       computed IN-CIRCUIT (full SHA-256 incl. padding + message schedule via
@@ -152,16 +154,32 @@ fn main(
     let sig_ok = std::ecdsa_secp256r1::verify_signature(pubkey_x, pubkey_y, sig, msghash);
     assert(sig_ok);
 
-    // ---- (b) RNOKPP DER structure + 10 digit bytes. ----
+    // ---- (b) RNOKPP DER structure + 10 digit bytes (REAL Diia encoding). ----
+    // A real Diia subject serialNumber is "TINUA-<10 digits>" (16 bytes), so the
+    // DER behind OID 2.5.4.5 is: 06 03 55 04 05  13 10  "TINUA-"  <10 digits>.
+    // OID 2.5.4.5 == DER: 06 03 55 04 05
     assert(read_at(cert, rnokpp_oid_off, 0) == 0x06);
     assert(read_at(cert, rnokpp_oid_off, 1) == 0x03);
     assert(read_at(cert, rnokpp_oid_off, 2) == 0x55);
     assert(read_at(cert, rnokpp_oid_off, 3) == 0x04);
     assert(read_at(cert, rnokpp_oid_off, 4) == 0x05);
+    // PrintableString tag 0x13, length 0x10 (16) = len("TINUA-") + 10 digits.
     assert(read_at(cert, rnokpp_oid_off, 5) == 0x13);
-    assert(read_at(cert, rnokpp_oid_off, 6) == 0x0A);
+    assert(read_at(cert, rnokpp_oid_off, 6) == 0x10);
 
-    let digits_base = rnokpp_oid_off + 7;
+    // "TINUA-" ASCII prefix: 0x54 0x49 0x4E 0x55 0x41 0x2D (6 bytes).
+    let prefix_base = rnokpp_oid_off + 7;
+    assert(read_at(cert, prefix_base, 0) == 0x54); // 'T'
+    assert(read_at(cert, prefix_base, 1) == 0x49); // 'I'
+    assert(read_at(cert, prefix_base, 2) == 0x4E); // 'N'
+    assert(read_at(cert, prefix_base, 3) == 0x55); // 'U'
+    assert(read_at(cert, prefix_base, 4) == 0x41); // 'A'
+    assert(read_at(cert, prefix_base, 5) == 0x2D); // '-'
+
+    // The 10 ASCII RNOKPP digits follow the "TINUA-" prefix. Only THESE 10
+    // digits are folded/hashed (NOT the prefix), matching the web witness
+    // extractRnokpp() which strips "TINUA-" and feeds the 10 digits.
+    let digits_base = rnokpp_oid_off + 13;
     let mut rnokpp_bytes: [u8; 10] = [0; 10];
     for k in 0..10 {
         let b = read_at(cert, digits_base, k);

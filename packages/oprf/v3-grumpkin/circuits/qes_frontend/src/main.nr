@@ -4,7 +4,9 @@
 //   (a) ECDSA-P256 signature over signedAttrs verifies (stdlib blackbox).
 //   (b) the RNOKPP (10-digit Ukrainian taxpayer id) lives in the cert at a
 //       witnessed offset, behind OID 2.5.4.5 (DER 06 03 55 04 05) +
-//       PrintableString tag/len (13 0A) + 10 ASCII-digit bytes.
+//       PrintableString tag/len (13 10) + "TINUA-" prefix + 10 ASCII-digit
+//       bytes. The "TINUA-" prefix is asserted but NOT folded; only the 10
+//       digits form the output Field (matches web extractRnokpp()).
 //   (c) DOB (8 ASCII digits YYYYMMDD) at a witnessed offset proves age >= 18
 //       against a PUBLIC current-date (YYYYMMDD) input.
 //   (d) outputs a Field = fold of the 10 RNOKPP digit bytes. This is the value
@@ -44,19 +46,32 @@ fn main(
     let sig_ok = std::ecdsa_secp256r1::verify_signature(pubkey_x, pubkey_y, sig, msghash);
     assert(sig_ok);
 
-    // (b) RNOKPP structure check at the witnessed offset.
+    // (b) RNOKPP structure check at the witnessed offset (REAL Diia encoding).
+    // A real Diia subject serialNumber is "TINUA-<10 digits>" (16 bytes), so the
+    // DER behind OID 2.5.4.5 is: 06 03 55 04 05  13 10  "TINUA-"  <10 digits>.
     // OID 2.5.4.5 == DER: 06 03 55 04 05
     assert(read_at(cert, rnokpp_oid_off, 0) == 0x06);
     assert(read_at(cert, rnokpp_oid_off, 1) == 0x03);
     assert(read_at(cert, rnokpp_oid_off, 2) == 0x55);
     assert(read_at(cert, rnokpp_oid_off, 3) == 0x04);
     assert(read_at(cert, rnokpp_oid_off, 4) == 0x05);
-    // PrintableString tag 0x13, length 0x0A (10) immediately follow the OID.
+    // PrintableString tag 0x13, length 0x10 (16) = len("TINUA-") + 10 digits.
     assert(read_at(cert, rnokpp_oid_off, 5) == 0x13);
-    assert(read_at(cert, rnokpp_oid_off, 6) == 0x0A);
+    assert(read_at(cert, rnokpp_oid_off, 6) == 0x10);
 
-    // 10 ASCII-digit bytes; fold them into a single Field (base-10 accumulate).
-    let digits_base = rnokpp_oid_off + 7;
+    // "TINUA-" ASCII prefix: 0x54 0x49 0x4E 0x55 0x41 0x2D (6 bytes).
+    let prefix_base = rnokpp_oid_off + 7;
+    assert(read_at(cert, prefix_base, 0) == 0x54); // 'T'
+    assert(read_at(cert, prefix_base, 1) == 0x49); // 'I'
+    assert(read_at(cert, prefix_base, 2) == 0x4E); // 'N'
+    assert(read_at(cert, prefix_base, 3) == 0x55); // 'U'
+    assert(read_at(cert, prefix_base, 4) == 0x41); // 'A'
+    assert(read_at(cert, prefix_base, 5) == 0x2D); // '-'
+
+    // 10 ASCII-digit bytes AFTER the "TINUA-" prefix; fold ONLY these into a
+    // single Field (base-10 accumulate). The prefix is asserted but NOT folded,
+    // matching the web extractRnokpp() which strips "TINUA-".
+    let digits_base = rnokpp_oid_off + 13;
     let mut rnokpp_field: Field = 0;
     for k in 0..10 {
         let b = read_at(cert, digits_base, k);

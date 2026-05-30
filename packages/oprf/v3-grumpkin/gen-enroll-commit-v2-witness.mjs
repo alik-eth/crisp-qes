@@ -24,11 +24,21 @@ const cert = new Uint8Array(CERT_LEN);
 for (let i = 0; i < CERT_LEN; i++) cert[i] = (i * 31 + 7) & 0xff;
 
 // Place the RNOKPP OID block beyond the old 768 boundary to prove the circuit
-// no longer assumes the synthetic's fixed offsets.
+// no longer assumes the synthetic's fixed offsets. REAL Diia encoding: the
+// subject serialNumber is "TINUA-<10 digits>" (16 bytes), so the DER is
+// 06 03 55 04 05  13 10  "TINUA-"  <10 digits>. The circuit asserts the
+// "TINUA-" prefix but hashes ONLY the 10 digits.
 const rnokppOff = 1100;
-const oid = [0x06, 0x03, 0x55, 0x04, 0x05, 0x13, 0x0a];
+// OID 2.5.4.5 + PrintableString tag 0x13, len 0x10 (16).
+const oid = [0x06, 0x03, 0x55, 0x04, 0x05, 0x13, 0x10];
 for (let i = 0; i < oid.length; i++) cert[rnokppOff + i] = oid[i];
-for (let i = 0; i < 10; i++) cert[rnokppOff + 7 + i] = RNOKPP.charCodeAt(i);
+// "TINUA-" ASCII prefix (6 bytes) immediately after the tag/len.
+const TINUA = "TINUA-";
+for (let i = 0; i < TINUA.length; i++) {
+  cert[rnokppOff + 7 + i] = TINUA.charCodeAt(i);
+}
+// 10 ASCII RNOKPP digits after the prefix (offset + 13).
+for (let i = 0; i < 10; i++) cert[rnokppOff + 13 + i] = RNOKPP.charCodeAt(i);
 
 const dobOff = 1400;
 for (let i = 0; i < 8; i++) cert[dobOff + i] = DOB.charCodeAt(i);

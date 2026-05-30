@@ -3,8 +3,9 @@
 //
 // SCOPE. These tests exercise the pure, deterministic pieces of the module
 // against a SYNTHETIC cert DER buffer (no real Diia material, none on disk):
-//   - findRnokppOidOffset: locates the circuit's 06 03 55 04 05 13 0A <10d> run
-//     and rejects a real-Diia "TINUA-" (13 10) encoding with a labelled error.
+//   - findRnokppOidOffset: locates the circuit's real-Diia run
+//     06 03 55 04 05 13 10 "TINUA-" <10 digits> and rejects a bare 13 0A
+//     legacy encoding (no "TINUA-" prefix) with a labelled error.
 //   - findDobOffset: locates the 8 YYYYMMDD digits, disambiguated by the Diia
 //     DOB attribute OID.
 //   - lowSCompactSig: forces low-s and emits the 64-byte r||s the Noir
@@ -35,9 +36,10 @@ const DOB_ATTRIBUTE_OID = [
     0x0b, 0x01,
 ];
 
-// Build a synthetic cert DER buffer with the circuit's canonical RNOKPP run
-// (06 03 55 04 05 13 0A <10 digits>) at `rnokppOff` and an 8-digit DOB right
-// after the Diia DOB attribute OID at `dobOff`.
+// Build a synthetic cert DER buffer with the circuit's real-Diia RNOKPP run
+// (06 03 55 04 05 13 10 "TINUA-" <10 digits>) at `rnokppOff` and an 8-digit DOB
+// right after the Diia DOB attribute OID at `dobOff`.
+const TINUA = [0x54, 0x49, 0x4e, 0x55, 0x41, 0x2d]; // "TINUA-"
 function synthCert({
     rnokpp = "1234567890",
     dob = "19900115",
@@ -52,7 +54,7 @@ function synthCert({
     const cert = new Uint8Array(CERT_LEN);
     for (let i = 0; i < CERT_LEN; i++) cert[i] = (i * 31 + 7) & 0xff;
 
-    const run = [...RNOKPP_OID, 0x13, 0x0a];
+    const run = [...RNOKPP_OID, 0x13, 0x10, ...TINUA];
     for (let i = 0; i < run.length; i++) cert[rnokppOff + i] = run[i]!;
     for (let i = 0; i < 10; i++)
         cert[rnokppOff + run.length + i] = rnokpp.charCodeAt(i);
@@ -71,7 +73,7 @@ function synthCert({
 }
 
 describe("findRnokppOidOffset", () => {
-    it("finds the canonical 06 03 55 04 05 13 0A <10 digits> run", () => {
+    it('finds the 06 03 55 04 05 13 10 "TINUA-" <10 digits> run', () => {
         const cert = synthCert({ rnokppOff: 137 });
         expect(findRnokppOidOffset(cert)).toBe(137);
     });
@@ -81,25 +83,25 @@ describe("findRnokppOidOffset", () => {
         expect(findRnokppOidOffset(cert)).toBe(1100);
     });
 
-    it("rejects a real-Diia TINUA- (13 10) subjectSerial encoding", () => {
-        // Real Diia: PrintableString length 16 = "TINUA-1234567890".
+    it("rejects a bare 13 0A (legacy, no TINUA- prefix) encoding", () => {
+        // Legacy synthetic: PrintableString length 10, no "TINUA-" prefix.
         const cert = new Uint8Array(CERT_LEN);
         const off = 200;
-        const run = [...RNOKPP_OID, 0x13, 0x10];
+        const run = [...RNOKPP_OID, 0x13, 0x0a];
         for (let i = 0; i < run.length; i++) cert[off + i] = run[i]!;
-        const tinua = "TINUA-1234567890";
-        for (let i = 0; i < tinua.length; i++)
-            cert[off + run.length + i] = tinua.charCodeAt(i);
+        for (let i = 0; i < 10; i++)
+            cert[off + run.length + i] = "1234567890".charCodeAt(i);
         expect(() => findRnokppOidOffset(cert)).toThrow(/TINUA/);
     });
 
-    it("skips an OID hit whose string is not exactly 10 digits", () => {
-        // First OID hit has 13 0B (len 11) -> not a match; second is canonical.
+    it("skips an OID hit whose TINUA- digits are not exactly 10", () => {
+        // First OID hit: 13 10 "TINUA-" then non-digit bytes -> not a match;
+        // second is the canonical run.
         const cert = synthCert({ rnokppOff: 500 });
         const bad = 120;
-        const run = [...RNOKPP_OID, 0x13, 0x0b];
+        const run = [...RNOKPP_OID, 0x13, 0x10, ...TINUA];
         for (let i = 0; i < run.length; i++) cert[bad + i] = run[i]!;
-        for (let i = 0; i < 11; i++) cert[bad + run.length + i] = 0x39;
+        for (let i = 0; i < 10; i++) cert[bad + run.length + i] = 0x41; // 'A'
         expect(findRnokppOidOffset(cert)).toBe(500);
     });
 });

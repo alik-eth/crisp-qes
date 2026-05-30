@@ -15,8 +15,8 @@
 //   msghash[32]                 — sha256(signedAttrs), WITNESSED.
 //   cert[2048]                  — the leaf-cert DER buffer (zero-padded), the
 //                                 buffer the circuit byte-reads RNOKPP + DOB from.
-//   rnokpp_oid_off              — offset where  06 03 55 04 05 13 0A <10 digits>
-//                                 begins inside cert[].
+//   rnokpp_oid_off              — offset where the RNOKPP run begins inside
+//                                 cert[] (06 03 55 04 05 13 10 "TINUA-" <10d>).
 //   dob_off                     — offset of 8 contiguous ASCII DOB digits.
 //   today[8]                    — public YYYYMMDD ASCII (age check).
 //   c1..c4, h0[6], h1[6]        — SvdW suite constants + per-map sqrt hints.
@@ -28,36 +28,22 @@
 // does NOT re-hash signedAttrs); ECDSA verify binds (pubkey, sig, msghash).
 //
 // =====================================================================
-// CIRCUIT vs REAL-DIIA ENCODING MISMATCH — MUST BE RESOLVED IN-BROWSER
+// RNOKPP ENCODING — REAL DIIA (option A, landed)
 // =====================================================================
 //
-// The circuit asserts the RNOKPP appears as the EXACT byte run
-//   06 03 55 04 05   (OID 2.5.4.5, subject serialNumber)
-//   13 0A            (PrintableString, length 10)
-//   <10 ASCII digits>
+// The enroll_commit_v2 circuit asserts the RNOKPP appears as the EXACT run
+//   06 03 55 04 05      (OID 2.5.4.5, subject serialNumber)
+//   13 10               (PrintableString, length 16)
+//   54 49 4E 55 41 2D   ("TINUA-")
+//   <10 ASCII digits>   (the RNOKPP)
+// matching a REAL Diia subject serialNumber. The "TINUA-" prefix is asserted
+// but NOT hashed; only the 10 trailing digits feed hash_to_field, identical to
+// extractRnokpp() (which strips "TINUA-"). findRnokppOidOffset() below locates
+// exactly this run and throws a labelled error if absent.
 //
-// A REAL Diia subject serialNumber is "TINUA-<RNOKPP>" — a PrintableString of
-// length 16 (tag/len 13 10), NOT a bare 10-digit string (13 0A). So the
-// circuit's current RNOKPP byte pattern does NOT occur verbatim in a real Diia
-// leaf cert DER. Resolving this is the load-bearing real-cert step and there
-// are exactly two correct options (decide before shipping real certs):
-//
-//   (A) Update the circuit to match Diia: assert  ... 13 10 'T''I''N''U''A''-'
-//       then 10 digits, and feed those 10 digits into hash_to_field. (Preferred
-//       — keeps the on-chain RNOKPP source identical to extractRnokpp's.)
-//   (B) Keep the circuit, and have this module locate the 10 RNOKPP digits via
-//       the proven extractRnokpp()/parseP7s() path, then ensure the offset
-//       points at a 06 03 55 04 05 13 0A <digits> run. A real cert has no such
-//       run, so (B) only works against a transformed/synthetic buffer.
-//
-// Until (A) lands, findRnokppOidOffset() below returns the offset of the
-// canonical 13 0A pattern IF present (true for the synthetic cert and for the
-// unit tests), and throws a clearly-labelled error on a real Diia cert so the
-// gap is impossible to ship past silently.
-//
-// Everything else (leaf pubkey, signedAttrs sha256, low-s signature, DOB
+// Everything (leaf pubkey, signedAttrs sha256, low-s signature, RNOKPP/DOB
 // digit location, SvdW hints, scalar) is real-cert-ready and exercised below
-// against a synthetic cert in p7sWitness.test.ts.
+// against a synthetic Diia-shaped cert in p7sWitness.test.ts.
 
 import type { InputMap } from "@noir-lang/noir_js";
 import { p256 } from "@noble/curves/p256";
@@ -81,9 +67,15 @@ export const CERT_LEN = 2048;
 
 // OID 2.5.4.5 (subject serialNumber): 06 03 55 04 05.
 const RNOKPP_OID = new Uint8Array([0x06, 0x03, 0x55, 0x04, 0x05]);
-// PrintableString tag + length-10 — the exact prefix the circuit asserts
-// immediately before the 10 RNOKPP digit bytes.
-const RNOKPP_STR_PREFIX = new Uint8Array([0x13, 0x0a]);
+// PrintableString tag + length-16 + "TINUA-" — the exact prefix the (updated,
+// option-A) enroll_commit_v2 circuit asserts immediately before the 10 RNOKPP
+// digit bytes. A real Diia subject serialNumber is "TINUA-<10 digits>" (16
+// bytes => PrintableString tag 0x13, length 0x10). The circuit asserts the
+// "TINUA-" prefix but does NOT hash it; only the 10 trailing digits feed
+// hash_to_field (matching extractRnokpp(), which strips "TINUA-").
+const RNOKPP_STR_PREFIX = new Uint8Array([
+    0x13, 0x10, 0x54, 0x49, 0x4e, 0x55, 0x41, 0x2d, // 13 10 'T''I''N''U''A''-'
+]);
 // Diia DOB attribute OID (1.2.804.2.1.1.1.11.1.4.11.1), used to disambiguate
 // the YYYYMMDD digits from any other 8-digit run in the cert. DER-encoded.
 const DOB_ATTRIBUTE_OID = new Uint8Array([
@@ -121,21 +113,24 @@ function indexOf(hay: Uint8Array, needle: Uint8Array, from = 0): number {
  * i.e. the value the circuit takes as `rnokpp_oid_off`.
  *
  * Real Diia certs encode the subject serialNumber as "TINUA-<RNOKPP>"
- * (PrintableString length 16 → 13 10), so the canonical 13 0A run is ABSENT;
- * this throws a clearly-labelled error in that case. See the file header
- * (option A vs B) for the resolution path.
+ * (PrintableString length 16 → 13 10), so the located run is
+ *   06 03 55 04 05  13 10  54 49 4E 55 41 2D  <10 digits>
+ * matching the (option-A) enroll_commit_v2 circuit. Throws a clearly-labelled
+ * error if no such run is present.
  */
 export function findRnokppOidOffset(certDer: Uint8Array): number {
+    const P = RNOKPP_STR_PREFIX; // 13 10 "TINUA-"
     let from = 0;
     for (;;) {
         const oidAt = indexOf(certDer, RNOKPP_OID, from);
         if (oidAt < 0) break;
         const strAt = oidAt + RNOKPP_OID.length;
-        if (
-            certDer[strAt] === RNOKPP_STR_PREFIX[0] &&
-            certDer[strAt + 1] === RNOKPP_STR_PREFIX[1]
-        ) {
-            const digitsAt = strAt + 2;
+        let prefixOk = strAt + P.length <= certDer.length;
+        for (let k = 0; prefixOk && k < P.length; k++) {
+            if (certDer[strAt + k] !== P[k]) prefixOk = false;
+        }
+        if (prefixOk) {
+            const digitsAt = strAt + P.length;
             let allDigits = digitsAt + 10 <= certDer.length;
             for (let k = 0; allDigits && k < 10; k++) {
                 const b = certDer[digitsAt + k]!;
@@ -146,10 +141,9 @@ export function findRnokppOidOffset(certDer: Uint8Array): number {
         from = oidAt + 1;
     }
     throw new Error(
-        "p7sWitness: no canonical RNOKPP run (06 03 55 04 05 13 0A <10 digits>) " +
-            "found in cert DER. A real Diia cert encodes the subject serialNumber " +
-            'as "TINUA-<RNOKPP>" (13 10), which the enroll_commit_v2 circuit does ' +
-            "not yet match — see the option-A circuit update flagged in this file.",
+        'p7sWitness: no RNOKPP run (06 03 55 04 05 13 10 "TINUA-" <10 digits>) ' +
+            "found in cert DER. Expected a Diia subject serialNumber encoded as " +
+            '"TINUA-<10 digits>" matching the enroll_commit_v2 circuit.',
     );
 }
 
