@@ -1,0 +1,12 @@
+{
+    "name": "@crisp-qes/oprf-v3-grumpkin-service",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "description": "v3 Grumpkin VOPRF node service (build, unaudited). Standalone; does NOT touch the live v2 ristretto service.",
+    "main": "server.mjs",
+    "scripts": {
+        "start": "node server.mjs",
+        "test": "node roundtrip-test.mjs"
+    }
+}

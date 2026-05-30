@@ -1,0 +1,8 @@
+[package]
+name = "enroll_commit_v2"
+type = "bin"
+authors = ["crisp-qes"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+sha256 = { path = "/home/alikvovk/nargo/github.com/noir-lang/sha256/v0.3.0" }
