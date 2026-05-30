@@ -2,7 +2,7 @@
   "network": "sepolia",
   "chainId": 11155111,
   "deployedAt": "2026-05-31T00:00:00Z",
-  "deployerCommit": "pending",
+  "deployerCommit": "762c0ca",
   "blockExplorer": "https://sepolia.etherscan.io",
   "deployer": "0xB8d121CD0B2D0AB3df2aFF0B45B2fD354FF4c1f7",
   "note": "CLEAN-SLATE redeploy 2026-05-31 to make v3 operator-blind Grumpkin enrollment the primary flow: fresh EnrollmentRegistry (genesis, leafCount 0) with the v3 attester 0xa114...8B12 so the v3 service's in-memory genesis tree matches on-chain; fresh PetitionRegistryV2 pointing at it; UltraVerifierV2 reused. Prior v2 enrollments/petitions wiped (intentional). Old addresses in supersedes_within_sepolia.",
