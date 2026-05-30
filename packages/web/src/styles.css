@@ -180,12 +180,12 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
     font-weight: 600;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    text-decoration: none;
-    border-bottom: 1px solid transparent;
+    text-decoration: none !important;
+    border-bottom: 0;
     padding: var(--s-1) 0;
 }
-.topnav a.is-active { border-bottom-color: var(--ink); }
-.topnav a:hover { border-bottom-color: var(--ink); }
+.topnav a.is-active { border-bottom: 1px solid var(--ink); }
+.topnav a:hover { border-bottom: 1px solid var(--ink); }
 .topnav__right {
     margin-left: auto;
     display: flex;
