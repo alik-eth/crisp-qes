@@ -40,6 +40,7 @@ export function Masthead({ state, onSignInRequest, onChipClick }: Props) {
             <div className="topnav__right">
                 <nav className="topnav" aria-label="Primary">
                     {navItem("/petitions", t("nav.petitions"))}
+                    {navItem("/about", t("footer.about"))}
                 </nav>
                 <div className="langseg" role="radiogroup" aria-label="Language">
                     <button
