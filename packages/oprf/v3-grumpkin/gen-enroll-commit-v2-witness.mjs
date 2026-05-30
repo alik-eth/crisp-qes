@@ -10,7 +10,12 @@ import { p256 } from "../node_modules/@noble/curves/p256.js";
 import { sha256 } from "../node_modules/@noble/hashes/sha2.js";
 import { N, SVDW_CONSTS, mapToCurveSvdW, hashToField2, scalarLimbs } from "./lib.mjs";
 
-const CERT_LEN = 768;
+// CERT_LEN must match the resized circuit global in
+// circuits/enroll_commit_v2/src/main.nr. Bumped 768 -> 2048 so the buffer can
+// hold a REAL Diia leaf-cert TBS (~1-1.5 KB). The offsets below are still
+// witnessed (rnokpp_oid_off, dob_off), so they can sit anywhere inside the
+// larger buffer — here we place them well past 768 to exercise the new range.
+const CERT_LEN = 2048;
 const RNOKPP = "1234567890";
 const DOB = "19900115";
 const TODAY = "20260530";
@@ -18,12 +23,14 @@ const TODAY = "20260530";
 const cert = new Uint8Array(CERT_LEN);
 for (let i = 0; i < CERT_LEN; i++) cert[i] = (i * 31 + 7) & 0xff;
 
-const rnokppOff = 64;
+// Place the RNOKPP OID block beyond the old 768 boundary to prove the circuit
+// no longer assumes the synthetic's fixed offsets.
+const rnokppOff = 1100;
 const oid = [0x06, 0x03, 0x55, 0x04, 0x05, 0x13, 0x0a];
 for (let i = 0; i < oid.length; i++) cert[rnokppOff + i] = oid[i];
 for (let i = 0; i < 10; i++) cert[rnokppOff + 7 + i] = RNOKPP.charCodeAt(i);
 
-const dobOff = 200;
+const dobOff = 1400;
 for (let i = 0; i < 8; i++) cert[dobOff + i] = DOB.charCodeAt(i);
 
 const msghash = sha256(cert);

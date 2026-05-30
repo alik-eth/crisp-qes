@@ -49,11 +49,41 @@ export const ENROLL_COMMIT_V2_JSON = join(
     "enroll_commit_v2.json",
 );
 
+// Path to the committed oprf_nullifier circuit artifact. Its proof binds the
+// post-blind-eval enrollment commitment to the same M the enroll proof commits
+// to, closing the Sybil-binding gap at /v3/register (see verifyNullifierProof).
+export const OPRF_NULLIFIER_JSON = join(
+    __dirname,
+    "..",
+    "circuits",
+    "oprf_nullifier",
+    "target",
+    "oprf_nullifier.json",
+);
+
 // Index of the M.x public-input word and total expected word count. Asserted
 // against the request so a circuit-shape change can't silently weaken the gate.
 export const M_X_WORD_INDEX = 12;
 export const PUBLIC_INPUT_WORD_COUNT = 14;
 const FIELD_BYTES = 32;
+
+// — oprf_nullifier public-input layout (10 field words of 32 bytes BE) ─────────
+// The circuit's `main` declares these public inputs IN ABI ORDER, then appends
+// its single public return value (the commitment) as the final word:
+//   [0] G.x    [1] G.y      (generator, == lib.mjs G; word [0] is the fixed 0x..01)
+//   [2] Kpub.x [3] Kpub.y   (node public key k*G — must equal THIS node's Kpub)
+//   [4] M.x    [5] M.y      (blinded element — must equal the enroll proof's M)
+//   [6] Y.x    [7] Y.y      (node response Y = k*M)
+//   [8] c_expected          (Fiat-Shamir DLEQ challenge)
+//   [9] commitment          (RETURN: pedersen([N.x, N.y]), N = rinv*Y)
+// All limbs (c,z,rinv,r) are PRIVATE, so they do not appear here.
+export const NULLIFIER_G_X_WORD_INDEX = 0;
+export const NULLIFIER_KPUB_X_WORD_INDEX = 2;
+export const NULLIFIER_M_X_WORD_INDEX = 4;
+export const NULLIFIER_Y_X_WORD_INDEX = 6;
+export const NULLIFIER_C_EXPECTED_WORD_INDEX = 8;
+export const NULLIFIER_COMMITMENT_WORD_INDEX = 9;
+export const NULLIFIER_PUBLIC_INPUT_WORD_COUNT = 10;
 
 // Threads for the bb.js wasm backend. Verification is light; 1 thread keeps the
 // container memory footprint predictable. Override via BB_THREADS if needed.
@@ -182,6 +212,29 @@ export function extractMFromPublicInputs(words) {
     };
 }
 
+// Extract the load-bearing public values from an oprf_nullifier proof's public
+// inputs: the points G, Kpub, M, Y (as {x,y} bigints) and the returned
+// commitment (= pedersen(N)) bigint. Used at /v3/register to cross-check the
+// nullifier proof against the enroll proof, this node's Kpub, and the submitted
+// commitment — closing the Sybil-binding gap.
+export function extractNullifierPublics(words) {
+    if (!Array.isArray(words) || words.length !== NULLIFIER_PUBLIC_INPUT_WORD_COUNT) {
+        throw new Error(
+            `nullifier publicInputs must have exactly ${NULLIFIER_PUBLIC_INPUT_WORD_COUNT} words`,
+        );
+    }
+    const toBig = (w) => BigInt("0x" + wordToBE32(w).toString("hex"));
+    const pt = (i) => ({ x: toBig(words[i]), y: toBig(words[i + 1]) });
+    return {
+        G: pt(NULLIFIER_G_X_WORD_INDEX),
+        Kpub: pt(NULLIFIER_KPUB_X_WORD_INDEX),
+        M: pt(NULLIFIER_M_X_WORD_INDEX),
+        Y: pt(NULLIFIER_Y_X_WORD_INDEX),
+        cExpected: toBig(words[NULLIFIER_C_EXPECTED_WORD_INDEX]),
+        commitment: toBig(words[NULLIFIER_COMMITMENT_WORD_INDEX]),
+    };
+}
+
 // — the gate ────────────────────────────────────────────────────────────────
 
 /**
@@ -237,4 +290,88 @@ export async function verifyEnrollCommitProof({ gate, proof, publicInputs, expec
         return { ok: false, code: "ProofRejected", detail: "proof verification failed" };
     }
     return { ok: true };
+}
+
+/**
+ * Verify a client's oprf_nullifier proof and enforce the cross-checks that bind
+ * the enrollment commitment back to the certificate, closing the Sybil-binding
+ * gap at /v3/register. The circuit ITSELF proves, in zero knowledge:
+ *   commitment = pedersen(N),  N = rinv*Y,  r*N == Y (binds r),
+ *   Y = k*M via an in-circuit Chaum-Pedersen DLEQ against Kpub=k*G.
+ * On top of the cryptographic verification we require:
+ *   (a) the proof's M  == the (already cert-bound) enroll proof's M,
+ *   (b) the proof's Kpub == THIS node's Kpub (Y was evaluated under our k),
+ *   (c) the proof's returned commitment == the commitment being registered.
+ * Together these chain  commitment -> N -> Y -> M -> cert.
+ *
+ * @param {object} args
+ * @param {ProofGate} args.gate    in-process nullifier gate (createGate(OPRF_NULLIFIER_JSON)).
+ * @param {string|Uint8Array} args.proof  the bb proof (0x-hex or bytes).
+ * @param {Array<string|bigint>} args.publicInputs  the 10 nullifier public-input words.
+ * @param {{x:bigint,y:bigint}} args.expectedM        M from the enroll proof.
+ * @param {{x:bigint,y:bigint}} args.expectedKpub     this node's Kpub.
+ * @param {bigint} args.expectedCommitment            the submitted commitment leaf.
+ * @returns {Promise<{ ok: true, publics: object } | { ok: false, code: string, detail: string }>}
+ */
+export async function verifyNullifierProof({
+    gate, proof, publicInputs, expectedM, expectedKpub, expectedCommitment,
+}) {
+    // (1) Structural parse + cross-checks first (cheap; reject before the wasm
+    //     verifier). A mismatch here means the proof — even if internally valid —
+    //     does not bind THIS commitment / M / node, so it cannot admit.
+    let proofBytes, piWords, p;
+    try {
+        proofBytes = proofToBytes(proof);
+        piWords = normalizePublicInputs(publicInputs);
+        p = extractNullifierPublics(publicInputs);
+    } catch (e) {
+        return { ok: false, code: "MalformedProof", detail: e.message };
+    }
+    if (piWords.length !== NULLIFIER_PUBLIC_INPUT_WORD_COUNT) {
+        return {
+            ok: false,
+            code: "MalformedProof",
+            detail: `nullifier public_inputs must be ${NULLIFIER_PUBLIC_INPUT_WORD_COUNT} field words`,
+        };
+    }
+    // (a) same M as the enroll proof (chains M -> cert).
+    if (p.M.x !== expectedM.x || p.M.y !== expectedM.y) {
+        return {
+            ok: false,
+            code: "NullifierMismatchedM",
+            detail: "nullifier proof M does not equal the enroll proof M",
+        };
+    }
+    // (b) Y was evaluated under THIS node's k (Kpub binds k via the DLEQ).
+    if (p.Kpub.x !== expectedKpub.x || p.Kpub.y !== expectedKpub.y) {
+        return {
+            ok: false,
+            code: "NullifierMismatchedKpub",
+            detail: "nullifier proof Kpub does not equal this node's Kpub",
+        };
+    }
+    // (c) the proof's returned commitment is exactly the one being registered.
+    if (p.commitment !== expectedCommitment) {
+        return {
+            ok: false,
+            code: "NullifierMismatchedCommitment",
+            detail: "nullifier proof commitment does not equal the registered commitment",
+        };
+    }
+
+    // (2) Cryptographic verification IN-PROCESS via bb.js (no `bb` CLI).
+    let valid;
+    try {
+        valid = await gate.verify({ proof: proofBytes, publicInputs: piWords });
+    } catch (e) {
+        return {
+            ok: false,
+            code: "ProofRejected",
+            detail: (e.message || "bb.js verifyProof failed").toString().trim().slice(0, 300),
+        };
+    }
+    if (!valid) {
+        return { ok: false, code: "ProofRejected", detail: "nullifier proof verification failed" };
+    }
+    return { ok: true, publics: p };
 }

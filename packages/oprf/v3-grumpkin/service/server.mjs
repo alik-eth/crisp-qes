@@ -21,7 +21,13 @@ import Fastify from "fastify";
 import fastifyCors from "@fastify/cors";
 
 import { OprfNode, pointFromHex } from "./oprf-node.mjs";
-import { createGate, verifyEnrollCommitProof } from "./proof-gate.mjs";
+import {
+    createGate,
+    verifyEnrollCommitProof,
+    verifyNullifierProof,
+    extractMFromPublicInputs,
+    OPRF_NULLIFIER_JSON,
+} from "./proof-gate.mjs";
 import { Attester } from "./attester.mjs";
 import { MerkleIndex, TREE_DEPTH, GENESIS_ROOT, bigintToHex32 } from "./merkle.mjs";
 
@@ -30,11 +36,12 @@ import { MerkleIndex, TREE_DEPTH, GENESIS_ROOT, bigintToHex32 } from "./merkle.m
 // become leaves alongside v2's. Override via env for other deployments.
 const DEFAULT_CHAIN_ID = 11155111; // Sepolia
 const DEFAULT_ENROLLMENT_REGISTRY = "0x0214504C1Be6d664bbE3AE6687507aBE19A36d1a";
-// The attester address EnrollmentRegistry.updateRoot trusts. The human sets
-// V3_ATTESTER_KEY to the secp256k1 key whose address is this; we assert it at
-// boot in production so a wrong key fails closed instead of producing sigs the
-// contract silently rejects.
-const TRUSTED_ATTESTER_ADDR = "0x876E995c6f4f158ED5D746B5e10A00329df1E246";
+// The attester address is DERIVED from V3_ATTESTER_KEY (never hardcoded). The
+// EnrollmentRegistry was rotated to a new attester; the human sets
+// V3_ATTESTER_KEY to its secp256k1 key and the service derives the address from
+// it. In production we assert only that the derived address is non-zero so a
+// missing/garbage key fails closed instead of silently producing sigs.
+const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
 
 // Field range for a Grumpkin/BN254 commitment leaf (< 2^254 is a valid Fr).
 const FR_MAX = 1n << 254n;
@@ -71,40 +78,74 @@ function validateBlindEvalBody(body) {
     return { ok: true, data: { M, proof, publicInputs } };
 }
 
-// Validate POST /v3/register body: { commitment, proof, publicInputs }.
+// Validate POST /v3/register body:
+//   { commitment, enrollProof, enrollPublicInputs, nullifierProof, nullifierPublicInputs }
 // `commitment` is the enrollment leaf the client derived = pedersen([N.x,N.y])
-// where N = rinv * (k*M) is the unblinded OPRF output (see e2e-test.mjs /
-// oprf-node.mjs). proof + publicInputs are the SAME enroll_commit_v2 artifacts
-// the blind-eval gate consumes.
+// where N = rinv*(k*M) is the unblinded OPRF output (see e2e-test.mjs).
+// The enroll_* artifacts are the SAME enroll_commit_v2 proof the blind-eval gate
+// consumes (binds M <-> cert). The nullifier_* artifacts are an oprf_nullifier
+// proof that binds the post-blind-eval commitment back to that same M, this
+// node's Kpub, and N (closing the Sybil-binding gap).
+function isProofField(v) {
+    return typeof v === "string" || Array.isArray(v);
+}
+function isWordArray(v) {
+    return Array.isArray(v) && v.length > 0;
+}
 function validateRegisterBody(body) {
     if (body === null || typeof body !== "object") {
         return { ok: false, detail: "body must be a JSON object" };
     }
-    const { commitment, proof, publicInputs } = body;
+    const {
+        commitment,
+        enrollProof,
+        enrollPublicInputs,
+        nullifierProof,
+        nullifierPublicInputs,
+    } = body;
     if (typeof commitment !== "string" || !HEX32.test(commitment)) {
         return { ok: false, detail: "commitment must be 0x-prefixed 32-byte hex" };
     }
     if (BigInt(commitment) >= FR_MAX) {
         return { ok: false, detail: "commitment exceeds Fr range (must be < 2^254)" };
     }
-    if (typeof proof !== "string" && !Array.isArray(proof)) {
-        return { ok: false, detail: "proof must be 0x-hex string or byte array" };
+    if (!isProofField(enrollProof)) {
+        return { ok: false, detail: "enrollProof must be 0x-hex string or byte array" };
     }
-    if (!Array.isArray(publicInputs) || publicInputs.length === 0) {
+    if (!isWordArray(enrollPublicInputs)) {
         return {
             ok: false,
-            detail: "publicInputs must be a non-empty array of 0x-hex field words",
+            detail: "enrollPublicInputs must be a non-empty array of 0x-hex field words",
         };
     }
-    return { ok: true, data: { commitment, proof, publicInputs } };
+    if (!isProofField(nullifierProof)) {
+        return { ok: false, detail: "nullifierProof must be 0x-hex string or byte array" };
+    }
+    if (!isWordArray(nullifierPublicInputs)) {
+        return {
+            ok: false,
+            detail: "nullifierPublicInputs must be a non-empty array of 0x-hex field words",
+        };
+    }
+    return {
+        ok: true,
+        data: {
+            commitment,
+            enrollProof,
+            enrollPublicInputs,
+            nullifierProof,
+            nullifierPublicInputs,
+        },
+    };
 }
 
 /**
  * Resolve the secp256k1 attester key from env V3_ATTESTER_KEY (32-byte hex).
- * REQUIRED in production (the human sets it to the key whose address is
- * TRUSTED_ATTESTER_ADDR). Outside production a labeled deterministic dev key is
- * used so tests / local runs work without secrets — its address will NOT be the
- * trusted one, so on-chain submission would be rejected (fine for local demo).
+ * REQUIRED in production; the service derives the attester ADDRESS from this key
+ * (the EnrollmentRegistry attester was rotated, so no address is hardcoded).
+ * Outside production a labeled deterministic dev key is used so tests / local
+ * runs work without secrets — its address will NOT be the rotated on-chain
+ * attester, so on-chain submission would be rejected (fine for local demo).
  *
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {string} 0x-prefixed 32-byte hex private key.
@@ -122,7 +163,7 @@ export function resolveAttesterKey(env = process.env) {
         throw new Error("[oprf-v3] V3_ATTESTER_KEY is required in production");
     }
     // eslint-disable-next-line no-console
-    console.warn("[oprf-v3] V3_ATTESTER_KEY not set — using deterministic dev key (NOT the trusted attester)");
+    console.warn("[oprf-v3] V3_ATTESTER_KEY not set — using deterministic dev key (NOT the rotated on-chain attester)");
     const label = "crisp-qes-v3-grumpkin-dev-attester-k";
     const SECP_N =
         0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
@@ -154,6 +195,22 @@ export async function buildApp(opts = {}) {
         }
     }
 
+    // — Nullifier proof gate (fixed per circuit, in-process) ──────────────────
+    // The oprf_nullifier vk is baked ONCE at startup, exactly like the enroll vk
+    // above (same ProofGate/bb.js in-process verify pattern). It gates
+    // /v3/register: the nullifier proof binds the submitted commitment to N -> Y
+    // -> M (and to this node's Kpub via the in-circuit DLEQ). Tests may inject a
+    // prebuilt gate via opts.nullifierGate. Fail closed if it can't be built.
+    let nullifierGate = opts.nullifierGate ?? null;
+    let nullifierGateError = null;
+    if (!nullifierGate) {
+        try {
+            nullifierGate = await createGate(OPRF_NULLIFIER_JSON);
+        } catch (e) {
+            nullifierGateError = e.message;
+        }
+    }
+
     // — Enrollment chain wiring (attester + Pedersen-Merkle store) ────────────
     // The Merkle store is in-memory (demo): commitments are NOT persisted across
     // restarts. The attester signs EnrollmentRegistry.updateRoot digests so the
@@ -161,11 +218,13 @@ export async function buildApp(opts = {}) {
     const chainId = opts.chainId ?? DEFAULT_CHAIN_ID;
     const enrollmentRegistry = opts.enrollmentRegistry ?? DEFAULT_ENROLLMENT_REGISTRY;
     const attester = new Attester(opts.attesterKey ?? resolveAttesterKey());
+    // The attester address is whatever V3_ATTESTER_KEY derives to (the registry
+    // attester was rotated; no address is hardcoded). In production assert only
+    // that it is non-zero so a missing/garbage key fails closed.
     if (process.env.NODE_ENV === "production"
-        && attester.address.toLowerCase() !== TRUSTED_ATTESTER_ADDR.toLowerCase()) {
+        && attester.address.toLowerCase() === ZERO_ADDR) {
         throw new Error(
-            `[oprf-v3] V3_ATTESTER_KEY address ${attester.address} != trusted ` +
-                `attester ${TRUSTED_ATTESTER_ADDR}; EnrollmentRegistry would reject updateRoot`,
+            "[oprf-v3] V3_ATTESTER_KEY derived a zero attester address; refusing to boot",
         );
     }
     const merkle = opts.merkle ?? (await MerkleIndex.fromLeaves(opts.leaves ?? []));
@@ -192,6 +251,9 @@ export async function buildApp(opts = {}) {
             proofGating: gateError
                 ? `unavailable (gate init failed: ${gateError}) — failing closed`
                 : "enforced (in-process bb.js verify of enroll_commit_v2 proof + M-binding)",
+            registerGating: nullifierGateError
+                ? `unavailable (nullifier gate init failed: ${nullifierGateError}) — failing closed`
+                : "enforced (enroll_commit_v2 + oprf_nullifier proofs; commitment bound to cert via N->Y->M)",
             // Enrollment chain state (in-memory, demo — not persisted).
             treeDepth: TREE_DEPTH,
             enrolledCount: snap.leafCount,
@@ -289,57 +351,101 @@ export async function buildApp(opts = {}) {
 
     // — POST /v3/register ────────────────────────────────────────────────
     // Land a v3 enrollment commitment on-chain via the SAME EnrollmentRegistry
-    // v2 uses. GATED on the SAME enroll_commit_v2 ZK proof the blind-eval gate
-    // verifies (the proof attests, in zero knowledge, that the blinded element
-    // M was honestly derived as M = r*H2C(RNOKPP) from a valid age>=18 cert).
+    // v2 uses. The Sybil-binding gap is CLOSED here by requiring TWO proofs and
+    // chaining them:  commitment -> N -> Y -> M -> cert.
     //
-    // M-relationship note: the proof's public output is M, NOT the commitment.
-    // The enrollment commitment = pedersen([N.x, N.y]) with N = rinv*(k*M) is
-    // derived CLIENT-SIDE after blind-eval and depends on the node secret k, so
-    // it cannot appear in the (offline) enroll_commit_v2 proof. We therefore
-    // (a) cryptographically verify the proof (admission), (b) bind it to its own
-    // public-output M (so it is a real, well-formed enroll proof), and (c) treat
-    // the submitted commitment as a valid Fr leaf that is unique in the tree.
-    // This mirrors v2's intent (a proof/attestation gates the append) within the
-    // constraints of the blinded VOPRF; full M<->commitment binding would need
-    // an extra circuit, tracked for v3-prod (see SECURITY.md).
+    //   1. enroll_commit_v2 proof  — verifies + binds M <-> a valid age>=18 cert
+    //      (public output M at enrollPublicInputs[12],[13]).
+    //   2. oprf_nullifier proof    — verifies the in-circuit DLEQ (Y = k*M for
+    //      Kpub = k*G), unblinds N = rinv*Y bound to r via r*N == Y, and RETURNS
+    //      commitment = pedersen([N.x, N.y]) as its public output.
+    //
+    //   CROSS-CHECKS (verifyNullifierProof):
+    //     (a) nullifier.M  == enroll.M                  (chains M -> cert)
+    //     (b) nullifier.Kpub == THIS node's Kpub        (Y under our k)
+    //     (c) nullifier.commitment == submitted commitment
+    //
+    // Only when BOTH proofs verify AND all cross-checks hold do we append the
+    // leaf and attester-sign. A client can no longer register an arbitrary
+    // commitment: it must be exactly pedersen(rinv*(k*M)) for the cert-bound M.
     app.post("/v3/register", async (req, reply) => {
         const parsed = validateRegisterBody(req.body);
         if (!parsed.ok) {
             return reply.code(400).send({ error: "BadRequest", detail: parsed.detail });
         }
-        const { commitment, proof, publicInputs } = parsed.data;
+        const {
+            commitment,
+            enrollProof,
+            enrollPublicInputs,
+            nullifierProof,
+            nullifierPublicInputs,
+        } = parsed.data;
 
-        // — Proof gate (ENFORCED), same as blind-eval ─────────────────────
+        // — Both proof gates must be available (ENFORCED), else fail closed ──
         if (!gate) {
-            req.log.error({ gateError }, "proof gate unavailable — failing closed");
+            req.log.error({ gateError }, "enroll proof gate unavailable — failing closed");
             return reply.code(503).send({
                 error: "ProofGateUnavailable",
-                detail: "proof gate unavailable; node refuses to register",
+                detail: "enroll proof gate unavailable; node refuses to register",
             });
         }
-        // Bind the proof to its own public-output M (words 12,13). We don't have
-        // a separate request M here, so expectedM == the proof's own M — this
-        // still exercises the full structural + crypto verification path and
-        // rejects malformed / invalid proofs.
-        let expectedM;
+        if (!nullifierGate) {
+            req.log.error({ nullifierGateError }, "nullifier proof gate unavailable — failing closed");
+            return reply.code(503).send({
+                error: "ProofGateUnavailable",
+                detail: "nullifier proof gate unavailable; node refuses to register",
+            });
+        }
+
+        // — (1) Verify the enroll proof; bind it to its own public-output M ──
+        // expectedM == the proof's own M: exercises the full structural + crypto
+        // path and yields the cert-bound M to cross-check the nullifier proof.
+        let enrollM;
         try {
-            const { extractMFromPublicInputs } = await import("./proof-gate.mjs");
-            expectedM = extractMFromPublicInputs(publicInputs);
+            enrollM = extractMFromPublicInputs(enrollPublicInputs);
         } catch (e) {
             return reply.code(400).send({ error: "MalformedProof", detail: e.message });
         }
-        let gateResult;
+        let enrollResult;
         try {
-            gateResult = await verifyEnrollCommitProof({ gate, proof, publicInputs, expectedM });
+            enrollResult = await verifyEnrollCommitProof({
+                gate,
+                proof: enrollProof,
+                publicInputs: enrollPublicInputs,
+                expectedM: enrollM,
+            });
         } catch (e) {
-            req.log.error({ err: e.message }, "register proof gate errored");
+            req.log.error({ err: e.message }, "register enroll proof gate errored");
             return reply.code(400).send({ error: "MalformedProof", detail: e.message });
         }
-        if (!gateResult.ok) {
-            const status = gateResult.code === "ProofRejected" ? 401 : 400;
-            req.log.info({ code: gateResult.code }, "v3 register proof rejected");
-            return reply.code(status).send({ error: gateResult.code, detail: gateResult.detail });
+        if (!enrollResult.ok) {
+            const status = enrollResult.code === "ProofRejected" ? 401 : 400;
+            req.log.info({ code: enrollResult.code }, "v3 register enroll proof rejected");
+            return reply.code(status).send({ error: enrollResult.code, detail: enrollResult.detail });
+        }
+
+        // — (2) Verify the nullifier proof + enforce the binding cross-checks ─
+        // Bind nullifier.M to the enroll proof's M, nullifier.Kpub to THIS
+        // node's Kpub, and nullifier.commitment to the submitted commitment.
+        const Kaff = node.Kpub.toAffine();
+        let nullifierResult;
+        try {
+            nullifierResult = await verifyNullifierProof({
+                gate: nullifierGate,
+                proof: nullifierProof,
+                publicInputs: nullifierPublicInputs,
+                expectedM: enrollM,
+                expectedKpub: { x: Kaff.x, y: Kaff.y },
+                expectedCommitment: BigInt(commitment),
+            });
+        } catch (e) {
+            req.log.error({ err: e.message }, "register nullifier proof gate errored");
+            return reply.code(400).send({ error: "MalformedProof", detail: e.message });
+        }
+        if (!nullifierResult.ok) {
+            const status = nullifierResult.code === "ProofRejected" ? 401 : 400;
+            req.log.info({ code: nullifierResult.code }, "v3 register nullifier proof rejected");
+            return reply.code(status).send({ error: nullifierResult.code, detail: nullifierResult.detail });
         }
 
         // — Collision check ───────────────────────────────────────────────

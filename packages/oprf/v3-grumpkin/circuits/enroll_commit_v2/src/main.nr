@@ -38,7 +38,15 @@
 
 use std::embedded_curve_ops::{EmbeddedCurvePoint as Pt, EmbeddedCurveScalar as Scalar, multi_scalar_mul};
 
-global CERT_LEN: u32 = 768;
+// CERT_LEN must hold a REAL Diia leaf-cert TBS (~1-1.5 KB) or signedAttrs
+// (~100-300 B). The witness passes whichever buffer carries the RNOKPP OID
+// (2.5.4.5) and DOB (SubjectDirectoryAttributes); for real Diia certs that
+// is the leaf cert DER / TBS, which is materially larger than the synthetic
+// 768-byte placeholder. 2048 gives comfortable headroom for the largest
+// observed Diia leaf TBS while the WITNESSED offsets (rnokpp_oid_off,
+// dob_off) keep the field extraction independent of any fixed layout, so a
+// larger buffer costs only the linear read_at indexing.
+global CERT_LEN: u32 = 2048;
 
 global ZETA: Field = 5;
 global BCURVE: Field = -17;
