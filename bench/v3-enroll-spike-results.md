@@ -12,6 +12,7 @@ the hard gadgets and decide go/no-go. Tooling: nargo 1.0.0-beta.19, bb
 | ECDSA-P256 verify (1×) | **72,331** | `std::ecdsa_secp256r1::verify_signature` blackbox. Diia leaf certs are P-256/SHA-256 (confirmed in `oprf/attestation.ts`). Cheap. |
 | SHA-256, per 64-byte block | **~4,117** | from 16 chained `sha256_compression` = 65,870 gates. (Note: sha256 is **not** in beta.19 stdlib — only the compression blackbox; need to chain it or pull an external lib.) |
 | Native embedded-curve (Grumpkin) variable-base scalar mult | **3,564** | `multi_scalar_mul`. This is the blinding op `M = r·P` **if the curve is SNARK-friendly**. |
+| DER field extraction (1 field, 1.5 KB buffer, witnessed offset) | **6,756** | OID match + tag/len + 10-byte read + digit validation. Dynamic reads are at `offset + const` → bb handles cheaply. ~14k for RNOKPP + DOB. Far below the initial ~100k guess. |
 
 Derived: hashing a ~1.5 KB leaf TBS (~24 blocks) ≈ **~100k** gates; signedAttrs
 (~5 blocks) ≈ **~20k**.
@@ -40,15 +41,21 @@ single largest term in the whole circuit.
 | DER field extraction + Merkle membership | ~100k (est) |
 | **total** | **~1.3M+ → heavy prove, large memory, likely mobile-infeasible** |
 
-**Scenario B — co-design OPRF over a SNARK-friendly curve (embedded Grumpkin / a BN254-cycle curve):**
+**Scenario B — co-design OPRF over a SNARK-friendly curve (embedded Grumpkin / a BN254-cycle curve):** — CHOSEN, budget refined with measured DER:
 
-| term | gates |
-|---|---|
-| blinding binding (native) | ~3.5k |
-| ECDSA-P256 | 72k |
-| SHA-256 (cert + signedAttrs) | ~120k |
-| DER field extraction + Merkle membership | ~100k (est) |
-| **total** | **~300k → same order as the sign circuit, provable, plausibly mobile** |
+| term | gates | status |
+|---|---|---|
+| blinding scalar mult (native Grumpkin) | 3,564 | measured |
+| ECDSA-P256 verify | 72,331 | measured |
+| SHA-256 (cert TBS ~24 blk + signedAttrs ~5 blk) | ~120k | derived (4.1k/blk) — **dominant term** |
+| DER extraction (RNOKPP + DOB) | ~14k | measured (6.7k/field) |
+| Merkle membership (trust-root, few hops) | ~5k | from v2 sign circuit |
+| Grumpkin hash-to-curve `H2C(RNOKPP)` | ~10–30k (est) | **only unmeasured term + the security-review item** |
+| **total** | **~225–245k → SHA-dominated, browser-provable** | iOS bench TBD |
+
+The cost is now dominated by SHA-256 — a known, optimizable quantity (zk-email
+techniques) — not by anything exotic. The only unmeasured term is the Grumpkin
+hash-to-curve, which is also the RFC-9380/security-review item.
 
 ## Recommendation
 
