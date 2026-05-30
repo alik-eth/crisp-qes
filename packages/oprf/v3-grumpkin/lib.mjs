@@ -95,3 +95,62 @@ export function hashToCurve(msg) {
 
 // scalar -> 128-bit (lo, hi) limbs for Noir EmbeddedCurveScalar
 export const scalarLimbs = (s) => ({ lo: s & ((1n << 128n) - 1n), hi: s >> 128n });
+
+// ---- VOPRF evaluation + Chaum-Pedersen DLEQ proof ----
+// These mirror the oprf_nullifier Noir circuit so a JS-generated witness verifies.
+
+// OPRF node evaluation: Y = k*M (k = node secret scalar, M = blinded element).
+export function oprfEval(k, Mpoint) {
+    return Mpoint.multiply(Fn.create(k));
+}
+
+// 32-byte big-endian encoding for bb.js pedersenHash inputs (mirrors aztec Fr).
+const toBE32 = (v) => {
+    const o = new Uint8Array(32);
+    for (let i = 31; i >= 0; i--) { o[i] = Number(v & 0xffn); v >>= 8n; }
+    return o;
+};
+
+// Pedersen hash matching Noir's std::hash::pedersen_hash exactly.
+// Verified empirically: bb.js pedersenHash({inputs:[...32B BE], hashIndex:0})
+// == Noir pedersen_hash([...]) (e.g. [4,8] -> 0x035d11...260504).
+let _bbSync = null;
+async function pedersenHashFields(fields) {
+    if (!_bbSync) {
+        const { BarretenbergSync } = await import("@aztec/bb.js");
+        _bbSync = await BarretenbergSync.initSingleton();
+    }
+    const res = _bbSync.pedersenHash({ inputs: fields.map((f) => toBE32(Fp.create(f))), hashIndex: 0 });
+    return bytesToNumberBE(res.hash);
+}
+
+// Honest Chaum-Pedersen DLEQ proof that Y = k*M and Kpub = k*G share the same k.
+// Transcript field order MUST equal the circuit's:
+//   [Gx,Gy, Kpx,Kpy, Mx,My, Yx,Yy, a1x,a1y, a2x,a2y]
+// where a1 = t*G, a2 = t*M, c = pedersen(transcript), z = t + c*k mod N.
+// c is the pedersen output (a base-field element < P < N) used directly as the
+// challenge scalar -- identical value feeds both z and the circuit's MSM.
+export async function dleqProve(k, Kpub, Mpoint, Ypoint, t) {
+    // t: random nonce in [1, N). Caller may pass one (tests); else generated here.
+    if (t === undefined) {
+        t = (bytesToNumberBE(sha256(concatBytes(
+            i2osp(Fn.create(k), 32),
+            Mpoint.toRawBytes(true),
+            Ypoint.toRawBytes(true),
+        ))) % (N - 1n)) + 1n;
+    }
+    const a1 = G.multiply(Fn.create(t));
+    const a2 = Mpoint.multiply(Fn.create(t));
+    const Ga = G.toAffine();
+    const Ka = Kpub.toAffine();
+    const Ma = Mpoint.toAffine();
+    const Ya = Ypoint.toAffine();
+    const a1a = a1.toAffine();
+    const a2a = a2.toAffine();
+    const c = await pedersenHashFields([
+        Ga.x, Ga.y, Ka.x, Ka.y, Ma.x, Ma.y, Ya.x, Ya.y, a1a.x, a1a.y, a2a.x, a2a.y,
+    ]);
+    // z = t + c*k mod N.
+    const z = Fn.add(Fn.create(t), Fn.mul(Fn.create(c), Fn.create(k)));
+    return { c, z };
+}
