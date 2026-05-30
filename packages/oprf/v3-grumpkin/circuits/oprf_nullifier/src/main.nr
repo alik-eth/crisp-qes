@@ -38,6 +38,12 @@ fn main(
     let kpub = Pt { x: kpx, y: kpy, is_infinite: false };
     let m = Pt { x: mx, y: my, is_infinite: false };
     let y = Pt { x: yx, y: yy, is_infinite: false };
+    // Range-check all scalar limbs to 128 bits so the (lo,hi) decomposition is
+    // the unique integer the MSM blackbox interprets (defends C-1/C-3 hygiene).
+    c_lo.assert_max_bit_size::<128>();
+    c_hi.assert_max_bit_size::<128>();
+    z_lo.assert_max_bit_size::<128>();
+    z_hi.assert_max_bit_size::<128>();
     let c = Scalar { lo: c_lo, hi: c_hi };
     let z = Scalar { lo: z_lo, hi: z_hi };
 
@@ -45,8 +51,13 @@ fn main(
     let a1 = multi_scalar_mul([g, neg(kpub)], [z, c]);
     let a2 = multi_scalar_mul([m, neg(y)], [z, c]);
 
-    // Fiat-Shamir: challenge must equal the supplied c_expected (== the JS hash).
+    // Fiat-Shamir: the challenge SCALAR used in the MSM above MUST equal the
+    // in-circuit transcript hash. C-1 fix: bind the MSM limbs (c_lo,c_hi) to the
+    // hash, not just a free public c_expected. Without this, a prover could pick
+    // z + limbs freely and set c_expected := hash(...), forging a DLEQ for any Y.
     let ch = std::hash::pedersen_hash([gx, gy, kpx, kpy, mx, my, yx, yy, a1.x, a1.y, a2.x, a2.y]);
+    let two_128: Field = 0x100000000000000000000000000000000;
+    assert(c_lo + c_hi * two_128 == ch);
     assert(ch == c_expected);
 
     // Unblind: N = rinv*Y, bound to r via the group equation r*N == Y.
