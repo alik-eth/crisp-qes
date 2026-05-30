@@ -25,6 +25,7 @@
         "statPolls": "polls",
         "statSignatures": "signatures",
         "signInOrRegister": "Sign in or register",
+        "eidasNote": "Currently the platform works with QES for Ukrainian citizens. The architecture is built on the eIDAS standard, allowing the solution to scale to all 27 EU countries.",
         "aboutLabel": "About the project",
         "aboutBody": "Civic Voice was created so that every citizen can freely express their position — anonymously, privately, and with a guarantee that their vote will be counted fairly. We combine state identification (QES) with zero-knowledge cryptography so that nobody — neither the organizer, nor the platform, nor any third party — can find out who voted and how. Results are available to everyone in a public distributed registry (blockchain), where they cannot be changed, deleted, or falsified. The project's code is open — anyone can verify that the system works exactly as stated.",
         "techIntro": "Civic Voice is the first solution that combines state electronic identification (QES) with zero-knowledge proofs and homomorphic encryption for conducting civic polls. For the first time, a citizen can confirm their uniqueness via their tax ID (IPN) without revealing it to anyone — not the platform, not the blockchain, not even Diia. One person — one vote, mathematically guaranteed, with no way to find out who voted and how.",

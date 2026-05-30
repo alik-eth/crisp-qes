@@ -74,6 +74,9 @@ export function Landing({ state, onSignIn }: Props) {
                         </Link>
                     ) : null}
                 </div>
+                <p className="hero__eidas muted small" style={{ marginTop: 20 }}>
+                    {t("landing.eidasNote")}
+                </p>
             </div>
 
             <div className="statbar">
