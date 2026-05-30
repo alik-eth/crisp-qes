@@ -62,6 +62,33 @@ standardized ciphersuite. 2HashDH works over any prime-order group, and Grumpkin
 a defined hash-to-curve and (b) a security review of the OPRF over that curve.
 This composes fine with threshold OPRF (§2): DKG works on any prime-order group.
 
+## Curve decision: Grumpkin (validated)
+
+Chosen the SNARK-friendly path (Scenario B). PoC `packages/oprf/grumpkin-oprf-poc.mjs`
+implements 2HashDH VOPRF over **Grumpkin** and validates the protocol end-to-end
+(not just the in-circuit cost):
+
+```
+PASS  determinism: same RNOKPP + same k -> same OPRF output (Sybil property)
+PASS  unblind correctness: r^-1 * (k*r*P) == k*P
+PASS  distinctness: different RNOKPP -> different output
+PASS  DLEQ verifies for honest eval
+PASS  DLEQ rejects tampered eval (wrong key)
+```
+
+Grumpkin = `y^2 = x^3 - 17` over F_p (p = BN254 scalar field); group order n =
+BN254 base field; **cofactor 1**. The cofactor-1 property is a real bonus:
+ristretto255 exists only to give cofactor-8 Curve25519 a prime-order abstraction
+— Grumpkin is natively prime-order, so the OPRF construction drops the
+subgroup-clearing/encoding subtleties entirely. ~127-bit DL security (on par
+with ristretto255). Native in Noir as the embedded curve -> the in-circuit
+blinding binding stays at the measured 3.5k gates.
+
+Standing caveat (the price of leaving RFC-9497): the PoC's hash-to-curve is
+try-and-increment; a production build needs RFC-9380 SSWU for Grumpkin + a
+security review of the non-standard ciphersuite. Composes with threshold OPRF
+(DKG works on any prime-order group).
+
 ## Remaining Phase-0 work (if pursued)
 
 1. Empirically measure non-native 25519 scalar mult (pull noir-bignum) to

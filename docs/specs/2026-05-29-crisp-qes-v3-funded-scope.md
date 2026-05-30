@@ -198,16 +198,37 @@ Citizen proves, with public inputs `(M, K_pub, s)`:
 
 `RNOKPP` and `N` are private. `M`, `K_pub`, `s` are public.
 
-### 5.3 Circuit shape
+### 5.3 Circuit shape — RESOLVED: OPRF moves to Grumpkin
 
-Noir, similar to v2 signature circuit but with Ristretto255
-arithmetic. Open question: Ristretto255 in Noir is not a
-first-class primitive — needs either an embedded-curve approach
-(if proof of `M` correctness can be done over a related curve)
-or accept the cost of in-circuit Ristretto255 (~10⁴ constraints).
+The open ristretto255-in-Noir question is settled by the Phase-0
+spike (`bench/v3-enroll-spike-results.md`, task #39). Measured
+UltraHonk gate counts (nargo beta.19 / bb nightly):
 
-Likely ~10⁵ constraint count, browser prove time ~10–30 s.
-Acceptable as a one-time enrollment cost.
+- in-circuit blinding `M = r·P` on ristretto255 (non-native to
+  BN254): no stdlib support, ~10⁵–10⁶+ gates → dominates, likely
+  mobile-infeasible;
+- the same on the **native embedded curve (Grumpkin): 3,564 gates.**
+
+Decision: **run the OPRF over Grumpkin** (`y² = x³ − 17` over the
+BN254 scalar field; group order = BN254 base field; cofactor 1),
+not RFC-9497 ristretto255. Cofactor 1 is a bonus — ristretto255
+exists only to give cofactor-8 Curve25519 a prime-order
+abstraction; Grumpkin is natively prime-order, dropping the
+subgroup-clearing subtleties. The 2HashDH VOPRF is validated
+end-to-end over Grumpkin (determinism, unblind correctness, DLEQ)
+in `packages/oprf/grumpkin-oprf-poc.mjs`.
+
+Cost of leaving the standard: needs RFC-9380 SSWU hash-to-curve for
+Grumpkin + a security review of the non-standard ciphersuite. The
+server-side OPRF (`oprf.ts`) moves off `@noble/curves` ristretto255
+to a Grumpkin instantiation. Composes with threshold OPRF (§2) —
+DKG works over any prime-order group.
+
+With Grumpkin the full enroll circuit budgets at ~300k gates
+(blinding 3.5k + ECDSA-P256 72k + SHA-256 ~120k + DER/membership
+~100k) — same order as the sign circuit, browser-provable; on-device
+(iOS) feasibility is the remaining open question (circuit is ~10× the
+sign circuit; re-bench against the 384 MiB cap).
 
 ### 5.4 Engineering scope
 
