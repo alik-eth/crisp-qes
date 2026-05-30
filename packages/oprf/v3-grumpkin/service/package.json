@@ -9,7 +9,8 @@
         "start": "node server.mjs",
         "test": "node gating-test.mjs",
         "test:roundtrip": "node roundtrip-test.mjs",
-        "test:verify": "node inprocess-verify-test.mjs"
+        "test:verify": "node inprocess-verify-test.mjs",
+        "test:register": "node register-test.mjs"
     },
     "dependencies": {
         "@aztec/bb.js": "4.0.0-nightly.20260120",

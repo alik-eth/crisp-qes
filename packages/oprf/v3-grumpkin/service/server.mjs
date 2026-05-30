@@ -22,6 +22,23 @@ import fastifyCors from "@fastify/cors";
 
 import { OprfNode, pointFromHex } from "./oprf-node.mjs";
 import { createGate, verifyEnrollCommitProof } from "./proof-gate.mjs";
+import { Attester } from "./attester.mjs";
+import { MerkleIndex, TREE_DEPTH, GENESIS_ROOT, bigintToHex32 } from "./merkle.mjs";
+
+// — EnrollmentRegistry deployment the v3 attester signs root updates for ────────
+// Pinned to the SAME live registry v2 enrolls into (Sepolia), so v3 commitments
+// become leaves alongside v2's. Override via env for other deployments.
+const DEFAULT_CHAIN_ID = 11155111; // Sepolia
+const DEFAULT_ENROLLMENT_REGISTRY = "0x0214504C1Be6d664bbE3AE6687507aBE19A36d1a";
+// The attester address EnrollmentRegistry.updateRoot trusts. The human sets
+// V3_ATTESTER_KEY to the secp256k1 key whose address is this; we assert it at
+// boot in production so a wrong key fails closed instead of producing sigs the
+// contract silently rejects.
+const TRUSTED_ATTESTER_ADDR = "0x876E995c6f4f158ED5D746B5e10A00329df1E246";
+
+// Field range for a Grumpkin/BN254 commitment leaf (< 2^254 is a valid Fr).
+const FR_MAX = 1n << 254n;
+const HEX32 = /^0x[0-9a-fA-F]{64}$/;
 
 // — Body validation (hand-rolled to keep the module zero-extra-deps; mirrors
 //   the intent of the zod validators in v2 app.ts) ───────────────────────────
@@ -54,6 +71,66 @@ function validateBlindEvalBody(body) {
     return { ok: true, data: { M, proof, publicInputs } };
 }
 
+// Validate POST /v3/register body: { commitment, proof, publicInputs }.
+// `commitment` is the enrollment leaf the client derived = pedersen([N.x,N.y])
+// where N = rinv * (k*M) is the unblinded OPRF output (see e2e-test.mjs /
+// oprf-node.mjs). proof + publicInputs are the SAME enroll_commit_v2 artifacts
+// the blind-eval gate consumes.
+function validateRegisterBody(body) {
+    if (body === null || typeof body !== "object") {
+        return { ok: false, detail: "body must be a JSON object" };
+    }
+    const { commitment, proof, publicInputs } = body;
+    if (typeof commitment !== "string" || !HEX32.test(commitment)) {
+        return { ok: false, detail: "commitment must be 0x-prefixed 32-byte hex" };
+    }
+    if (BigInt(commitment) >= FR_MAX) {
+        return { ok: false, detail: "commitment exceeds Fr range (must be < 2^254)" };
+    }
+    if (typeof proof !== "string" && !Array.isArray(proof)) {
+        return { ok: false, detail: "proof must be 0x-hex string or byte array" };
+    }
+    if (!Array.isArray(publicInputs) || publicInputs.length === 0) {
+        return {
+            ok: false,
+            detail: "publicInputs must be a non-empty array of 0x-hex field words",
+        };
+    }
+    return { ok: true, data: { commitment, proof, publicInputs } };
+}
+
+/**
+ * Resolve the secp256k1 attester key from env V3_ATTESTER_KEY (32-byte hex).
+ * REQUIRED in production (the human sets it to the key whose address is
+ * TRUSTED_ATTESTER_ADDR). Outside production a labeled deterministic dev key is
+ * used so tests / local runs work without secrets — its address will NOT be the
+ * trusted one, so on-chain submission would be rejected (fine for local demo).
+ *
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {string} 0x-prefixed 32-byte hex private key.
+ */
+export function resolveAttesterKey(env = process.env) {
+    const raw = env.V3_ATTESTER_KEY;
+    if (raw) {
+        const h = raw.startsWith("0x") || raw.startsWith("0X") ? raw.slice(2) : raw;
+        if (!/^[0-9a-fA-F]{64}$/.test(h)) {
+            throw new Error("V3_ATTESTER_KEY must be 32-byte hex (64 hex chars)");
+        }
+        return `0x${h}`;
+    }
+    if (env.NODE_ENV === "production") {
+        throw new Error("[oprf-v3] V3_ATTESTER_KEY is required in production");
+    }
+    // eslint-disable-next-line no-console
+    console.warn("[oprf-v3] V3_ATTESTER_KEY not set — using deterministic dev key (NOT the trusted attester)");
+    const label = "crisp-qes-v3-grumpkin-dev-attester-k";
+    const SECP_N =
+        0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
+    const raw2 = BigInt("0x" + Buffer.from(label).toString("hex"));
+    const k = (raw2 % (SECP_N - 1n)) + 1n;
+    return `0x${k.toString(16).padStart(64, "0")}`;
+}
+
 // — App builder (exported so the roundtrip test can run it in-process) ────────
 
 export async function buildApp(opts = {}) {
@@ -77,6 +154,22 @@ export async function buildApp(opts = {}) {
         }
     }
 
+    // — Enrollment chain wiring (attester + Pedersen-Merkle store) ────────────
+    // The Merkle store is in-memory (demo): commitments are NOT persisted across
+    // restarts. The attester signs EnrollmentRegistry.updateRoot digests so the
+    // existing relayer /v2/enroll can post a v3 commitment to the SAME contract.
+    const chainId = opts.chainId ?? DEFAULT_CHAIN_ID;
+    const enrollmentRegistry = opts.enrollmentRegistry ?? DEFAULT_ENROLLMENT_REGISTRY;
+    const attester = new Attester(opts.attesterKey ?? resolveAttesterKey());
+    if (process.env.NODE_ENV === "production"
+        && attester.address.toLowerCase() !== TRUSTED_ATTESTER_ADDR.toLowerCase()) {
+        throw new Error(
+            `[oprf-v3] V3_ATTESTER_KEY address ${attester.address} != trusted ` +
+                `attester ${TRUSTED_ATTESTER_ADDR}; EnrollmentRegistry would reject updateRoot`,
+        );
+    }
+    const merkle = opts.merkle ?? (await MerkleIndex.fromLeaves(opts.leaves ?? []));
+
     const app = Fastify({ logger: opts.logger ?? { level: "warn" } });
 
     await app.register(fastifyCors, {
@@ -87,17 +180,28 @@ export async function buildApp(opts = {}) {
     });
 
     // — GET /healthz ─────────────────────────────────────────────────────
-    app.get("/healthz", async () => ({
-        ok: true,
-        suite: "grumpkin-SHA256-SvdW",
-        mode: "VOPRF v3 (build, unaudited — single node, proof-gating ENFORCED)",
-        curve: "Grumpkin (y^2 = x^3 - 17)",
-        wireFormat: "point = 0x{x:32B BE}{y:32B BE}; scalar = decimal bigint",
-        Kpub: node.publicKeyHex(),
-        proofGating: gateError
-            ? `unavailable (gate init failed: ${gateError}) — failing closed`
-            : "enforced (in-process bb.js verify of enroll_commit_v2 proof + M-binding)",
-    }));
+    app.get("/healthz", async () => {
+        const snap = merkle.snapshot();
+        return {
+            ok: true,
+            suite: "grumpkin-SHA256-SvdW",
+            mode: "VOPRF v3 (build, unaudited — single node, proof-gating ENFORCED)",
+            curve: "Grumpkin (y^2 = x^3 - 17)",
+            wireFormat: "point = 0x{x:32B BE}{y:32B BE}; scalar = decimal bigint",
+            Kpub: node.publicKeyHex(),
+            proofGating: gateError
+                ? `unavailable (gate init failed: ${gateError}) — failing closed`
+                : "enforced (in-process bb.js verify of enroll_commit_v2 proof + M-binding)",
+            // Enrollment chain state (in-memory, demo — not persisted).
+            treeDepth: TREE_DEPTH,
+            enrolledCount: snap.leafCount,
+            genesisRoot: bigintToHex32(GENESIS_ROOT),
+            currentRoot: bigintToHex32(snap.root),
+            attesterAddr: attester.address,
+            chainId,
+            enrollmentRegistry,
+        };
+    });
 
     // — POST /v3/blind-eval ──────────────────────────────────────────────
     app.post("/v3/blind-eval", async (req, reply) => {
@@ -180,6 +284,132 @@ export async function buildApp(opts = {}) {
         });
     });
 
+    // commitment(0x-hex) -> leafIndex, for the recovery path lookup.
+    const leafIndexOf = opts.leafIndexOf ?? new Map();
+
+    // — POST /v3/register ────────────────────────────────────────────────
+    // Land a v3 enrollment commitment on-chain via the SAME EnrollmentRegistry
+    // v2 uses. GATED on the SAME enroll_commit_v2 ZK proof the blind-eval gate
+    // verifies (the proof attests, in zero knowledge, that the blinded element
+    // M was honestly derived as M = r*H2C(RNOKPP) from a valid age>=18 cert).
+    //
+    // M-relationship note: the proof's public output is M, NOT the commitment.
+    // The enrollment commitment = pedersen([N.x, N.y]) with N = rinv*(k*M) is
+    // derived CLIENT-SIDE after blind-eval and depends on the node secret k, so
+    // it cannot appear in the (offline) enroll_commit_v2 proof. We therefore
+    // (a) cryptographically verify the proof (admission), (b) bind it to its own
+    // public-output M (so it is a real, well-formed enroll proof), and (c) treat
+    // the submitted commitment as a valid Fr leaf that is unique in the tree.
+    // This mirrors v2's intent (a proof/attestation gates the append) within the
+    // constraints of the blinded VOPRF; full M<->commitment binding would need
+    // an extra circuit, tracked for v3-prod (see SECURITY.md).
+    app.post("/v3/register", async (req, reply) => {
+        const parsed = validateRegisterBody(req.body);
+        if (!parsed.ok) {
+            return reply.code(400).send({ error: "BadRequest", detail: parsed.detail });
+        }
+        const { commitment, proof, publicInputs } = parsed.data;
+
+        // — Proof gate (ENFORCED), same as blind-eval ─────────────────────
+        if (!gate) {
+            req.log.error({ gateError }, "proof gate unavailable — failing closed");
+            return reply.code(503).send({
+                error: "ProofGateUnavailable",
+                detail: "proof gate unavailable; node refuses to register",
+            });
+        }
+        // Bind the proof to its own public-output M (words 12,13). We don't have
+        // a separate request M here, so expectedM == the proof's own M — this
+        // still exercises the full structural + crypto verification path and
+        // rejects malformed / invalid proofs.
+        let expectedM;
+        try {
+            const { extractMFromPublicInputs } = await import("./proof-gate.mjs");
+            expectedM = extractMFromPublicInputs(publicInputs);
+        } catch (e) {
+            return reply.code(400).send({ error: "MalformedProof", detail: e.message });
+        }
+        let gateResult;
+        try {
+            gateResult = await verifyEnrollCommitProof({ gate, proof, publicInputs, expectedM });
+        } catch (e) {
+            req.log.error({ err: e.message }, "register proof gate errored");
+            return reply.code(400).send({ error: "MalformedProof", detail: e.message });
+        }
+        if (!gateResult.ok) {
+            const status = gateResult.code === "ProofRejected" ? 401 : 400;
+            req.log.info({ code: gateResult.code }, "v3 register proof rejected");
+            return reply.code(status).send({ error: gateResult.code, detail: gateResult.detail });
+        }
+
+        // — Collision check ───────────────────────────────────────────────
+        if (leafIndexOf.has(commitment)) {
+            return reply.code(409).send({ error: "AlreadyEnrolled", commitment });
+        }
+
+        // — Append + attest ───────────────────────────────────────────────
+        const leaf = BigInt(commitment);
+        const append = await merkle.append(leaf);
+        leafIndexOf.set(commitment, append.leafIndex);
+
+        const { sig: attesterSig, innerDigest } = attester.sign({
+            oldRoot: append.oldRoot,
+            newRoot: append.newRoot,
+            newCommitments: [leaf],
+            chainId,
+            enrollmentRegistry,
+        });
+
+        req.log.info(
+            { leafIndex: append.leafIndex, newRoot: bigintToHex32(append.newRoot) },
+            "v3 register: appended commitment + signed updateRoot",
+        );
+
+        // Same shape v2's /oprf/register returns so the existing relayer
+        // /v2/enroll can post it to EnrollmentRegistry.updateRoot.
+        return reply.code(200).send({
+            leafIndex: append.leafIndex,
+            merklePath: append.path.map(bigintToHex32),
+            merklePathIndices: append.indices,
+            oldRoot: bigintToHex32(append.oldRoot),
+            newRoot: bigintToHex32(append.newRoot),
+            newCommitments: [commitment],
+            attesterSig,
+            attesterAddr: attester.address,
+            attesterDigest: innerDigest,
+            // Diagnostic extras — not consumed by the contract call.
+            chainId,
+            enrollmentRegistry,
+        });
+    });
+
+    // — GET /v3/enrollment/:commitment/path ───────────────────────────────
+    // Recovery path lookup (mirrors v2's GET /enrollment/:commitment/path). No
+    // append happens, so oldRoot == newRoot and there is no fresh attesterSig.
+    app.get("/v3/enrollment/:commitment/path", async (req, reply) => {
+        const commitment = req.params.commitment;
+        if (typeof commitment !== "string" || !HEX32.test(commitment)) {
+            return reply.code(400).send({
+                error: "BadRequest",
+                detail: "commitment must be 0x-prefixed 32-byte hex",
+            });
+        }
+        const idx = leafIndexOf.get(commitment);
+        if (idx === undefined) {
+            return reply.code(404).send({ error: "NotEnrolled", commitment });
+        }
+        const proof = await merkle.proofAt(idx);
+        const rootHex = bigintToHex32(proof.root);
+        return reply.code(200).send({
+            leafIndex: proof.leafIndex,
+            merklePath: proof.path.map(bigintToHex32),
+            merklePathIndices: proof.indices,
+            oldRoot: rootHex,
+            newRoot: rootHex,
+            root: rootHex,
+        });
+    });
+
     return app;
 }
 
@@ -236,7 +466,11 @@ if (isMain) {
     // Bind all interfaces in a container (Fly health checks hit the VM IP);
     // default to loopback for local dev. Override with HOST.
     const host = process.env.HOST ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
-    const app = await buildApp({ k: resolveNodeKey(), logger: { level: "info" } });
+    const app = await buildApp({
+        k: resolveNodeKey(),
+        attesterKey: resolveAttesterKey(),
+        logger: { level: "info" },
+    });
     await app.listen({ port, host });
     // logger already prints the listen line.
 }
