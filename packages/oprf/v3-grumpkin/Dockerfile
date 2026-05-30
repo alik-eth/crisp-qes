@@ -40,6 +40,10 @@ COPY circuits/enroll_commit_v2/target/enroll_commit_v2.json \
      circuits/enroll_commit_v2/target/proof \
      circuits/enroll_commit_v2/target/public_inputs \
      ./circuits/enroll_commit_v2/target/
+# oprf_nullifier ACIR: /v3/register bakes its vk at startup to verify the
+# nullifier proof (binds commitment<->N<->Y<->M<->cert).
+COPY circuits/oprf_nullifier/target/oprf_nullifier.json \
+     ./circuits/oprf_nullifier/target/
 
 # bb.js bundles prebuilt NAPI backends for 4 platforms (~125MB). The native
 # backend spawns a Unix-socket child that fails to start in this slim container,
@@ -78,6 +82,8 @@ COPY --from=build /app/service ./service
 # build stage (used solely to pre-bake the CRS).
 COPY --from=build /app/circuits/enroll_commit_v2/target/enroll_commit_v2.json \
      ./circuits/enroll_commit_v2/target/enroll_commit_v2.json
+COPY --from=build /app/circuits/oprf_nullifier/target/oprf_nullifier.json \
+     ./circuits/oprf_nullifier/target/oprf_nullifier.json
 COPY --from=build /app/.bb-crs ./.bb-crs
 
 # PORT is supplied by fly.toml/env; server.mjs reads process.env.PORT and binds

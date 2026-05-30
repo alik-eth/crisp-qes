@@ -15,4 +15,3 @@ threshold
 circuits/qes_frontend/target
 circuits/oprf_commitment/target
 circuits/enroll_commit/target
-circuits/oprf_nullifier/target
