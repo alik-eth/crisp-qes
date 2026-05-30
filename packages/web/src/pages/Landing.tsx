@@ -108,6 +108,10 @@ export function Landing({ state, onSignIn }: Props) {
             <div className="about-section">
                 <p className="about-section__label">— {t("landing.aboutLabel")} —</p>
                 <p className="about-section__body">{t("landing.aboutBody")}</p>
+                <div className="tech-intro">
+                    <p className="tech-intro__body">{t("landing.techIntro")}</p>
+                    <p className="tech-intro__stack mono">{t("landing.techStack")}</p>
+                </div>
             </div>
 
             {/* How it works */}
@@ -123,12 +127,6 @@ export function Landing({ state, onSignIn }: Props) {
                         </div>
                     ))}
                 </div>
-            </div>
-
-            {/* Technology intro */}
-            <div className="tech-intro">
-                <p className="tech-intro__body">{t("landing.techIntro")}</p>
-                <p className="tech-intro__stack mono">{t("landing.techStack")}</p>
             </div>
 
             {/* Technology cards */}
