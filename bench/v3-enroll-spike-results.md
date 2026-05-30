@@ -181,6 +181,26 @@ The enroll circuit's ~233 MB is ~1.4× the v2 sign circuit's ~164 MB working set
 operator-blind enrollment proving is plausible; the real on-device iOS bench is
 still the gate, but the proxy says GO (one-time enroll, ~10-30 s throttled).
 
+## REAL Diia cert validation (2026-05-31) — the synthetic->real gap is CLOSED
+
+Validated the operator-blind enrollment against the user's ACTUAL Diia QES `.p7s`
+(local only, PII never committed/echoed):
+
+- `parseP7s` + `extractRnokpp` + `extractDOB` succeed on the real cert
+  (tinuaPrefixOk=true, 10-digit RNOKPP, 8-digit DOB).
+- Subject serialNumber is `13 10 "TINUA-"<10 digits>` at the 2nd OID-2.5.4.5
+  occurrence; the witness offset-finder correctly skips the issuer's
+  serialNumber (1st occurrence). Leaf cert = 1292 B (fits CERT_LEN=2048).
+- **`enroll_commit_v2` (123k gates) PROVES + VERIFIES against the real cert**:
+  in-circuit ECDSA-P256 over signedAttrs (low-s normalized), TINUA- RNOKPP
+  extraction, age>=18, M = r*H2C(RNOKPP). `bb verify` -> "Proof verified
+  successfully". ~1.07s wall, **238 MB peak RSS** (under the 384 MiB iOS cap).
+
+Every real-cert risk previously flagged (DER tag/offsets, extractDOB, low-s,
+TINUA- prefix) is retired. Remaining unexercised: in-browser/iOS proving (proxy
+238MB says feasible), the live-service round-trip with a real proof (same vk
+237bd0b4 -> high confidence), and the on-chain Merkle-store sync.
+
 ## Remaining Phase-0 work (if pursued)
 
 1. Empirically measure non-native 25519 scalar mult (pull noir-bignum) to
