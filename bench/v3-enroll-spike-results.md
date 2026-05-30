@@ -146,6 +146,27 @@ Verdict stands: **GO.** No exotic or unbounded term anywhere; the circuit is
 SHA-256-dominated. The only open items are non-cost: the ciphersuite security
 review and the iOS on-device proving bench (~247k is ~3× the sign circuit).
 
+## BUILD STATUS — three core circuits prove + verify
+
+Beyond spikes: real, witness-tested, `bb verify`-passing circuits in
+`packages/oprf/v3-grumpkin/` (driven by `lib.mjs`, the hardened Grumpkin VOPRF).
+
+| circuit | gates | proves | what |
+|---|---|---|---|
+| `oprf_commitment` | 8,256 | ✅ verify | `M = r·H2C(input)` (SvdW H2C + Grumpkin scalar-mul); in-circuit M == JS-lib M |
+| `oprf_nullifier` | 28,688 | ✅ verify | in-circuit Chaum-Pedersen DLEQ verify + unblind `N=r⁻¹·Y` + `pedersen(N)` |
+| `qes_frontend` | 75,955 | ✅ verify | ECDSA-P256 over signedAttrs + DER RNOKPP extract + age≥18 (synthetic cert) |
+
+Solved en route: **bb.js `pedersenHash({hashIndex:0})` == Noir
+`std::hash::pedersen_hash`** — the JS↔Noir Fiat-Shamir challenge match that makes
+the in-circuit DLEQ verify. Soundness spot-checks pass (corrupt `z` → assert
+fails; under-18 DOB → unprovable).
+
+**Production-path gotcha:** Noir `ecdsa_secp256r1` requires **low-s normalized**
+signatures (`@noble` doesn't enforce by default). Diia's QES signatures must be
+low-s normalized before `qes_frontend` will verify them — pin this for the
+real-cert integration.
+
 ## Remaining Phase-0 work (if pursued)
 
 1. Empirically measure non-native 25519 scalar mult (pull noir-bignum) to
