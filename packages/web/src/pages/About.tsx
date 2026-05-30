@@ -12,6 +12,9 @@ export function About() {
             <p className="about-section__body">
                 {t("about.body")}
             </p>
+            <p className="about-section__body" style={{ marginTop: 24 }}>
+                <strong>{t("about.availability")}</strong>
+            </p>
 
             <div className="tech-intro">
                 <p className="tech-intro__body">{t("about.techIntro")}</p>
