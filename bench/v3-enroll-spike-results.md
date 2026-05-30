@@ -113,6 +113,39 @@ try-and-increment; a production build needs RFC-9380 SSWU for Grumpkin + a
 security review of the non-standard ciphersuite. Composes with threshold OPRF
 (DKG works on any prime-order group).
 
+## Step 1 complete: the two remaining circuit pieces measured
+
+Both native-Grumpkin, both cheap — no surprises. Circuits preserved in
+`packages/v3-enroll-spike/reference/`.
+
+| piece | gates | notes |
+|---|---|---|
+| in-circuit Chaum-Pedersen **DLEQ verify + unblind + commitment** (oprf_nullifier core) | **28,688** | 4 blackbox scalar-mults (z·G−c·Kpub, z·M−c·Y, r⁻¹·Y, r·N) + pedersen challenge + pedersen(N). Inverse bound via the group: `r·(r⁻¹·Y)==Y` (no non-native mod-n arithmetic). Point-negation avoids non-native scalar negation. |
+| **faithful SvdW map** (oprf_commitment H2C core), 1 map | **2,178** | sound `is_square` (ZETA=5 non-residue witness), real CMOV selection, `sgn0` via constrained bit-decomp. hash_to_curve = 2 maps ≈ 4.4k + cheap point add. |
+
+Caveat: gate counts are from the constraint system (`bb gates`); the Noir SvdW
+mirrors the JS impl (`grumpkin-h2c.mjs`, validated) but isn't witness-tested in
+Noir yet — that + RFC-9380 test-vector conformance is the security-review item.
+
+## FINAL fully-measured enroll-circuit budget
+
+Every term now measured (no estimates):
+
+| term | gates |
+|---|---|
+| SHA-256 (cert TBS + signedAttrs + expand_message_xmd) | ~120,000 (dominant) |
+| ECDSA-P256 verify | 72,331 |
+| DLEQ verify + unblind + commitment | 28,688 |
+| DER extraction (RNOKPP + DOB) | ~13,500 |
+| Merkle membership (trust-root) | ~5,000 |
+| hash-to-curve (2 SvdW maps + add) | ~4,400 |
+| blinding scalar mult | 3,564 |
+| **total** | **≈ 247,000 → SHA-dominated, browser-provable** |
+
+Verdict stands: **GO.** No exotic or unbounded term anywhere; the circuit is
+SHA-256-dominated. The only open items are non-cost: the ciphersuite security
+review and the iOS on-device proving bench (~247k is ~3× the sign circuit).
+
 ## Remaining Phase-0 work (if pursued)
 
 1. Empirically measure non-native 25519 scalar mult (pull noir-bignum) to
