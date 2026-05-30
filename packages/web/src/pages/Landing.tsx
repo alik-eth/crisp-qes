@@ -104,16 +104,6 @@ export function Landing({ state, onSignIn }: Props) {
                 <span className="statbar__live">LIVE · SEPOLIA</span>
             </div>
 
-            {/* About */}
-            <div className="about-section">
-                <p className="about-section__label">— {t("landing.aboutLabel")} —</p>
-                <p className="about-section__body">{t("landing.aboutBody")}</p>
-                <div className="tech-intro">
-                    <p className="tech-intro__body">{t("landing.techIntro")}</p>
-                    <p className="tech-intro__stack mono">{t("landing.techStack")}</p>
-                </div>
-            </div>
-
             {/* How it works */}
             <div className="how-section">
                 <p className="how-section__label">— {t("landing.howLabel")} —</p>
