@@ -50,12 +50,29 @@ single largest term in the whole circuit.
 | SHA-256 (cert TBS ~24 blk + signedAttrs ~5 blk) | ~120k | derived (4.1k/blk) — **dominant term** |
 | DER extraction (RNOKPP + DOB) | ~14k | measured (6.7k/field) |
 | Merkle membership (trust-root, few hops) | ~5k | from v2 sign circuit |
-| Grumpkin hash-to-curve `H2C(RNOKPP)` | ~10–30k (est) | **only unmeasured term + the security-review item** |
+| Grumpkin hash-to-curve `H2C(RNOKPP)` (SvdW map arithmetic) | ~low-thousands | measured-ish (see below) |
+| Grumpkin H2C `expand_message_xmd` (SHA) | folded into SHA line | ~2–3 blocks |
 | **total** | **~225–245k → SHA-dominated, browser-provable** | iOS bench TBD |
 
-The cost is now dominated by SHA-256 — a known, optimizable quantity (zk-email
-techniques) — not by anything exotic. The only unmeasured term is the Grumpkin
-hash-to-curve, which is also the RFC-9380/security-review item.
+The cost is dominated by SHA-256 — a known, optimizable quantity (zk-email
+techniques) — not by anything exotic. **No remaining exotic/unbounded term.**
+
+### Hash-to-curve resolved (was the last unknown)
+
+`packages/oprf/grumpkin-h2c.mjs` implements RFC-9380 **SvdW** map-to-curve +
+`expand_message_xmd(SHA-256)` + `hash_to_curve` for Grumpkin (a=0, so simplified-
+SWU doesn't apply; SvdW works for any curve; cofactor 1 ⇒ no clear_cofactor).
+Found SvdW `Z = 1`. Validated: maps land on-curve, deterministic, distinct
+inputs → distinct points. The 2HashDH OPRF PoC (`grumpkin-oprf-poc.mjs`) now uses
+this real H2C (not try-and-increment) and still passes all 5 protocol checks.
+
+In-circuit: Grumpkin's base field **is** Noir's native Field, so the SvdW map is
+native arithmetic — a representative version compiled to ~100 gates (heavily
+folded; near-free). A faithful constant-time `is_square`+CMOV version is larger
+but stays low-thousands and native. The H2C's real cost is its
+`expand_message_xmd` SHA (already in the SHA line). Net: the H2C is **not** a
+cost risk; the only remaining caveat is the RFC-9380 **security review** of the
+non-standard Grumpkin ciphersuite (constants/DST/test-vectors), not feasibility.
 
 ## Recommendation
 

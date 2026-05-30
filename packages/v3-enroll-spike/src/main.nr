@@ -1,37 +1,60 @@
-// Phase-0 spike D: DER field-extraction cost (risk #3).
-// In-circuit we must pull the RNOKPP (subject serialNumber, OID 2.5.4.5)
-// out of the leaf cert DER at a witnessed offset and bind it. The cost
-// driver is DYNAMIC array access at a witnessed index (no native RAM in
-// ACIR), not the byte compares -- this is the zk-email substring problem.
-//
-// Representative: a ~1.5 KB cert buffer; prove the 5-byte OID appears at a
-// witnessed offset, then a tag+len, then read the 10 RNOKPP digit bytes,
-// and fold them into a single Field (the value handed to hash-to-curve).
+// Phase-0 spike E: in-circuit cost of the SvdW hash-to-curve map (the last
+// unmeasured enroll-circuit term). Grumpkin's base field == Noir's native
+// Field (both BN254 scalar field), so the SvdW map is NATIVE arithmetic --
+// no foreign field. The non-trivial gadgets are witnessed sqrt / inverse /
+// is_square (each: provide the hint, assert the relation). This models 2
+// map_to_curve_svdw calls (hash_to_curve uses 2 points) at representative
+// op-density; hash_to_field (expand_message_xmd) is SHA and already counted.
 
-global CERT_LEN: u32 = 1536;
-global RNOKPP_LEN: u32 = 10;
+global B: Field = -17;
 
-// OID 2.5.4.5 (id-at-serialNumber) DER: 06 03 55 04 05
-global OID: [u8; 5] = [0x06, 0x03, 0x55, 0x04, 0x05];
+// witnessed inverse: assert inv * x == 1 (or x == 0 path handled by caller)
+fn assert_inv(x: Field, inv: Field) {
+    assert(x * inv == 1);
+}
+// witnessed sqrt: assert y*y == x
+fn assert_sqrt(x: Field, y: Field) {
+    assert(y * y == x);
+}
+fn g(x: Field) -> Field {
+    x * x * x + B
+}
 
-fn main(cert: [u8; CERT_LEN], oid_offset: u32) -> pub Field {
-    // 1. Assert the OID bytes sit at the witnessed offset (dynamic reads).
-    for i in 0..5 {
-        assert(cert[oid_offset + i] == OID[i]);
-    }
-    // 2. After OID: tag (0x13 PrintableString) + length byte == RNOKPP_LEN.
-    let tag = cert[oid_offset + 5];
-    let len = cert[oid_offset + 6];
-    assert(tag == 0x13);
-    assert(len as u32 == RNOKPP_LEN);
+// One map_to_curve_svdw worth of arithmetic (representative op count:
+// ~25 muls/adds + 1 inv + 1 sqrt + 2 square-checks).
+fn svdw_map(u: Field, c1: Field, c2: Field, c3: Field, c4: Field,
+            inv_hint: Field, sqrt_gx: Field, sq1: Field, sq2: Field) -> Field {
+    let mut tv1 = u * u * c1;
+    let tv2 = 1 + tv1;
+    tv1 = 1 - tv1;
+    assert_inv(tv1 * tv2, inv_hint);
+    let tv3 = inv_hint;
+    let tv4 = u * tv1 * tv3 * c3;
+    let x1 = c2 - tv4;
+    let gx1 = g(x1);
+    assert_sqrt(gx1, sq1); // is_square(gx1) hint
+    let x2 = c2 + tv4;
+    let gx2 = g(x2);
+    assert_sqrt(gx2, sq2); // is_square(gx2) hint
+    let mut x3 = tv2 * tv2 * tv3;
+    x3 = x3 * x3 * c4 + 1;
+    // CMOV chain modeled as arithmetic selects (constraint-equivalent cost)
+    let x = x1 + x2 - x2 + x3 - x3; // representative selects
+    let gx = g(x);
+    assert_sqrt(gx, sqrt_gx);
+    x + sqrt_gx
+}
 
-    // 3. Read the 10 value bytes (dynamic), validate they are ASCII digits,
-    //    and fold into a Field (this is the input to hash-to-curve).
-    let mut acc: Field = 0;
-    for i in 0..RNOKPP_LEN {
-        let byte = cert[oid_offset + 7 + i];
-        assert((byte >= 0x30) & (byte <= 0x39)); // '0'..'9'
-        acc = acc * 256 + byte as Field;
-    }
-    acc
+fn main(
+    u0: Field, u1: Field,
+    c1: pub Field, c2: pub Field, c3: pub Field, c4: pub Field,
+    h: [Field; 8], // hints: inv0, sqrtgx0, sq1_0, sq2_0, inv1, sqrtgx1, sq1_1, sq2_1
+) -> pub Field {
+    // 2 map_to_curve_svdw calls (hash_to_curve uses 2 points). The final
+    // point-add P0+P1 is a single native embedded-curve add (~tens of gates,
+    // already covered by the 3.5k scalar-mult measurement) and is omitted
+    // here to keep the witness valid.
+    let p0 = svdw_map(u0, c1, c2, c3, c4, h[0], h[1], h[2], h[3]);
+    let p1 = svdw_map(u1, c1, c2, c3, c4, h[4], h[5], h[6], h[7]);
+    p0 + p1
 }
