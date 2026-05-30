@@ -450,6 +450,98 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
     .how-grid { grid-template-columns: 1fr; }
 }
 
+/* ─── about section ─── */
+.about-section {
+    margin-top: 80px;
+    max-width: 720px;
+}
+.about-section__label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted-2);
+    margin-bottom: 20px;
+}
+.about-section__body {
+    font-size: 17px;
+    line-height: 1.7;
+    color: var(--ink-2);
+}
+
+/* ─── technology section ─── */
+.tech-section {
+    margin-top: 80px;
+    text-align: center;
+}
+.tech-section__label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted-2);
+    margin-bottom: 16px;
+}
+.tech-section__title {
+    font-family: var(--display);
+    font-weight: 300;
+    font-size: clamp(28px, 3.6vw, 40px);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin-bottom: 48px;
+}
+
+/* ─── team section ─── */
+.team-section {
+    margin-top: 80px;
+}
+.team-section__label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted-2);
+    margin-bottom: 24px;
+}
+.team-grid {
+    border-top: 1px solid var(--line);
+}
+.team-card {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 24px;
+    align-items: start;
+    padding: 24px 0;
+    border-bottom: 1px solid var(--line);
+}
+.team-card__name {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--ink);
+    margin: 0;
+}
+.team-card__role {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 4px 0 0;
+}
+.team-card__desc {
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    margin: 0;
+}
+@media (max-width: 640px) {
+    .team-card {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+}
+
 /* ─── footnote (footer) ─── */
 .footnote {
     border-top: 1px solid var(--line);

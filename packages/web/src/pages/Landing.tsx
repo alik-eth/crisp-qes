@@ -104,6 +104,13 @@ export function Landing({ state, onSignIn }: Props) {
                 <span className="statbar__live">LIVE · SEPOLIA</span>
             </div>
 
+            {/* About */}
+            <div className="about-section">
+                <p className="about-section__label">— {t("landing.aboutLabel")} —</p>
+                <p className="about-section__body">{t("landing.aboutBody")}</p>
+            </div>
+
+            {/* How it works */}
             <div className="how-section">
                 <p className="how-section__label">— {t("landing.howLabel")} —</p>
                 <h2 className="how-section__title">{t("landing.howTitle")}</h2>
@@ -113,6 +120,36 @@ export function Landing({ state, onSignIn }: Props) {
                             <span className="how-card__n">{t(`landing.step${n}n`)}</span>
                             <h3 className="how-card__title">{t(`landing.step${n}title`)}</h3>
                             <p className="how-card__body">{t(`landing.step${n}body`)}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Technology */}
+            <div className="tech-section">
+                <p className="tech-section__label">— {t("landing.techLabel")} —</p>
+                <h2 className="tech-section__title">{t("landing.techTitle")}</h2>
+                <div className="how-grid">
+                    {([1, 2, 3, 4] as const).map((n) => (
+                        <div key={n} className="how-card">
+                            <h3 className="how-card__title">{t(`landing.tech${n}title`)}</h3>
+                            <p className="how-card__body">{t(`landing.tech${n}body`)}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Team */}
+            <div className="team-section">
+                <p className="team-section__label">— {t("landing.teamLabel")} —</p>
+                <div className="team-grid">
+                    {([1, 2] as const).map((n) => (
+                        <div key={n} className="team-card">
+                            <div>
+                                <h3 className="team-card__name">{t(`landing.team${n}name`)}</h3>
+                                <p className="team-card__role">{t(`landing.team${n}role`)}</p>
+                            </div>
+                            <p className="team-card__desc">{t(`landing.team${n}desc`)}</p>
                         </div>
                     ))}
                 </div>
