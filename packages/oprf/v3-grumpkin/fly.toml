@@ -11,15 +11,23 @@ primary_region = "fra"
   CRS_PATH = "/app/.bb-crs"
   BB_BACKEND = "Wasm"
   BB_THREADS = "1"
+  CHAIN_ID = "11155111"
+  # Fresh clean-slate EnrollmentRegistry (genesis, leafCount 0) — the attester
+  # digest pins this address, so the v3 service's genesis tree matches on-chain.
+  ENROLLMENT_REGISTRY = "0xC9b35dE202e0Bf92e38603deEC4176557eF249a4"
   # GRUMPKIN_OPRF_KEY (32-byte hex node secret) is REQUIRED in production and is
   # set via `flyctl secrets set GRUMPKIN_OPRF_KEY=...`, NOT here.
 
 [http_service]
   internal_port = 8788
   force_https = true
-  auto_stop_machines = "stop"
+  # Keep the machine WARM: the Merkle store is in-memory (genesis on boot), so a
+  # restart after enrollments would desync from the advanced on-chain root.
+  # Staying always-on preserves the tree across the demo. (Robust fix = sync the
+  # store from on-chain CommitmentInserted events on boot — deferred.)
+  auto_stop_machines = "off"
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
 
 [[http_service.checks]]
   method = "GET"

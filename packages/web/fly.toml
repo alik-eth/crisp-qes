@@ -12,8 +12,8 @@ primary_region = "fra"
     # PetitionRegistryV2 redeployed 2026-05-29 T18:33Z (support-only collapse,
     # task #38). Prior Sepolia addresses preserved in sepolia.json
     # `supersedes_within_sepolia` array for audit trail.
-    VITE_ENROLLMENT_REGISTRY = "0x0214504C1Be6d664bbE3AE6687507aBE19A36d1a"
-    VITE_PETITION_REGISTRY_V2 = "0x4CaEeAFbd5CAAD10dE75995ae5b1Cc8d29c01757"
+    VITE_ENROLLMENT_REGISTRY = "0xC9b35dE202e0Bf92e38603deEC4176557eF249a4"
+    VITE_PETITION_REGISTRY_V2 = "0x0BF0D1BD0550028887528d5bA310F1e3019ad6DB"
     VITE_RELAYER_URL = "https://crisp-qes-relayer.fly.dev"
     VITE_CIRCUIT_URL = "/crisp_qes_v2_circuit.json"
     VITE_BLOCK_EXPLORER = "https://sepolia.etherscan.io"

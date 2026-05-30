@@ -32,10 +32,12 @@ import { Attester } from "./attester.mjs";
 import { MerkleIndex, TREE_DEPTH, GENESIS_ROOT, bigintToHex32 } from "./merkle.mjs";
 
 // — EnrollmentRegistry deployment the v3 attester signs root updates for ────────
-// Pinned to the SAME live registry v2 enrolls into (Sepolia), so v3 commitments
-// become leaves alongside v2's. Override via env for other deployments.
-const DEFAULT_CHAIN_ID = 11155111; // Sepolia
-const DEFAULT_ENROLLMENT_REGISTRY = "0x0214504C1Be6d664bbE3AE6687507aBE19A36d1a";
+// FRESH clean-slate registry (genesis, leafCount 0) so the v3 service's
+// in-memory genesis tree matches the on-chain root and the first updateRoot's
+// oldRoot is accepted. Override via env ENROLLMENT_REGISTRY / CHAIN_ID.
+const DEFAULT_CHAIN_ID = Number(process.env.CHAIN_ID ?? 11155111); // Sepolia
+const DEFAULT_ENROLLMENT_REGISTRY =
+    process.env.ENROLLMENT_REGISTRY ?? "0xC9b35dE202e0Bf92e38603deEC4176557eF249a4";
 // The attester address is DERIVED from V3_ATTESTER_KEY (never hardcoded). The
 // EnrollmentRegistry was rotated to a new attester; the human sets
 // V3_ATTESTER_KEY to its secp256k1 key and the service derives the address from
