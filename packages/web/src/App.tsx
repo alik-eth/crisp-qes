@@ -12,6 +12,7 @@ import { CreatePetition } from "./pages/CreatePetition.js";
 import { Verify } from "./pages/Verify.js";
 import { Recover } from "./pages/Recover.js";
 import { Me } from "./pages/Me.js";
+import { V3Enroll } from "./pages/V3Enroll.js";
 import { NotFound } from "./pages/NotFound.js";
 
 type Modal = null | { kind: "signin" } | { kind: "register" };
@@ -101,6 +102,9 @@ export function App() {
                             ) : (
                                 <Me state={state} refresh={refresh} />
                             )}
+                        </Route>
+                        <Route path="/v3">
+                            <V3Enroll />
                         </Route>
                         <Route>
                             <NotFound />
