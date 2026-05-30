@@ -167,6 +167,20 @@ signatures (`@noble` doesn't enforce by default). Diia's QES signatures must be
 low-s normalized before `qes_frontend` will verify them — pin this for the
 real-cert integration.
 
+## Native prove cost (browser/iOS feasibility proxy)
+
+`bb prove`, 16 threads (commit c48fdc8):
+
+| circuit | gates | wall | peak RSS |
+|---|---|---|---|
+| `enroll_commit_v2` (full in-circuit SHA H2C) | 117,833 | ~1.0 s | ~233 MB |
+| `oprf_nullifier` | 28,688 | ~0.3 s | ~79 MB |
+
+The enroll circuit's ~233 MB is ~1.4× the v2 sign circuit's ~164 MB working set
+(measured earlier) — **comfortably under the 384 MiB iOS cap**. So in-browser
+operator-blind enrollment proving is plausible; the real on-device iOS bench is
+still the gate, but the proxy says GO (one-time enroll, ~10-30 s throttled).
+
 ## Remaining Phase-0 work (if pursued)
 
 1. Empirically measure non-native 25519 scalar mult (pull noir-bignum) to
