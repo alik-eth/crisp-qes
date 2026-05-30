@@ -469,6 +469,25 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
     color: var(--ink-2);
 }
 
+/* ─── technology intro ─── */
+.tech-intro {
+    margin-top: 80px;
+    max-width: 720px;
+    padding-top: 40px;
+    border-top: 1px solid var(--line);
+}
+.tech-intro__body {
+    font-size: 17px;
+    line-height: 1.7;
+    color: var(--ink-2);
+    margin-bottom: 20px;
+}
+.tech-intro__stack {
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--muted-2);
+}
+
 /* ─── technology section ─── */
 .tech-section {
     margin-top: 80px;
