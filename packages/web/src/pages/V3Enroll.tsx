@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { useLocation, Link } from "wouter";
+import { useLocation } from "wouter";
 import { parseP7s, type ParsedP7s } from "@crisp-qes/sdk";
 import { extractRnokpp, extractDOB, tinuaPrefixOk } from "../lib/rnokpp.js";
 import {
@@ -227,13 +227,7 @@ export function V3Enroll({ onDone }: Props) {
     return (
         <section className="verify">
             <div className="notice notice--bad" style={{ marginBottom: 24 }}>
-                <strong>EXPERIMENTAL / UNAUDITED.</strong> Operator-blind
-                enrollment (v3). The OPRF service never sees your RNOKPP — only
-                a blinded element, gated by a zero-knowledge proof of your Diia
-                certificate. Both UltraHonk proofs run in this browser. This
-                path is not yet audited; the{" "}
-                <Link href="/verify-legacy">classic verifier</Link> remains
-                available as a fallback.
+                <strong>EXPERIMENTAL / UNAUDITED.</strong>
             </div>
 
             <header style={{ marginBottom: 32 }}>

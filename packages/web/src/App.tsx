@@ -9,7 +9,6 @@ import { Landing } from "./pages/Landing.js";
 import { Petitions } from "./pages/Petitions.js";
 import { PetitionDetail } from "./pages/PetitionDetail.js";
 import { CreatePetition } from "./pages/CreatePetition.js";
-import { Verify } from "./pages/Verify.js";
 import { Recover } from "./pages/Recover.js";
 import { Me } from "./pages/Me.js";
 import { V3Enroll } from "./pages/V3Enroll.js";
@@ -91,15 +90,6 @@ export function App() {
                                 <Redirect to="/petitions" />
                             ) : (
                                 <V3Enroll onDone={refresh} />
-                            )}
-                        </Route>
-                        <Route path="/verify-legacy">
-                            {state.kind === "guest" ? (
-                                <Redirect to="/" />
-                            ) : state.kind === "verified" ? (
-                                <Redirect to="/petitions" />
-                            ) : (
-                                <Verify onDone={refresh} />
                             )}
                         </Route>
                         <Route path="/recover">
