@@ -102,6 +102,31 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
 
     const app = Fastify({ logger: { level: config.isProd ? "info" : "warn" } });
 
+    // Startup balance check. The relayer pays gas for every enroll/sign/revoke;
+    // if it runs dry, writes fail with insufficient funds while simulate (a free
+    // eth_call) still passes — a confusing post-simulate revert. Surface an empty
+    // gas tank loudly at boot. Guarded so test fakes without getBalance no-op.
+    const LOW_BALANCE_WEI = 50_000_000_000_000_000n; // 0.05 ETH
+    app.addHook("onReady", async () => {
+        const pc = clients.publicClient as { getBalance?: (a: unknown) => Promise<bigint> };
+        if (typeof pc.getBalance !== "function") return;
+        try {
+            const bal = await pc.getBalance({ address: clients.account.address });
+            const balanceEth = (Number(bal) / 1e18).toFixed(5);
+            const meta = { relayerAddr: clients.account.address, balanceEth };
+            if (bal < LOW_BALANCE_WEI) {
+                app.log.warn(
+                    meta,
+                    "LOW RELAYER BALANCE — fund this key or writes fail with InsufficientRelayerFunds",
+                );
+            } else {
+                app.log.info(meta, "relayer balance");
+            }
+        } catch (err) {
+            app.log.warn({ err: (err as Error).message }, "relayer balance check failed");
+        }
+    });
+
     const allowAll = config.corsAllowedOrigins.includes("*");
     void app.register(fastifyCors, {
         origin: allowAll ? true : config.corsAllowedOrigins,
