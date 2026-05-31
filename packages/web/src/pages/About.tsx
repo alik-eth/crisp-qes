@@ -72,6 +72,52 @@ export function About() {
                 </div>
             </div>
 
+            {/* ── Дорожня карта ── */}
+            <div className="about-section-block">
+                <span className="eyebrow">{uk ? "Дорожня карта" : "Roadmap"}</span>
+                <h2 className="about-h2">{uk ? "Найризикованіше ми вже зробили." : "The riskiest part is already done."}</h2>
+                <div className="roadmap">
+                    <div className="roadmap__phase roadmap__phase--done">
+                        <div className="roadmap__head">
+                            <span className="micro">{uk ? "v2 · готово" : "v2 · done"}</span>
+                            <span className="roadmap__status">{uk ? "Працює сьогодні" : "Works today"}</span>
+                        </div>
+                        <h3 className="how-card__title">{uk ? "Анонімний голос на блокчейні" : "Anonymous vote on-chain"}</h3>
+                        <ul className="roadmap__list">
+                            <li>{uk ? "Ідентифікація через КЕП → ZK-доказ → запис у відкритий реєстр" : "QES identification → ZK proof → record in open registry"}</li>
+                            <li>{uk ? "Без MetaMask, без розкриття особи" : "No MetaMask, no identity disclosure"}</li>
+                            <li>{uk ? "Перша демо-петиція підписана on-chain" : "First demo petition signed on-chain"}</li>
+                        </ul>
+                    </div>
+                    <div className="roadmap__phase">
+                        <div className="roadmap__head">
+                            <span className="micro">{uk ? "v3 · в роботі" : "v3 · in progress"}</span>
+                            <span className="roadmap__status">{uk ? "У роботі" : "In progress"}</span>
+                        </div>
+                        <h3 className="how-card__title">{uk ? "Стійкість до примусу та покращення" : "Coercion resistance & improvements"}</h3>
+                        <ul className="roadmap__list">
+                            <li>{uk ? "FHE (CRISP) — зашифрований підрахунок голосів" : "FHE (CRISP) — encrypted vote tally"}</li>
+                            <li>{uk ? "Захист від примусу за схемою JCJ" : "Coercion protection via JCJ scheme"}</li>
+                            <li>{uk ? "Допрацювання дизайну сайту" : "Site design improvements"}</li>
+                            <li>{uk ? "Тестування та виправлення помилок" : "Testing and bug fixes"}</li>
+                        </ul>
+                    </div>
+                    <div className="roadmap__phase">
+                        <div className="roadmap__head">
+                            <span className="micro">{uk ? "Далі" : "Next"}</span>
+                            <span className="roadmap__status">{uk ? "Заплановано" : "Planned"}</span>
+                        </div>
+                        <h3 className="how-card__title">{uk ? "Масштаб і незалежність" : "Scale and independence"}</h3>
+                        <ul className="roadmap__list">
+                            <li>{uk ? "Аудит криптографії" : "Cryptography audit"}</li>
+                            <li>{uk ? "Додатковий аналіз і можливий перехід на zkID" : "Additional analysis and possible transition to zkID"}</li>
+                            <li>{uk ? "Аналіз і можлива імплементація більш user-friendly вимог до створення голосувань (альтернатива депозиту 0.001 ETH)" : "Analysis and possible implementation of more user-friendly poll creation requirements (alternative to 0.001 ETH deposit)"}</li>
+                            <li>{uk ? "Підтримка інших надавачів КЕП та європейських eIDAS-провайдерів" : "Support for other QES providers and European eIDAS providers"}</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
             {/* ── Команда ── */}
             <div className="about-section-block">
                 <span className="eyebrow">{uk ? "Команда" : "Team"}</span>
