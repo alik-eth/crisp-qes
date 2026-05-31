@@ -1,4 +1,4 @@
-app = "crisp-qes-web"
+app = "civicvoice"
 primary_region = "fra"
 
 [build]
@@ -12,8 +12,8 @@ primary_region = "fra"
     # PetitionRegistryV2 redeployed 2026-05-29 T18:33Z (support-only collapse,
     # task #38). Prior Sepolia addresses preserved in sepolia.json
     # `supersedes_within_sepolia` array for audit trail.
-    VITE_ENROLLMENT_REGISTRY = "0xC48d5e645f569b5Cd9E1C315f4344DF85e09CFBa"
-    VITE_PETITION_REGISTRY_V2 = "0x6b0C722fa50F6325028781DC5A25e9beC1fE4a89"
+    VITE_ENROLLMENT_REGISTRY = "0x64f40F22033E0AdB0c1183c42135e5C29266b817"
+    VITE_PETITION_REGISTRY_V2 = "0x4c6b7Da31dDb645A26F821f44DD44ecF3cd7000A"
     VITE_RELAYER_URL = "https://crisp-qes-relayer.fly.dev"
     VITE_CIRCUIT_URL = "/crisp_qes_v2_circuit.json"
     VITE_BLOCK_EXPLORER = "https://sepolia.basescan.org"

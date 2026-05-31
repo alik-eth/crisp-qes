@@ -1,49 +1,85 @@
-// Generate Prover.toml for the Phase-2 enroll_commit_v2 circuit, which derives
-// u0,u1 = hash_to_field(RNOKPP) IN-CIRCUIT. So the witness no longer carries
-// u0,u1 -- only the SvdW hints (which still need the JS-computed u0,u1 to
-// produce the square-root hints), the cert/ECDSA material, and the scalar r.
+// Generate Prover.toml for the enroll_commit_v2 circuit with the Diia
+// trust-chain additions. The witness now carries the leaf certificate TBS
+// (CA-authenticated), a SYNTHETIC test-CA signature over it, the pinned-style
+// CA pubkey, and the offsets of the leaf SPKI / RNOKPP OID / DOB INSIDE the
+// leaf TBS. RNOKPP/DOB are read from the authenticated leaf_tbs (the free
+// cert[] input is gone).
+//
+// SOUNDNESS: the SYNTHETIC test CA used here is NOT one of the production
+// pinned Diia keys, so `nargo execute` against the production circuit (whose
+// pinned set is the real Diia keys) WILL fail assert_ca_pinned -- that is
+// expected. The happy-path PROVING with the synthetic CA is validated by the
+// in-circuit #[test] functions (which pass the synthetic pinned set). This
+// generator's Prover.toml is primarily for negative-path `nargo execute`
+// checks and for the witness-shape reference.
+//
+// Variants (env WITNESS_VARIANT):
+//   happy            - well-formed witness (chain consistent; will fail
+//                      assert_ca_pinned in production main as noted above).
+//   bad_pubkey       - (negative c) pubkey_x/y != leaf SPKI in leaf_tbs.
+//   bad_rnokpp_oob   - (negative d) rnokpp_oid_off points outside leaf_tbs_len.
 //
 // SYNTHETIC disposable cert only. Run with cwd in v3-grumpkin.
 
 import { writeFileSync } from "node:fs";
-import { p256 } from "../node_modules/@noble/curves/p256.js";
-import { sha256 } from "../node_modules/@noble/hashes/sha2.js";
+import { p256 } from "./node_modules/@noble/curves/p256.js";
+import { sha256 } from "./node_modules/@noble/hashes/sha2.js";
 import { N, SVDW_CONSTS, mapToCurveSvdW, hashToField2, scalarLimbs } from "./lib.mjs";
 
-// CERT_LEN must match the resized circuit global in
-// circuits/enroll_commit_v2/src/main.nr. Bumped 768 -> 2048 so the buffer can
-// hold a REAL Diia leaf-cert TBS (~1-1.5 KB). The offsets below are still
-// witnessed (rnokpp_oid_off, dob_off), so they can sit anywhere inside the
-// larger buffer — here we place them well past 768 to exercise the new range.
-const CERT_LEN = 2048;
+const VARIANT = process.env.WITNESS_VARIANT || "happy";
+
+// Must match the circuit globals.
+const LEAF_TBS_LEN = 1536;
+const SA_LEN = 2048;
+
 const RNOKPP = "1234567890";
 const DOB = "19900115";
 const TODAY = "20260530";
 
-const cert = new Uint8Array(CERT_LEN);
-for (let i = 0; i < CERT_LEN; i++) cert[i] = (i * 31 + 7) & 0xff;
+// --- synthetic leaf keypair (the cert subject's key, signs signedAttrs) ---
+const leafSeed = sha256(new TextEncoder().encode("crisp-qes-synthetic-test-leaf-v1"));
+const leafSk = leafSeed;
+const leafPubUncompressed = p256.getPublicKey(leafSk, false); // 04 || X || Y
+const leafPubX = leafPubUncompressed.slice(1, 33);
+const leafPubY = leafPubUncompressed.slice(33, 65);
 
-// Place the RNOKPP OID block beyond the old 768 boundary to prove the circuit
-// no longer assumes the synthetic's fixed offsets. REAL Diia encoding: the
-// subject serialNumber is "TINUA-<10 digits>" (16 bytes), so the DER is
-// 06 03 55 04 05  13 10  "TINUA-"  <10 digits>. The circuit asserts the
-// "TINUA-" prefix but hashes ONLY the 10 digits.
-const rnokppOff = 1100;
-// OID 2.5.4.5 + PrintableString tag 0x13, len 0x10 (16).
+// --- synthetic test CA (signs the leaf TBS); NOT a production pinned key ---
+const caSeed = sha256(new TextEncoder().encode("crisp-qes-synthetic-test-ca-v1"));
+const caSk = caSeed;
+const caPubUncompressed = p256.getPublicKey(caSk, false);
+const caPubX = caPubUncompressed.slice(1, 33);
+const caPubY = caPubUncompressed.slice(33, 65);
+
+// --- build the leaf TBS carrying SPKI + RNOKPP + DOB ---
+const leafTbsLen = 900;
+const leafTbs = new Uint8Array(LEAF_TBS_LEN);
+for (let i = 0; i < leafTbsLen; i++) leafTbs[i] = (i * 17 + 5) & 0xff;
+
+const spkiMarkerOff = 100; // 0x04 marker
+const leafSpkiOff = spkiMarkerOff + 1; // X[0]
+leafTbs[spkiMarkerOff] = 0x04;
+leafTbs.set(leafPubX, leafSpkiOff);
+leafTbs.set(leafPubY, leafSpkiOff + 32);
+
+let rnokppOff = 300;
 const oid = [0x06, 0x03, 0x55, 0x04, 0x05, 0x13, 0x10];
-for (let i = 0; i < oid.length; i++) cert[rnokppOff + i] = oid[i];
-// "TINUA-" ASCII prefix (6 bytes) immediately after the tag/len.
+for (let i = 0; i < oid.length; i++) leafTbs[rnokppOff + i] = oid[i];
 const TINUA = "TINUA-";
-for (let i = 0; i < TINUA.length; i++) {
-  cert[rnokppOff + 7 + i] = TINUA.charCodeAt(i);
+for (let i = 0; i < TINUA.length; i++) leafTbs[rnokppOff + 7 + i] = TINUA.charCodeAt(i);
+for (let i = 0; i < 10; i++) leafTbs[rnokppOff + 13 + i] = RNOKPP.charCodeAt(i);
+
+const dobOff = 500;
+for (let i = 0; i < 8; i++) leafTbs[dobOff + i] = DOB.charCodeAt(i);
+
+// CA signs sha256_var(leaf_tbs, leaf_tbs_len).
+const eLeaf = sha256(leafTbs.subarray(0, leafTbsLen));
+const caSigObj = p256.sign(eLeaf, caSk, { prehash: false }).normalizeS();
+const leafCertSig = caSigObj.toCompactRawBytes();
+if (!p256.verify(caSigObj, eLeaf, caPubUncompressed, { prehash: false })) {
+  throw new Error("synthetic CA sig self-verify failed");
 }
-// 10 ASCII RNOKPP digits after the prefix (offset + 13).
-for (let i = 0; i < 10; i++) cert[rnokppOff + 13 + i] = RNOKPP.charCodeAt(i);
 
-const dobOff = 1400;
-for (let i = 0; i < 8; i++) cert[dobOff + i] = DOB.charCodeAt(i);
-
-// u0,u1 are derived in-circuit, but JS still needs them to compute SvdW hints.
+// --- OPRF / hash-to-curve material (unchanged) ---
 const rnokppBytes = new TextEncoder().encode(RNOKPP);
 const [u0, u1] = hashToField2(rnokppBytes);
 const m0 = mapToCurveSvdW(u0);
@@ -55,7 +91,6 @@ const M = Hpt.multiply(r);
 const Maff = M.toAffine();
 
 // --- bound challenge (v3) -------------------------------------------------
-// Byte-exact with service/challenge.mjs and web enrollmentChallengeV3.ts.
 const INTENT = "crisp-qes-enroll-v3";
 const EPOCH = "v3-2026";
 const be32 = (v) => v.toString(16).padStart(64, "0");
@@ -66,10 +101,7 @@ const challenge = new TextEncoder().encode(
 const messageDigest = sha256(challenge); // 32 bytes
 
 // Minimal synthetic signedAttrs: [pad 8][04 20 <messageDigest>][pad 8].
-// The circuit only checks the OCTET STRING at msg_digest_off + the ECDSA over
-// sha256_var(signed_attrs, len). msgDigestOff points at the 0x04 tag.
 const SA_USED = 8 + 2 + 32 + 8; // 50 bytes used
-const SA_LEN = 2048;             // must equal the circuit global
 const signedAttrs = new Uint8Array(SA_LEN);
 for (let i = 0; i < 8; i++) signedAttrs[i] = (i * 13 + 1) & 0xff;
 const msgDigestOff = 8;
@@ -77,33 +109,60 @@ signedAttrs[msgDigestOff] = 0x04;
 signedAttrs[msgDigestOff + 1] = 0x20;
 signedAttrs.set(messageDigest, msgDigestOff + 2);
 for (let i = 0; i < 8; i++) signedAttrs[42 + i] = (i * 7 + 3) & 0xff;
-const msghash = sha256(signedAttrs.subarray(0, SA_USED)); // sha256_var hashes [0..len]
+const msghash = sha256(signedAttrs.subarray(0, SA_USED));
 
-const sk = p256.utils.randomPrivateKey();
-const pubUncompressed = p256.getPublicKey(sk, false);
-const pubX = pubUncompressed.slice(1, 33);
-const pubY = pubUncompressed.slice(33, 65);
-const sigObj = p256.sign(msghash, sk, { prehash: false }).normalizeS();
-const sig = sigObj.toCompactRawBytes();
-if (!p256.verify(sigObj, msghash, pubUncompressed, { prehash: false })) {
-  throw new Error("JS-side ECDSA verify failed");
+// signedAttrs is signed by the LEAF key (which the circuit binds to the SPKI).
+const sigObj = p256.sign(msghash, leafSk, { prehash: false }).normalizeS();
+let sig = sigObj.toCompactRawBytes();
+if (!p256.verify(sigObj, msghash, leafPubUncompressed, { prehash: false })) {
+  throw new Error("JS-side leaf ECDSA verify failed");
 }
 
+// --- public SvdW constants + scalar ---
 const { c1, c2, c3, c4 } = SVDW_CONSTS;
 const { lo, hi } = scalarLimbs(r);
+
+// --- apply negative-variant tampering ---
+let outPubX = leafPubX;
+let outPubY = leafPubY;
+if (VARIANT === "bad_pubkey") {
+  // (negative c): claim a DIFFERENT pubkey than the leaf SPKI in leaf_tbs, and
+  // re-sign signedAttrs with that key so only the cert<->pubkey bind fails.
+  const otherSk = sha256(new TextEncoder().encode("crisp-qes-attacker-key"));
+  const otherPub = p256.getPublicKey(otherSk, false);
+  outPubX = otherPub.slice(1, 33);
+  outPubY = otherPub.slice(33, 65);
+  sig = p256.sign(msghash, otherSk, { prehash: false }).normalizeS().toCompactRawBytes();
+}
+if (VARIANT === "bad_rnokpp_oob") {
+  // (negative d): point rnokpp_oid_off into the UNAUTHENTICATED padding region
+  // (>= leaf_tbs_len). The circuit's `rnokpp_oid_off + 23 <= leaf_tbs_len`
+  // bound must reject this. Plant a valid-looking RNOKPP block there so only
+  // the bound check (not the digit asserts) is what fails.
+  rnokppOff = leafTbsLen + 50; // 950, outside [0, 900)
+  for (let i = 0; i < oid.length; i++) leafTbs[rnokppOff + i] = oid[i];
+  for (let i = 0; i < TINUA.length; i++) leafTbs[rnokppOff + 7 + i] = TINUA.charCodeAt(i);
+  for (let i = 0; i < 10; i++) leafTbs[rnokppOff + 13 + i] = RNOKPP.charCodeAt(i);
+}
 
 const arr = (u8) => "[" + Array.from(u8).map((b) => `"${b}"`).join(", ") + "]";
 const hintArr = (h) => `["${h.inv_t}", "${h.e1}", "${h.w1}", "${h.e2}", "${h.w2}", "${h.sqrt_x}"]`;
 
-const toml = `# auto-generated by gen-enroll-commit-v2-witness.mjs (v3 bound-challenge)
-# SYNTHETIC disposable cert + signedAttrs. Never a real Diia cert.
-pubkey_x = ${arr(pubX)}
-pubkey_y = ${arr(pubY)}
+const toml = `# auto-generated by gen-enroll-commit-v2-witness.mjs (v3 bound-challenge + Diia chain)
+# SYNTHETIC disposable cert + signedAttrs + synthetic test CA. Never a real Diia cert.
+# WITNESS_VARIANT = ${VARIANT}
+pubkey_x = ${arr(outPubX)}
+pubkey_y = ${arr(outPubY)}
 sig = ${arr(sig)}
 signed_attrs = ${arr(signedAttrs)}
 signed_attrs_len = "${SA_USED}"
 msg_digest_off = "${msgDigestOff}"
-cert = ${arr(cert)}
+leaf_tbs = ${arr(leafTbs)}
+leaf_tbs_len = "${leafTbsLen}"
+ca_pubkey_x = ${arr(caPubX)}
+ca_pubkey_y = ${arr(caPubY)}
+leaf_cert_sig = ${arr(leafCertSig)}
+leaf_spki_off = "${leafSpkiOff}"
 rnokpp_oid_off = "${rnokppOff}"
 dob_off = "${dobOff}"
 today = ${arr(Array.from(TODAY).map((c) => c.charCodeAt(0)))}
@@ -118,15 +177,8 @@ r_hi = "${hi}"
 `;
 
 writeFileSync(new URL("./circuits/enroll_commit_v2/Prover.toml", import.meta.url), toml);
-console.log("wrote Prover.toml");
+console.log("wrote Prover.toml (variant:", VARIANT, ")");
 console.log("RNOKPP        =", RNOKPP, " DOB =", DOB, " today =", TODAY);
-console.log("in-circuit-derived u0 (JS) =", u0.toString());
-console.log("in-circuit-derived u1 (JS) =", u1.toString());
-console.log("expected public outputs (M.x, M.y):");
-console.log("  M.x =", Maff.x.toString());
-console.log("  M.y =", Maff.y.toString());
-const digestHi = BigInt("0x" + Buffer.from(messageDigest.subarray(0, 16)).toString("hex"));
-const digestLo = BigInt("0x" + Buffer.from(messageDigest.subarray(16, 32)).toString("hex"));
-console.log("expected public digest limbs (return [2],[3]):");
-console.log("  digest_hi =", digestHi.toString());
-console.log("  digest_lo =", digestLo.toString());
+console.log("leaf_tbs_len  =", leafTbsLen, " leaf_spki_off =", leafSpkiOff, " rnokpp_off =", rnokppOff);
+console.log("NOTE: synthetic CA != production pinned Diia keys; production main()");
+console.log("      assert_ca_pinned WILL reject this witness (expected).");

@@ -9,9 +9,9 @@
 // buffer alone cannot satisfy parseP7s — it needs a full SignedData/SignerInfo
 // with a PKCS#9 messageDigest, which the new bound-challenge fields read.
 //
-// CONCERN (flagged to the orchestrator): this fixture's signedAttrs is ~1388 B,
-// which EXCEEDS the circuit's SA_LEN (512). When signedAttrs fits SA_LEN we
-// assert the three new fields on a real witness; when it overflows we assert
+// NOTE: this fixture's signedAttrs is ~1388 B; SA_LEN is now 2048, so it fits.
+// When signedAttrs fits SA_LEN we assert the new chain + bound-challenge fields
+// on a real witness; when it overflows we assert
 // the SA_LEN guard fires AND independently verify (via parseP7s) that the
 // 04 20 OCTET STRING header sits at messageDigestOffset - 2 — i.e. the exact
 // offset math buildP7sEnrollWitness uses. Either way the new code path is
@@ -20,7 +20,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { parseP7s } from "@crisp-qes/sdk";
-import { buildP7sEnrollWitness, SA_LEN } from "../src/lib/p7sWitness";
+import { buildP7sEnrollWitness, SA_LEN, LEAF_TBS_LEN } from "../src/lib/p7sWitness";
 
 // Same fixture path + skip-gate as packages/sdk/tests/p7s.test.ts.
 const DIIA_P7S_PATH =
@@ -48,8 +48,20 @@ maybe("buildP7sEnrollWitness bound-challenge fields", () => {
             expect(Array.isArray(witness.signed_attrs)).toBe(true);
             expect((witness.signed_attrs as string[]).length).toBe(SA_LEN);
 
-            // The old free-msghash field must be gone.
+            // The old free-msghash AND free-cert fields must be gone.
             expect(witness.msghash).toBeUndefined();
+            expect(witness.cert).toBeUndefined();
+
+            // The new Diia-trust-chain fields must be present.
+            expect(Array.isArray(witness.leaf_tbs)).toBe(true);
+            expect((witness.leaf_tbs as string[]).length).toBe(LEAF_TBS_LEN);
+            expect(Number(witness.leaf_tbs_len)).toBeLessThanOrEqual(
+                LEAF_TBS_LEN,
+            );
+            expect((witness.ca_pubkey_x as string[]).length).toBe(32);
+            expect((witness.ca_pubkey_y as string[]).length).toBe(32);
+            expect((witness.leaf_cert_sig as string[]).length).toBe(64);
+            expect(Number(witness.leaf_spki_off)).toBeGreaterThanOrEqual(1);
 
             const len = Number(witness.signed_attrs_len);
             expect(len).toBe(parsed.signedAttrs.length);
