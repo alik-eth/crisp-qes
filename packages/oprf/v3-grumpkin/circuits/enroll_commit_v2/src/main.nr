@@ -50,6 +50,11 @@ use std::embedded_curve_ops::{EmbeddedCurvePoint as Pt, EmbeddedCurveScalar as S
 // larger buffer costs only the linear read_at indexing.
 global CERT_LEN: u32 = 2048;
 
+// Bound on the CMS signedAttrs blob the ECDSA signature actually covers
+// (real Diia signedAttrs ~100-300 B). Hashed in-circuit with sha256_var so
+// only `signed_attrs_len` bytes are digested (padding bytes are ignored).
+global SA_LEN: u32 = 2048;
+
 global ZETA: Field = 5;
 global BCURVE: Field = -17;
 global SVDW_Z: Field = 1;
@@ -131,7 +136,13 @@ fn main(
     pubkey_x: [u8; 32],
     pubkey_y: [u8; 32],
     sig: [u8; 64],
-    msghash: [u8; 32], // = sha256(signedAttrs), witnessed (Phase-2 of the cert side is out of scope)
+    // --- CMS signedAttrs the ECDSA signature covers (PRIVATE) ---
+    // msghash is now COMPUTED in-circuit as sha256_var(signed_attrs, len),
+    // closing the prior free-witness gap. msg_digest_off locates the PKCS#9
+    // messageDigest OCTET STRING value (04 20 <32B>) inside signed_attrs.
+    signed_attrs: [u8; SA_LEN],
+    signed_attrs_len: u32,
+    msg_digest_off: u32,
     // --- the QES certificate DER (PRIVATE) ---
     cert: [u8; CERT_LEN],
     rnokpp_oid_off: u32,
@@ -149,10 +160,31 @@ fn main(
     // --- blinding scalar r (private) ---
     r_lo: Field,
     r_hi: Field,
-) -> pub (Field, Field) {
-    // ---- (a) ECDSA-P256 verify over the witnessed message hash. ----
+) -> pub (Field, Field, Field, Field) {
+    // ---- (a) ECDSA-P256 verify over the IN-CIRCUIT signedAttrs hash. ----
+    // sha256_var digests exactly `signed_attrs_len` bytes (vendored
+    // noir-lang/sha256 v0.3.0). Binding the signature to the hash we compute
+    // (rather than a witnessed digest) is what makes the challenge binding sound.
+    let msghash: [u8; 32] = sha256::sha256_var(signed_attrs, signed_attrs_len);
     let sig_ok = std::ecdsa_secp256r1::verify_signature(pubkey_x, pubkey_y, sig, msghash);
     assert(sig_ok);
+
+    // ---- (a') extract PKCS#9 messageDigest from signedAttrs. ----
+    // The value is DER OCTET STRING `04 20 <32 bytes>` at msg_digest_off.
+    assert(signed_attrs[msg_digest_off] == 0x04);
+    assert(signed_attrs[msg_digest_off + 1] == 0x20);
+    // The 34-byte messageDigest TLV (04 20 || 32B) MUST lie inside the SIGNED
+    // region [0, signed_attrs_len); otherwise a prover could read the digest
+    // from unsigned padding and emit a value the signature never covered.
+    assert(msg_digest_off + 34 <= signed_attrs_len);
+    let mut digest_hi: Field = 0; // bytes [0..16]
+    let mut digest_lo: Field = 0; // bytes [16..32]
+    for k in 0..16 {
+        digest_hi = digest_hi * 256 + signed_attrs[msg_digest_off + 2 + k] as Field;
+    }
+    for k in 0..16 {
+        digest_lo = digest_lo * 256 + signed_attrs[msg_digest_off + 18 + k] as Field;
+    }
 
     // ---- (b) RNOKPP DER structure + 10 digit bytes (REAL Diia encoding). ----
     // A real Diia subject serialNumber is "TINUA-<10 digits>" (16 bytes), so the
@@ -283,5 +315,5 @@ fn main(
     let r = Scalar { lo: r_lo, hi: r_hi };
     let m = multi_scalar_mul([p0, p1], [r, r]);
 
-    (m.x, m.y)
+    (m.x, m.y, digest_hi, digest_lo)
 }

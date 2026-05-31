@@ -20,12 +20,15 @@
 //       (2) call backend.verifyProof({ proof, publicInputs }) in-process.
 //     BOTH must hold, else the request is rejected (4xx) and NOT evaluated.
 //
-// PUBLIC INPUTS LAYOUT (enroll_commit_v2, 14 field words of 32 bytes BE):
+// PUBLIC INPUTS LAYOUT (enroll_commit_v2, 16 field words of 32 bytes BE):
 //   [0..8)  today[8]  (ASCII bytes of YYYYMMDD)
 //   [8..12) c1,c2,c3,c4  (SvdW suite constants)
-//   [12]    M.x   <- the circuit's first public return value
-//   [13]    M.y   <- the circuit's second public return value
-// So M = (publicInputs[12], publicInputs[13]).
+//   [12]    M.x        <- the circuit's first public return value
+//   [13]    M.y        <- the circuit's second public return value
+//   [14]    digest_hi  <- signedAttrs messageDigest, high 16 bytes
+//   [15]    digest_lo  <- signedAttrs messageDigest, low 16 bytes
+// So M = (publicInputs[12], publicInputs[13]) and the bound messageDigest =
+// digest_hi*2^128 + digest_lo = (publicInputs[14], publicInputs[15]).
 
 import { readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
@@ -64,7 +67,11 @@ export const OPRF_NULLIFIER_JSON = join(
 // Index of the M.x public-input word and total expected word count. Asserted
 // against the request so a circuit-shape change can't silently weaken the gate.
 export const M_X_WORD_INDEX = 12;
-export const PUBLIC_INPUT_WORD_COUNT = 14;
+// enroll_commit_v2 now returns (M.x, M.y, digest_hi, digest_lo); the two digest
+// limbs are the signedAttrs messageDigest the circuit bound to the signature.
+export const DIGEST_HI_WORD_INDEX = 14;
+export const DIGEST_LO_WORD_INDEX = 15;
+export const PUBLIC_INPUT_WORD_COUNT = 16;
 const FIELD_BYTES = 32;
 
 // — oprf_nullifier public-input layout (10 field words of 32 bytes BE) ─────────
@@ -209,6 +216,19 @@ export function extractMFromPublicInputs(words) {
     return {
         x: toBig(words[M_X_WORD_INDEX]),
         y: toBig(words[M_X_WORD_INDEX + 1]),
+    };
+}
+
+// Extract the messageDigest the proof bound (as a single 32-byte bigint) from
+// the enroll proof's public words [14],[15] (hi*2^128 + lo).
+export function extractDigestFromPublicInputs(words) {
+    if (!Array.isArray(words) || words.length !== PUBLIC_INPUT_WORD_COUNT) {
+        throw new Error(`publicInputs must have exactly ${PUBLIC_INPUT_WORD_COUNT} words`);
+    }
+    const toBig = (w) => BigInt("0x" + wordToBE32(w).toString("hex"));
+    return {
+        hi: toBig(words[DIGEST_HI_WORD_INDEX]),
+        lo: toBig(words[DIGEST_LO_WORD_INDEX]),
     };
 }
 

@@ -95,6 +95,7 @@ export interface EnrollWitnessBundle {
     M: Pt; // public blinded element = r * H2C(RNOKPP)
 }
 
+// STALE: emits msghash; the v3 circuit now requires signed_attrs/* (see buildP7sEnrollWitness). Synthetic demo path only — not wired to /verify.
 // Build the synthetic cert + enroll_commit_v2 witness, mirroring
 // gen-enroll-commit-v2-witness.mjs exactly.
 export function buildEnrollWitness(): EnrollWitnessBundle {
@@ -544,6 +545,7 @@ export async function runRealEnrollment(
     dobDigits: string,
     submitEnrollment: SubmitEnrollmentFn,
     onStage: (stage: RealRunStage) => void,
+    opts: { r?: bigint } = {},
 ): Promise<RealEnrollResult> {
     const t0 = performance.now();
     const stage = (
@@ -558,7 +560,7 @@ export async function runRealEnrollment(
     stage("parseWitness", "Parse .p7s + build witness", "running");
     let bundle: ReturnType<typeof buildP7sEnrollWitness>;
     try {
-        bundle = buildP7sEnrollWitness(p7sBytes, dobDigits);
+        bundle = buildP7sEnrollWitness(p7sBytes, dobDigits, { r: opts.r });
     } catch (err) {
         stage("parseWitness", "Parse .p7s + build witness", "error", {
             detail: String(err),

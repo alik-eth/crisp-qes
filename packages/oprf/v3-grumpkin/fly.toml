@@ -15,16 +15,22 @@ primary_region = "fra"
   # Fresh clean-slate EnrollmentRegistry (genesis, leafCount 0) — the attester
   # digest pins this address, so the v3 service's genesis tree matches on-chain.
   ENROLLMENT_REGISTRY = "0xC9b35dE202e0Bf92e38603deEC4176557eF249a4"
+  # Merkle store self-heals from chain: at boot (and before each append when the
+  # on-chain root has moved) the store is rebuilt from the registry's
+  # CommitmentInserted events and verified against enrollmentRoot(). RPC_URL
+  # enables this; REGISTRY_FROM_BLOCK is a block at/just-before the registry
+  # deploy (genesis, leafCount 0) so the event scan starts from the first leaf.
+  RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
+  REGISTRY_FROM_BLOCK = "10946000"
   # GRUMPKIN_OPRF_KEY (32-byte hex node secret) is REQUIRED in production and is
   # set via `flyctl secrets set GRUMPKIN_OPRF_KEY=...`, NOT here.
 
 [http_service]
   internal_port = 8788
   force_https = true
-  # Keep the machine WARM: the Merkle store is in-memory (genesis on boot), so a
-  # restart after enrollments would desync from the advanced on-chain root.
-  # Staying always-on preserves the tree across the demo. (Robust fix = sync the
-  # store from on-chain CommitmentInserted events on boot — deferred.)
+  # Store now self-heals from chain on boot/append, so a cold start no longer
+  # desyncs. Kept warm anyway to avoid a multi-second event-scan + bb.js verify
+  # on the first request of the demo (belt-and-suspenders, not correctness).
   auto_stop_machines = "off"
   auto_start_machines = true
   min_machines_running = 1
