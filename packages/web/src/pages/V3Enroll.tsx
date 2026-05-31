@@ -16,6 +16,8 @@ import {
 import { evaluatePrf } from "../lib/webauthnPrf.js";
 import { getAccount } from "../lib/account.js";
 import { getSessionPrf, setSessionPrf } from "../lib/passkeySession.js";
+import { hashToCurve, N } from "../lib/grumpkin.js";
+import { buildChallengeBytesV3, ENROLL_V3_EPOCH } from "../lib/enrollmentChallengeV3.js";
 
 // PRIMARY operator-blind enrollment (v3), EXPERIMENTAL / UNAUDITED.
 //
@@ -31,7 +33,14 @@ interface Props {
     onDone: () => Promise<void>;
 }
 
-type Substage = "upload" | "running" | "enrolled" | "saving" | "saved";
+type Substage =
+    | "identify"
+    | "challenge"
+    | "upload"
+    | "running"
+    | "enrolled"
+    | "saving"
+    | "saved";
 
 const STAGE_ORDER: RealRunStage["key"][] = [
     "parseWitness",
@@ -50,15 +59,61 @@ function fmtMs(ms?: number): string {
     return `${(ms / 1000).toFixed(1)} s`;
 }
 
+// Crypto-random blinding scalar in [1, N) (fresh blinding per session). The
+// SAME r is reused for the enroll proof so the proof's M matches the challenge
+// the citizen signs in Diia and the service reconstructs.
+function randomScalarPublic(): bigint {
+    const buf = new Uint8Array(32);
+    crypto.getRandomValues(buf);
+    let v = 0n;
+    for (const b of buf) v = (v << 8n) | BigInt(b);
+    return (v % (N - 1n)) + 1n;
+}
+
 export function V3Enroll({ onDone }: Props) {
     const [, navigate] = useLocation();
-    const [stage, setStage] = useState<Substage>("upload");
+    const [stage, setStage] = useState<Substage>("identify");
+    const [rnokppInput, setRnokppInput] = useState("");
+    const [blindState, setBlindState] = useState<{
+        r: bigint;
+        rnokpp: string;
+    } | null>(null);
     const [parsed, setParsed] = useState<ParsedP7s | null>(null);
     const [p7sBytes, setP7sBytes] = useState<Uint8Array | null>(null);
     const [rnokpp, setRnokpp] = useState<string | null>(null);
     const [stages, setStages] = useState<Record<string, RealRunStage>>({});
     const [result, setResult] = useState<RealEnrollResult | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    const onGenerate = useCallback(() => {
+        setError(null);
+        const rnokpp = rnokppInput.trim();
+        if (!RNOKPP_RE.test(rnokpp)) {
+            setError("RNOKPP must be exactly 10 digits.");
+            return;
+        }
+        try {
+            const r = randomScalarPublic();
+            const M = hashToCurve(new TextEncoder().encode(rnokpp)).multiply(r);
+            const bytes = buildChallengeBytesV3(M, ENROLL_V3_EPOCH);
+            const ab = new ArrayBuffer(bytes.byteLength);
+            new Uint8Array(ab).set(bytes);
+            const url = URL.createObjectURL(
+                new Blob([ab], { type: "text/plain" }),
+            );
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "crisp-qes-challenge.txt";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            setBlindState({ r, rnokpp });
+            setStage("challenge");
+        } catch (e) {
+            setError(e instanceof Error ? e.message : String(e));
+        }
+    }, [rnokppInput]);
 
     const onFile = useCallback(async (file: File) => {
         setError(null);
@@ -88,6 +143,13 @@ export function V3Enroll({ onDone }: Props) {
                 setError(`Certificate RNOKPP is not 10 digits: ${certRnokpp}`);
                 return;
             }
+            if (!blindState || certRnokpp !== blindState.rnokpp) {
+                setError(
+                    `The certificate's RNOKPP (${certRnokpp}) doesn't match the one you typed` +
+                        (blindState ? ` (${blindState.rnokpp}).` : "."),
+                );
+                return;
+            }
             setP7sBytes(bytes);
             setParsed(p);
             setRnokpp(certRnokpp);
@@ -97,10 +159,10 @@ export function V3Enroll({ onDone }: Props) {
                     (e instanceof Error ? e.message : String(e)),
             );
         }
-    }, []);
+    }, [blindState]);
 
     const onRun = useCallback(async () => {
-        if (!p7sBytes || !parsed) return;
+        if (!p7sBytes || !parsed || !blindState) return;
         setStage("running");
         setStages({});
         setResult(null);
@@ -117,6 +179,7 @@ export function V3Enroll({ onDone }: Props) {
                         : { ok: false as const, code: r.code, detail: r.detail };
                 },
                 (s) => setStages((prev) => ({ ...prev, [s.key]: s })),
+                { r: blindState.r },
             );
             setResult(res);
             setStage("enrolled");
@@ -124,7 +187,7 @@ export function V3Enroll({ onDone }: Props) {
             setError(e instanceof Error ? e.message : String(e));
             setStage("upload");
         }
-    }, [p7sBytes, parsed]);
+    }, [p7sBytes, parsed, blindState]);
 
     const onSave = useCallback(async () => {
         if (!result) return;
@@ -193,10 +256,17 @@ export function V3Enroll({ onDone }: Props) {
             ) : null}
 
             <div className="verify__panel">
-                {stage === "upload" ? (
+                {stage === "identify" ? (
+                    <IdentifyPanel
+                        rnokppInput={rnokppInput}
+                        onChange={setRnokppInput}
+                        onGenerate={onGenerate}
+                    />
+                ) : stage === "challenge" || stage === "upload" ? (
                     <UploadPanel
+                        rnokpp={blindState?.rnokpp ?? null}
                         parsed={parsed}
-                        rnokpp={rnokpp}
+                        certRnokpp={rnokpp}
                         onFile={onFile}
                         onRun={() => void onRun()}
                     />
@@ -217,26 +287,101 @@ export function V3Enroll({ onDone }: Props) {
     );
 }
 
+function IdentifyPanel({
+    rnokppInput,
+    onChange,
+    onGenerate,
+}: {
+    rnokppInput: string;
+    onChange: (s: string) => void;
+    onGenerate: () => void;
+}) {
+    return (
+        <div className="card">
+            <h3>Enter your RNOKPP</h3>
+            <p
+                className="muted small"
+                style={{ marginTop: 8, marginBottom: 16 }}
+            >
+                We use this to compute your anonymous identity locally and to
+                cross-check the certificate in your .p7s. Find it in the Diia
+                app under Documents → РНОКПП. 10 digits, all numeric.
+            </p>
+            <label>
+                RNOKPP
+                <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    pattern="[0-9]*"
+                    maxLength={10}
+                    value={rnokppInput}
+                    onChange={(e) =>
+                        onChange(e.target.value.replace(/[^0-9]/g, ""))
+                    }
+                    placeholder="0000000000"
+                    style={{ marginTop: 8 }}
+                />
+            </label>
+            <p className="muted small" style={{ marginTop: 12 }}>
+                Your RNOKPP never reaches the service. It's hashed and blinded
+                locally; only the blinded element M is sent, gated by a
+                zero-knowledge proof of your Diia certificate.
+            </p>
+            <button
+                type="button"
+                className="btn btn--primary"
+                style={{ marginTop: 20 }}
+                onClick={onGenerate}
+                disabled={!RNOKPP_RE.test(rnokppInput)}
+            >
+                Generate challenge
+            </button>
+        </div>
+    );
+}
+
 function UploadPanel({
-    parsed,
     rnokpp,
+    parsed,
+    certRnokpp,
     onFile,
     onRun,
 }: {
-    parsed: ParsedP7s | null;
     rnokpp: string | null;
+    parsed: ParsedP7s | null;
+    certRnokpp: string | null;
     onFile: (file: File) => Promise<void>;
     onRun: () => void;
 }) {
     return (
         <div className="card">
-            <h3>Upload your Diia signature</h3>
-            <p className="muted small" style={{ marginTop: 8, marginBottom: 16 }}>
-                Sign any document with your Diia QES and upload the resulting
-                <span className="mono"> .p7s</span> here. We read your RNOKPP
-                and date of birth from the certificate inside it, then prove —
-                in zero knowledge — that they're valid, without sending them to
-                the service.
+            <h3>Sign the challenge in Diia</h3>
+            <p className="muted small" style={{ marginTop: 8 }}>
+                A file <span className="mono">crisp-qes-challenge.txt</span> was
+                downloaded to this device. It contains the exact bytes you must
+                sign with your Diia QES — this binds your signature to THIS
+                enrollment and to the blinded element the service evaluates.
+            </p>
+            <ol
+                className="muted small"
+                style={{ marginTop: 12, paddingLeft: 18, marginBottom: 16 }}
+            >
+                <li>Open the Diia app.</li>
+                <li>Go to "Sign documents" (Підписати документ).</li>
+                <li>
+                    Select the downloaded{" "}
+                    <span className="mono">crisp-qes-challenge.txt</span>.
+                </li>
+                <li>Enter your Diia PIN to sign.</li>
+                <li>
+                    Save the resulting <span className="mono">.p7s</span> file
+                    and upload it here.
+                </li>
+            </ol>
+            <p className="muted small" style={{ marginBottom: 16 }}>
+                RNOKPP being enrolled:{" "}
+                <span className="mono">{rnokpp}</span>
             </p>
             <label
                 className="dropzone"
@@ -259,14 +404,14 @@ function UploadPanel({
                     Drop the signed .p7s here, or click to choose
                 </span>
                 <span className="dropzone__hint muted small">
-                    A Diia-signed .p7s (CAdES-BES)
+                    Must be the .p7s produced by signing the file above
                 </span>
             </label>
             {parsed ? (
                 <div className="notice notice--ok" style={{ marginTop: 16 }}>
                     <div>
-                        Diia QES recognised. RNOKPP{" "}
-                        <span className="mono">{rnokpp}</span>.
+                        Diia QES recognised and RNOKPP matches{" "}
+                        <span className="mono">{certRnokpp}</span>.
                     </div>
                 </div>
             ) : null}
