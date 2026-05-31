@@ -16,6 +16,7 @@ import {
 import { evaluatePrf } from "../lib/webauthnPrf.js";
 import { getAccount } from "../lib/account.js";
 import { getSessionPrf, setSessionPrf } from "../lib/passkeySession.js";
+import { sha256 } from "@noble/hashes/sha2";
 import { hashToCurve, N } from "../lib/grumpkin.js";
 import { buildChallengeBytesV3, ENROLL_V3_EPOCH } from "../lib/enrollmentChallengeV3.js";
 
@@ -147,6 +148,29 @@ export function V3Enroll({ onDone }: Props) {
                 setError(
                     `The certificate's RNOKPP (${certRnokpp}) doesn't match the one you typed` +
                         (blindState ? ` (${blindState.rnokpp}).` : "."),
+                );
+                return;
+            }
+            // Local challenge pre-check: the .p7s must be signed over THIS
+            // session's challenge. Compare the cert's PKCS#9 messageDigest to
+            // sha256(current challenge) so a stale/wrong signature fails
+            // instantly here — instead of after a ~30s in-browser proof and a
+            // confusing 409 ChallengeMismatch from the service.
+            const Mcheck = hashToCurve(
+                new TextEncoder().encode(blindState.rnokpp),
+            ).multiply(blindState.r);
+            const expectedDigest = sha256(
+                buildChallengeBytesV3(Mcheck, ENROLL_V3_EPOCH),
+            );
+            const gotDigest = p.messageDigest;
+            const digestOk =
+                gotDigest.length === expectedDigest.length &&
+                gotDigest.every((b, i) => b === expectedDigest[i]);
+            if (!digestOk) {
+                setError(
+                    "This signature is for a different (or older) challenge. " +
+                        "Click “Generate challenge” to get the current crisp-qes-challenge.txt, " +
+                        "sign THAT file in Diia, and upload it.",
                 );
                 return;
             }
