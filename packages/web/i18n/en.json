@@ -456,6 +456,21 @@
         "polls": "Polls",
         "about": "About"
     },
+    "register": {
+        "title": "Register",
+        "intro": "Create a Passkey on this device. It locks your private signing key locally — nothing leaves the browser, and there's no password or seed phrase.",
+        "hint": "You'll be prompted by your browser to choose where to save it: device, password manager, or hardware key.",
+        "createBtn": "Create Passkey",
+        "waiting": "Waiting for the Passkey prompt…",
+        "waitingHint": "Follow the browser dialog to complete registration.",
+        "failed": "Registration failed.",
+        "failedHint": "If your authenticator doesn't support PRF, try a different one (a hardware key or a different password-manager extension).",
+        "tryAgain": "Try again",
+        "created": "Passkey created. Account ready.",
+        "createdHint": "Next: verify with QES so you can vote and create polls.",
+        "close": "Close",
+        "unavailable": "WebAuthn unavailable."
+    },
     "common": {
         "copy": "Copy",
         "copied": "Copied",
