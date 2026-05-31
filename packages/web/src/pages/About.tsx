@@ -107,7 +107,7 @@ export function About() {
                             <li>{uk ? "Демо: crisp-qes-web.fly.dev" : "Demo: crisp-qes-web.fly.dev"}</li>
                         </ul>
                     </div>
-                    <div className="roadmap__phase">
+                    <div className="roadmap__phase roadmap__phase--progress">
                         <div className="roadmap__head">
                             <span className="micro">{uk ? "v3 · в роботі" : "v3 · in progress"}</span>
                             <span className="roadmap__status">{uk ? "У роботі" : "In progress"}</span>
@@ -135,7 +135,7 @@ export function About() {
                             <li>{uk ? "Офлайн-голосування" : "Offline voting"}</li>
                             <li>{uk ? "SDK для інтеграції з сторонніми сервісами" : "SDK for integration with third-party services"}</li>
                             <li>{uk ? "Аудит криптографії" : "Cryptography audit"}</li>
-                            <li>{uk ? "Додатковий аналіз і можливий перехід на zkID" : "Additional analysis and possible transition to zkID"}</li>
+                            <li>{uk ? "Додатковий аналіз і можливий перехід на zkID (OpenAC)" : "Additional analysis and possible transition to zkID (OpenAC)"}</li>
                             <li>{uk ? "Аналіз і можлива імплементація більш user-friendly вимог до створення голосувань (альтернатива депозиту 0.001 ETH)" : "Analysis and possible implementation of more user-friendly poll creation requirements (alternative to 0.001 ETH deposit)"}</li>
                         </ul>
                     </div>
