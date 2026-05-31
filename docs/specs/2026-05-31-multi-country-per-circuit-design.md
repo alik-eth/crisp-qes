@@ -147,6 +147,28 @@ Per-country circuits **isolate** the algorithm problem but don't dissolve it:
 
 1. **Trust-root verification for UA (§6)** — do this first; it hardens the live
    system regardless of multi-country, and it's the template every pack reuses.
+   **STATUS: BLOCKED (decision 2026-05-31)** — must be built against the *real*
+   Diia trust material, not a synthetic CA (a synthetic pin would prove the
+   mechanism but not that it accepts real citizen certs / rejects forgeries).
+   **Prerequisites to unblock:**
+   - The **real Diia QTSP CA public key(s)** that issue citizen QES certs —
+     pinned in-circuit. Source: **Ukraine's national Trusted List** (Ministry of
+     Digital Transformation / ЦЗО — *not* the EU LOTL; Ukraine publishes its own
+     eIDAS-style TSL). Need the specific CA that signs Diia citizen certs.
+   - **A representative real citizen `.p7s`** to confirm the actual chain shape
+     (does a citizen cert bundle the intermediate? our admin/test fixture does
+     NOT — `intermediatePubkey: null`) and the issuer's **signature algorithm**
+     (test fixture's `leafCertSignature` is ECDSA-P256; confirm real citizen
+     certs match — if the real issuer signs with RSA, this jumps to the §7 RSA
+     track). Real citizen certs are PII — handle out-of-band.
+   - Confirm offsets on a real cert: `leafTbsBytes` (~1203 B on the fixture),
+     `subjectSerialOffset` (RNOKPP), `leafPubkeyOffset` (leaf SPKI) — the circuit
+     binds RNOKPP + leaf pubkey to the *signed* leaf TBS and verifies
+     `ECDSA(pinned_CA_pubkey, leafCertSignature, sha256(leafTbsBytes))`.
+   - **Prove-cost check** once unblocked: a 2nd in-circuit ECDSA-P256 +
+     `sha256_var(leafTbsBytes)` (~19–24 blocks) on top of today's 2^19 circuit —
+     measure gate count; may approach/exceed 2^19→2^20 and the in-browser prove
+     budget (esp. iOS 832 MiB / the <1 GB target). Decide platform impact then.
 2. **Second P-256 country pack** — parameterize the ID pattern + DOB?/no-DOB,
    add its root set, new circuit + verifier + OPRF country tag. Proves the
    country-pack path end to end. (Weekend-scale once §6 exists.)
