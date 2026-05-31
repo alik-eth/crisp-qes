@@ -570,7 +570,10 @@ describe("POST /v2/enroll replay / bad sig", () => {
 
     it("write-side failure with unknown selector → 502 retryable", async () => {
         const simulate = vi.fn().mockResolvedValue({ request: {} });
-        const write = vi.fn().mockRejectedValue(new Error("nonce too low"));
+        // Genuinely-unrecognised write failure (no funds/nonce signature).
+        const write = vi
+            .fn()
+            .mockRejectedValue(new Error("upstream rpc connection reset"));
         const clients = fakeClients({ simulate, write });
         const app = buildApp({ config: cfg(), clientsFactory: () => clients });
 
@@ -583,6 +586,44 @@ describe("POST /v2/enroll replay / bad sig", () => {
         const body = res.json() as { error: string; retryable: boolean };
         expect(body.error).toBe("RelayerEnrollFailed");
         expect(body.retryable).toBe(true);
+        await app.close();
+    });
+
+    it("write-side nonce error → 503 RelayerNonceError", async () => {
+        const simulate = vi.fn().mockResolvedValue({ request: {} });
+        const write = vi.fn().mockRejectedValue(new Error("nonce too low"));
+        const clients = fakeClients({ simulate, write });
+        const app = buildApp({ config: cfg(), clientsFactory: () => clients });
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/enroll",
+            payload: VALID_ENROLL,
+        });
+        expect(res.statusCode).toBe(503);
+        expect((res.json() as { error: string }).error).toBe("RelayerNonceError");
+        await app.close();
+    });
+
+    it("write-side insufficient funds → 503 InsufficientRelayerFunds", async () => {
+        const simulate = vi.fn().mockResolvedValue({ request: {} });
+        const write = vi
+            .fn()
+            .mockRejectedValue(
+                new Error("insufficient funds for gas * price + value"),
+            );
+        const clients = fakeClients({ simulate, write });
+        const app = buildApp({ config: cfg(), clientsFactory: () => clients });
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/enroll",
+            payload: VALID_ENROLL,
+        });
+        expect(res.statusCode).toBe(503);
+        expect((res.json() as { error: string }).error).toBe(
+            "InsufficientRelayerFunds",
+        );
         await app.close();
     });
 });
