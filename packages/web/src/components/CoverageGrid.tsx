@@ -160,20 +160,31 @@ export function CoverageGrid() {
                                 strokeWidth={1}
                             />
                             {Number.isFinite(c[0]) && (
-                                <text
-                                    x={c[0]}
-                                    y={c[1]}
-                                    textAnchor="middle"
-                                    dominantBaseline="central"
-                                    fontFamily="var(--mono)"
-                                    fontSize="5.6"
-                                    fontWeight="700"
-                                    letterSpacing="0.04em"
-                                    fill={isLive ? "#fff" : "var(--ink)"}
-                                    style={{ pointerEvents: "none" }}
-                                >
-                                    {cc}
-                                </text>
+                                <>
+                                    <rect
+                                        x={c[0] - 8}
+                                        y={c[1] - 5}
+                                        width={16}
+                                        height={10}
+                                        fill={isLive ? "var(--ink)" : "var(--bg)"}
+                                        opacity={isLive ? 0 : 0.85}
+                                        style={{ pointerEvents: "none" }}
+                                    />
+                                    <text
+                                        x={c[0]}
+                                        y={c[1]}
+                                        textAnchor="middle"
+                                        dominantBaseline="central"
+                                        fontFamily="var(--mono)"
+                                        fontSize="5.6"
+                                        fontWeight="700"
+                                        letterSpacing="0.04em"
+                                        fill={isLive ? "#fff" : "var(--ink)"}
+                                        style={{ pointerEvents: "none" }}
+                                    >
+                                        {cc}
+                                    </text>
+                                </>
                             )}
                         </g>
                     );
