@@ -95,9 +95,14 @@ export interface EnrollWitnessBundle {
     M: Pt; // public blinded element = r * H2C(RNOKPP)
 }
 
-// STALE: emits msghash; the v3 circuit now requires signed_attrs/* (see buildP7sEnrollWitness). Synthetic demo path only — not wired to /verify.
-// Build the synthetic cert + enroll_commit_v2 witness, mirroring
-// gen-enroll-commit-v2-witness.mjs exactly.
+// STALE / DEAD CODE: emits the OLD `msghash` + free `cert[]` fields. The
+// enroll_commit_v2 circuit now (a) hashes signedAttrs in-circuit and (b)
+// verifies a Diia CA->leaf trust chain, so it requires signed_attrs/* PLUS
+// leaf_tbs / ca_pubkey_{x,y} / leaf_cert_sig / leaf_spki_off (see
+// buildP7sEnrollWitness). This synthetic builder is NOT wired to any route and
+// will NOT prove against the shipped circuit; kept only for reference/timing.
+// Use buildP7sEnrollWitness (real .p7s) for the live flow.
+// Build the synthetic cert + enroll_commit_v2 witness.
 export function buildEnrollWitness(): EnrollWitnessBundle {
     const cert = new Uint8Array(CERT_LEN);
     for (let i = 0; i < CERT_LEN; i++) cert[i] = (i * 31 + 7) & 0xff;

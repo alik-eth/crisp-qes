@@ -1,8 +1,9 @@
 // Unit tests for lib/p7sWitness.ts — the REAL Diia .p7s -> enroll_commit_v2
-// witness builder.
+// (Diia trust-chain) witness builder.
 //
 // SCOPE. These tests exercise the pure, deterministic pieces of the module
-// against a SYNTHETIC cert DER buffer (no real Diia material, none on disk):
+// against a SYNTHETIC leaf-TBS buffer + a SYNTHETIC test CA (no real Diia
+// material, none on disk):
 //   - findRnokppOidOffset: locates the circuit's real-Diia run
 //     06 03 55 04 05 13 10 "TINUA-" <10 digits> and rejects a bare 13 0A
 //     legacy encoding (no "TINUA-" prefix) with a labelled error.
@@ -10,7 +11,17 @@
 //     DOB attribute OID.
 //   - lowSCompactSig: forces low-s and emits the 64-byte r||s the Noir
 //     ecdsa_secp256r1 blackbox requires.
+//   - selectIssuingCa: picks the issuing CA whose pinned key verifies the leaf
+//     cert signature; defaults to the real Diia pinned set, throws when no
+//     candidate matches. Tests pass a SYNTHETIC test CA (whose private key
+//     lives only in this test) so selection succeeds against a synthetic leaf.
+//   - detectLeafSpkiOff: auto-detects the 0x04-marker placement and binds the
+//     leaf SPKI to the leaf pubkey.
 //   - todayYYYYMMDD: the public age field.
+//
+// SOUNDNESS. The synthetic CA is NEVER added to DIIA_PINNED_CA; it is passed
+// in as an injected candidate set, mirroring the circuit's separate synthetic
+// pinned set in its #[test] functions.
 //
 // The end-to-end parseP7s -> witness path (buildP7sEnrollWitness) reuses the
 // PROVEN @crisp-qes/sdk parser, which is covered by the SDK's own fixture test
@@ -23,11 +34,15 @@ import { describe, expect, it } from "vitest";
 import { p256 } from "@noble/curves/p256";
 import { sha256 } from "@noble/hashes/sha2";
 import {
-    CERT_LEN,
+    LEAF_TBS_LEN,
+    DIIA_PINNED_CA,
     findRnokppOidOffset,
     findDobOffset,
     lowSCompactSig,
+    selectIssuingCa,
+    detectLeafSpkiOff,
     todayYYYYMMDD,
+    type PinnedCa,
 } from "../src/lib/p7sWitness";
 
 const RNOKPP_OID = [0x06, 0x03, 0x55, 0x04, 0x05];
@@ -36,7 +51,12 @@ const DOB_ATTRIBUTE_OID = [
     0x0b, 0x01,
 ];
 
-// Build a synthetic cert DER buffer with the circuit's real-Diia RNOKPP run
+const toHex = (u8: Uint8Array): string =>
+    Array.from(u8)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+// Build a synthetic leaf-TBS buffer with the circuit's real-Diia RNOKPP run
 // (06 03 55 04 05 13 10 "TINUA-" <10 digits>) at `rnokppOff` and an 8-digit DOB
 // right after the Diia DOB attribute OID at `dobOff`.
 const TINUA = [0x54, 0x49, 0x4e, 0x55, 0x41, 0x2d]; // "TINUA-"
@@ -51,8 +71,8 @@ function synthCert({
     rnokppOff?: number;
     dobOidOff?: number;
 } = {}): Uint8Array {
-    const cert = new Uint8Array(CERT_LEN);
-    for (let i = 0; i < CERT_LEN; i++) cert[i] = (i * 31 + 7) & 0xff;
+    const cert = new Uint8Array(LEAF_TBS_LEN);
+    for (let i = 0; i < LEAF_TBS_LEN; i++) cert[i] = (i * 31 + 7) & 0xff;
 
     const run = [...RNOKPP_OID, 0x13, 0x10, ...TINUA];
     for (let i = 0; i < run.length; i++) cert[rnokppOff + i] = run[i]!;
@@ -85,7 +105,7 @@ describe("findRnokppOidOffset", () => {
 
     it("rejects a bare 13 0A (legacy, no TINUA- prefix) encoding", () => {
         // Legacy synthetic: PrintableString length 10, no "TINUA-" prefix.
-        const cert = new Uint8Array(CERT_LEN);
+        const cert = new Uint8Array(LEAF_TBS_LEN);
         const off = 200;
         const run = [...RNOKPP_OID, 0x13, 0x0a];
         for (let i = 0; i < run.length; i++) cert[off + i] = run[i]!;
@@ -167,6 +187,103 @@ describe("lowSCompactSig", () => {
         expect(
             p256.verify(compact, msg, pub, { prehash: false }),
         ).toBe(true);
+    });
+});
+
+// --- Diia trust-chain helpers ------------------------------------------
+// A SYNTHETIC test CA keypair. Its private key lives ONLY here; it is NEVER
+// added to DIIA_PINNED_CA. We hand it to selectIssuingCa as an injected
+// candidate set, exactly as the circuit's #[test] uses a separate synthetic
+// pinned set.
+const CA_SK = sha256(new Uint8Array([0xca, 0x5e, 0x77])); // deterministic 32 B
+const CA_PUB = p256.getPublicKey(CA_SK, false); // 65-byte uncompressed
+const SYNTH_CA: PinnedCa = {
+    name: "SYNTH-TEST-CA",
+    x: toHex(CA_PUB.slice(1, 33)),
+    y: toHex(CA_PUB.slice(33, 65)),
+};
+
+// Build a synthetic leaf TBS that embeds a leaf SPKI uncompressed point at a
+// chosen marker offset, then sign sha256(leafTbs[0..len]) with the synthetic CA.
+function synthLeafWithSpki(
+    leafPub: Uint8Array, // 65-byte uncompressed leaf point
+    markerOff: number, // offset of the 0x04 marker
+    len: number,
+): { leafTbs: Uint8Array; len: number } {
+    const leafTbs = new Uint8Array(LEAF_TBS_LEN);
+    for (let i = 0; i < len; i++) leafTbs[i] = (i * 17 + 5) & 0xff;
+    leafTbs[markerOff] = 0x04;
+    for (let k = 0; k < 64; k++) leafTbs[markerOff + 1 + k] = leafPub[1 + k]!;
+    return { leafTbs, len };
+}
+
+describe("selectIssuingCa", () => {
+    it("selects the synthetic CA that signed the leaf TBS", () => {
+        const len = 800;
+        const leafTbs = new Uint8Array(LEAF_TBS_LEN);
+        for (let i = 0; i < len; i++) leafTbs[i] = (i * 13 + 3) & 0xff;
+        const eLeaf = sha256(leafTbs.subarray(0, len));
+        const sig = p256.sign(eLeaf, CA_SK, { prehash: false }).normalizeS();
+
+        const sel = selectIssuingCa(
+            leafTbs,
+            len,
+            { r: sig.r, s: sig.s },
+            [SYNTH_CA],
+        );
+        expect(sel.name).toBe("SYNTH-TEST-CA");
+        expect(toHex(sel.x)).toBe(SYNTH_CA.x);
+        expect(toHex(sel.y)).toBe(SYNTH_CA.y);
+    });
+
+    it("throws a labelled error when no candidate CA verifies", () => {
+        const len = 800;
+        const leafTbs = new Uint8Array(LEAF_TBS_LEN);
+        for (let i = 0; i < len; i++) leafTbs[i] = (i * 13 + 3) & 0xff;
+        const eLeaf = sha256(leafTbs.subarray(0, len));
+        const sig = p256.sign(eLeaf, CA_SK, { prehash: false }).normalizeS();
+
+        // Default candidate set is the REAL pinned Diia keys — none of which
+        // signed this synthetic leaf, so selection must fail closed.
+        expect(() =>
+            selectIssuingCa(leafTbs, len, { r: sig.r, s: sig.s }),
+        ).toThrow(/not signed by any pinned Diia CA/);
+    });
+
+    it("defaults its candidate set to the real pinned Diia roots", () => {
+        // Soundness guard: the production default must be DIIA_PINNED_CA, and
+        // that set must NOT contain the synthetic test CA.
+        expect(DIIA_PINNED_CA.some((c) => c.x === SYNTH_CA.x)).toBe(false);
+        expect(DIIA_PINNED_CA.length).toBe(2);
+        expect(DIIA_PINNED_CA.map((c) => c.name)).toContain("UA-43395033-2311");
+    });
+});
+
+describe("detectLeafSpkiOff", () => {
+    const leafSk = sha256(new Uint8Array([0x1e, 0xaf]));
+    const leafPub = p256.getPublicKey(leafSk, false);
+    const pubX = leafPub.slice(1, 33);
+    const pubY = leafPub.slice(33, 65);
+
+    it("detects the SPKI X offset (0x04 marker at off-1) and binds the pubkey", () => {
+        const markerOff = 200;
+        const { leafTbs, len } = synthLeafWithSpki(leafPub, markerOff, 800);
+        // X[0] sits right after the marker; detect should return markerOff+1.
+        expect(detectLeafSpkiOff(leafTbs, len, markerOff + 1, pubX, pubY)).toBe(
+            markerOff + 1,
+        );
+        // Robust to a guess one short (probes guess and guess+1).
+        expect(detectLeafSpkiOff(leafTbs, len, markerOff, pubX, pubY)).toBe(
+            markerOff + 1,
+        );
+    });
+
+    it("throws when the SPKI does not bind the leaf pubkey", () => {
+        const { leafTbs, len } = synthLeafWithSpki(leafPub, 200, 800);
+        const wrongY = new Uint8Array(32).fill(7);
+        expect(() =>
+            detectLeafSpkiOff(leafTbs, len, 201, pubX, wrongY),
+        ).toThrow(/could not bind leaf SPKI/);
     });
 });
 
