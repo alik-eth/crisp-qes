@@ -109,7 +109,7 @@ export function About() {
                 </div>
 
                 {/* Механізми */}
-                <div className="mech-grid" style={{ marginTop: 56 }}>
+                <div className="mech-grid-3" style={{ marginTop: 56 }}>
                     <div className="how-card">
                         <span className="how-card__n mono">{uk ? "ІПН" : "TAX ID"}</span>
                         <h3 className="how-card__title">{uk ? "Незмінний якір" : "An immutable anchor"}</h3>
@@ -119,6 +119,11 @@ export function About() {
                         <span className="how-card__n mono">OPRF</span>
                         <h3 className="how-card__title">{uk ? "Сіль без розкриття" : "Salt without disclosure"}</h3>
                         <p className="how-card__body">{uk ? "Oblivious PRF додає криптографічну сіль до ІПН, не показуючи його ані платформі, ані блокчейну. Перебрати 10 цифр стає неможливо, а голос — не пов'язати з особою." : "An Oblivious PRF adds a cryptographic salt to the tax ID without showing it to the platform or the blockchain. Brute-forcing 10 digits becomes impossible, and a vote can't be linked to a person."}</p>
+                    </div>
+                    <div className="how-card">
+                        <span className="how-card__n mono">FHE</span>
+                        <h3 className="how-card__title">{uk ? "Зашифрований підрахунок" : "Encrypted tally"}</h3>
+                        <p className="how-card__body">{uk ? "Гомоморфне шифрування (CRISP) шифрує самі голоси й розкриває лише загальний результат — окремий голос не побачить ніхто." : "Homomorphic encryption (CRISP) encrypts the votes themselves and reveals only the aggregate result — no one sees an individual vote."}</p>
                     </div>
                 </div>
 
