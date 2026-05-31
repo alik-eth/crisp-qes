@@ -210,8 +210,6 @@ function CoverageTooltip({ cc, x, y }: { cc: string; x: number; y: number }) {
                     <span className="coverage-tooltip__val">{data.qtspWithP256}</span>
                     <span className="coverage-tooltip__label">RSA</span>
                     <span className="coverage-tooltip__val">{data.qtspWithRsa}</span>
-                    <span className="coverage-tooltip__label">Services</span>
-                    <span className="coverage-tooltip__val">{data.services}</span>
                 </div>
             ) : (
                 <div className="coverage-tooltip__grid">
