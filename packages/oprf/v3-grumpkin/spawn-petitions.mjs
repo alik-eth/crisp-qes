@@ -7,7 +7,7 @@
 
 import { readFileSync } from "node:fs";
 import { createWalletClient, createPublicClient, http, stringToHex } from "viem";
-import { sepolia } from "viem/chains";
+import { baseSepolia } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 
 // Load ./.env (gitignored) into process.env if not already set. Tiny parser —
@@ -24,8 +24,8 @@ try {
     }
 } catch { /* no .env — fall back to process.env */ }
 
-const RPC = process.env.RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com";
-const REGISTRY = "0x19f7d9eb732e0747b252aab0402296fe6c988894"; // PetitionRegistryV2
+const RPC = process.env.RPC_URL ?? "https://base-sepolia-rpc.publicnode.com";
+const REGISTRY = "0x6b0C722fa50F6325028781DC5A25e9beC1fE4a89"; // PetitionRegistryV2
 const DEPOSIT = 1000000000000000n; // CREATION_DEPOSIT = 0.001 ETH
 const THRESHOLD = 100;
 const DEADLINE = BigInt(Math.floor(Date.now() / 1000) + 30 * 86400); // +30 days
@@ -74,8 +74,8 @@ if (!pk) {
     process.exit(1);
 }
 const account = privateKeyToAccount(pk);
-const publicClient = createPublicClient({ chain: sepolia, transport: http(RPC) });
-const wallet = createWalletClient({ account, chain: sepolia, transport: http(RPC) });
+const publicClient = createPublicClient({ chain: baseSepolia, transport: http(RPC) });
+const wallet = createWalletClient({ account, chain: baseSepolia, transport: http(RPC) });
 
 console.log("creator:", account.address);
 const bal = await publicClient.getBalance({ address: account.address });
