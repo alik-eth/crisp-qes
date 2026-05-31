@@ -280,7 +280,22 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
             });
         } catch (err) {
             const mapped = mapContractError(err);
-            req.log.warn({ err: mapped.body }, "simulate revert");
+            // Diagnostic capture: on an EMPTY (selector 0x) signPetition revert
+            // the verifier rejected the proof. Log the exact artifact so it can
+            // be decoded / re-verified offline against the circuit VK.
+            req.log.warn(
+                {
+                    err: mapped.body,
+                    petitionId: String(body.petitionId),
+                    nullifier: body.nullifier,
+                    publicInputs: body.publicInputs,
+                    liveRoot,
+                    proofLen: (body.proof as string).length,
+                    proofHead: (body.proof as string).slice(0, 18),
+                    proofTail: (body.proof as string).slice(-18),
+                },
+                "simulate revert (proof artifact)",
+            );
             return reply.code(mapped.status).send(mapped.body);
         }
 
