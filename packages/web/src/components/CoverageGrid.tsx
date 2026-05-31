@@ -4,7 +4,7 @@ import { feature } from "topojson-client";
 import type { Topology, GeometryCollection } from "topojson-specification";
 import type { Feature, MultiPolygon, Polygon } from "geojson";
 import worldTopo from "world-atlas/countries-110m.json";
-import { QTSP_COUNTS } from "../generated/qtsp-counts.js";
+import { QTSP_DATA, type QtspCountryData } from "../generated/qtsp-counts.js";
 
 const NUMERIC_TO_ALPHA2: Record<string, string> = {
     "040": "AT", "056": "BE", "100": "BG", "196": "CY", "203": "CZ",
@@ -176,8 +176,10 @@ export function CoverageGrid() {
     );
 }
 
+const QTSP_BY_CODE = new Map(QTSP_DATA.map((d) => [d.code, d]));
+
 function CoverageTooltip({ cc, x, y }: { cc: string; x: number; y: number }) {
-    const data = QTSP_COUNTS[cc];
+    const data = QTSP_BY_CODE.get(cc);
     const isLive = LIVE.has(cc);
     const flipLeft = typeof window !== "undefined" && x > window.innerWidth - 260;
 
@@ -196,14 +198,27 @@ function CoverageTooltip({ cc, x, y }: { cc: string; x: number; y: number }) {
             </div>
             <div
                 className="coverage-tooltip__status"
-                style={{ color: isLive ? "var(--ok)" : "var(--muted)" }}
+                style={{ color: isLive ? "var(--ink)" : "var(--muted)" }}
             >
                 {isLive ? "● LIVE" : "● eIDAS READY"}
             </div>
-            <div className="coverage-tooltip__grid">
-                <span className="coverage-tooltip__label">QTSPs</span>
-                <span className="coverage-tooltip__val">{data?.qtspCount ?? "—"}</span>
-            </div>
+            {data ? (
+                <div className="coverage-tooltip__grid">
+                    <span className="coverage-tooltip__label">QTSPs</span>
+                    <span className="coverage-tooltip__val">{data.totalQtsps}</span>
+                    <span className="coverage-tooltip__label">ECDSA P-256</span>
+                    <span className="coverage-tooltip__val">{data.qtspWithP256}</span>
+                    <span className="coverage-tooltip__label">RSA</span>
+                    <span className="coverage-tooltip__val">{data.qtspWithRsa}</span>
+                    <span className="coverage-tooltip__label">Services</span>
+                    <span className="coverage-tooltip__val">{data.services}</span>
+                </div>
+            ) : (
+                <div className="coverage-tooltip__grid">
+                    <span className="coverage-tooltip__label">QTSPs</span>
+                    <span className="coverage-tooltip__val">—</span>
+                </div>
+            )}
         </div>
     );
 }
