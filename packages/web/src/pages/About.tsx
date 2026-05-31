@@ -5,7 +5,7 @@ export function About() {
     const { t } = useTranslation();
 
     return (
-        <section className="verify">
+        <section className="about-page">
             <h1>{t("about.heading")}</h1>
             <p className="muted" style={{ marginTop: 8, marginBottom: 24 }}>
                 {t("about.disclaimer")}
