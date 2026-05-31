@@ -18,6 +18,9 @@ export function About() {
             </p>
 
             <CoverageGrid />
+            <p className="muted small" style={{ marginTop: 8 }}>
+                {t("about.mapCaption")}
+            </p>
 
             <div className="tech-intro">
                 <p className="tech-intro__body">{t("about.techIntro")}</p>

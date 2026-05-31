@@ -55,7 +55,8 @@
         "tech3title": "Blockchain",
         "tech3body": "Votes are stored in a public blockchain. You see only results, without names of who voted for what. Data in the blockchain cannot be deleted or altered.",
         "tech4title": "Open source",
-        "tech4body": "The project's code is open, which means you can verify that the system works as promised."
+        "tech4body": "The project's code is open, which means you can verify that the system works as promised.",
+        "mapCaption": "QES (eIDAS) coverage in Europe. Black — countries with live integration. Dark grey — countries with ECDSA P-256 support. Data: EU Trusted Lists (DSS)."
     },
     "list": {
         "heading": "All polls",

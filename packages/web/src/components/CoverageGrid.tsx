@@ -18,6 +18,7 @@ const NUMERIC_TO_ALPHA2: Record<string, string> = {
 
 const SUPPORTED = new Set(Object.values(NUMERIC_TO_ALPHA2));
 const LIVE = new Set(["UA"]);
+const QTSP_BY_CODE = new Map(QTSP_DATA.map((d) => [d.code, d]));
 
 function normaliseId(id: string | number | undefined): string {
     if (id === undefined) return "";
@@ -136,6 +137,8 @@ export function CoverageGrid() {
             >
                 {features.map(({ feature: f, cc }) => {
                     const isLive = LIVE.has(cc);
+                    const data = QTSP_BY_CODE.get(cc);
+                    const hasP256 = data ? data.qtspWithP256 > 0 : false;
                     const d = pathGen(f) ?? "";
                     const c = pathGen.centroid(f);
                     return (
@@ -147,7 +150,7 @@ export function CoverageGrid() {
                         >
                             <path
                                 d={d}
-                                fill={isLive ? "var(--ink)" : "var(--line)"}
+                                fill={isLive ? "var(--ink)" : hasP256 ? "#bbb" : "var(--line)"}
                                 stroke="var(--bg)"
                                 strokeWidth={1}
                             />
@@ -176,7 +179,6 @@ export function CoverageGrid() {
     );
 }
 
-const QTSP_BY_CODE = new Map(QTSP_DATA.map((d) => [d.code, d]));
 
 function CoverageTooltip({ cc, x, y }: { cc: string; x: number; y: number }) {
     const data = QTSP_BY_CODE.get(cc);
