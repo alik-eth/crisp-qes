@@ -147,10 +147,35 @@ Per-country circuits **isolate** the algorithm problem but don't dissolve it:
 
 1. **Trust-root verification for UA (§6)** — do this first; it hardens the live
    system regardless of multi-country, and it's the template every pack reuses.
-   **STATUS: BLOCKED (decision 2026-05-31)** — must be built against the *real*
-   Diia trust material, not a synthetic CA (a synthetic pin would prove the
-   mechanism but not that it accepts real citizen certs / rejects forgeries).
-   **Prerequisites to unblock:**
+   **STATUS: UNBLOCKED (2026-05-31)** — the real Diia trust material was sourced
+   from public records and the approach is confirmed tractable (P-256, not DSTU).
+   **Resolved facts:**
+   - Chain is **Central CA (Min. of Digital Transformation) → "DIIA" QTSP CA →
+     citizen leaf**, every link **`ecdsa-with-SHA256` (P-256)** — verifiable
+     in-circuit with the existing `std::ecdsa_secp256r1` gadget. (Ukraine's CA
+     ecosystem also offers DSTU 4145-2002 / RSA hierarchies — the Diia.Підпис
+     **ECDSA** hierarchy is the one we use; avoid the DSTU/RSA branches.)
+   - **Pin set** = the "DIIA" Qualified Trust Services Provider CA P-256 pubkeys
+     (public; from `http://ca.diia.gov.ua/uploads/certificates/diia_ecdsa.p7b`):
+     `UA-43395033-2311` = (x `8500048265e919c1738e873572c1f6443895a0c03985fc71bd96a6f62a53bcc8`,
+     y `69d23ca6e6a2a7dc443bbb2a0b914ee35f1c74e282ecd8e6c5287c7a3d4aee10`);
+     `UA-43395033-2503` = (x `c8b3546f4a34c021a31b3578057d1de304cbf1743a391b2032cd5b7d37184148`,
+     y `c2440ea2fba10872b0bc90a92371ad50f59d0e9c0216ed52fd259b8a8cc9ee54`).
+     These are rotations of the same issuer → pin a **set** of allowed CA keys;
+     exclude the OCSP-/TSA-server certs (not leaf issuers). Pin the **QTSP CA**
+     directly (issuer of leaves); optionally chain one more to the Central CA
+     root later.
+   - **Validation sample on hand**: a real Diia citizen leaf (ECDSA-P256, subject
+     `serialNumber=TINUA-<RNOKPP>`) `verify`s OK against the fetched `-2311` CA.
+     leafTbsBytes ≈ 1203 B; RNOKPP at subjectSerialOffset, leaf pubkey at
+     leafPubkeyOffset — both inside the signed TBS.
+   **Remaining design decisions (no longer blockers):**
+   - **CA-key rotation governance**: the pin set changes as Diia rotates CA keys
+     (new certs appear in `diia_ecdsa.p7b`). Make the pinned set an
+     **admin-settable on-chain commitment** (Merkle root of allowed CA keys) the
+     circuit reads, rather than a recompile-to-rotate constant.
+   - **Prove-cost check** (see below).
+   **Original prerequisites (now satisfied):**
    - The **real Diia QTSP CA public key(s)** that issue citizen QES certs —
      pinned in-circuit. Source: **Ukraine's national Trusted List** (Ministry of
      Digital Transformation / ЦЗО — *not* the EU LOTL; Ukraine publishes its own
