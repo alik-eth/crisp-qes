@@ -390,7 +390,6 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 /* ─── «Як це працює» — 4 картки ─── */
 .how-section {
     margin-top: 80px;
-    text-align: center;
 }
 .how-section__label {
     font-family: var(--mono);
@@ -488,7 +487,6 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 /* ─── technology section ─── */
 .tech-section {
     margin-top: 80px;
-    text-align: center;
 }
 .tech-section__label {
     font-family: var(--mono);
@@ -561,7 +559,6 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 /* ─── transparency section ─── */
 .transparency-section {
     margin-top: 80px;
-    text-align: center;
 }
 .transparency-section__label {
     font-family: var(--mono);
