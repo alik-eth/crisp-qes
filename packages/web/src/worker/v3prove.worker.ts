@@ -89,10 +89,17 @@ self.addEventListener("message", (ev: MessageEvent<InMsg>) => {
             const api = await Barretenberg.new(bbOptions());
             try {
                 const backend = new UltraHonkBackend(circuit.bytecode, api);
-                const { proof, publicInputs } = await backend.generateProof(
-                    compressedWitness,
-                    { verifierTarget: "evm" },
-                );
+                // DEFAULT flavor (Poseidon oracle) — NOT { verifierTarget: "evm" }.
+                // Both v3 proofs (enroll_commit_v2, oprf_nullifier) are verified
+                // OFF-CHAIN by the bb.js service (/v3/blind-eval, /v3/register),
+                // whose ProofGate derives its VK and verifies with the default
+                // flavor. The proof + VK are flavor-specific: an evm/Keccak-oracle
+                // proof checked by a default verifier fails deserialization
+                // ("Conversion err: grumpkin::fr >= 2^128"). The EVM flavor is only
+                // for the v2 SIGN proof (prove.worker.ts), which IS verified
+                // on-chain by the Solidity UltraVerifierV2.
+                const { proof, publicInputs } =
+                    await backend.generateProof(compressedWitness);
                 post({
                     type: "done",
                     label,
