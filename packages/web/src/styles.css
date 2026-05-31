@@ -528,6 +528,14 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
     padding: 24px 0;
     border-bottom: 1px solid var(--line);
 }
+.team-card__link {
+    color: var(--ink);
+    text-decoration: none;
+    border-bottom: 1px solid var(--line);
+}
+.team-card__link:hover {
+    border-bottom-color: var(--ink);
+}
 .team-card__name {
     font-family: var(--display);
     font-weight: 600;

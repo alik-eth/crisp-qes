@@ -76,10 +76,17 @@ export function About() {
             <div className="about-section-block">
                 <span className="eyebrow">{uk ? "Команда" : "Team"}</span>
                 <div className="team-grid" style={{ marginTop: 32 }}>
-                    {([1, 2] as const).map((n) => (
+                    {([
+                        { n: 1, x: "https://x.com/alik_eth_" },
+                        { n: 2, x: "https://x.com/dorgo_eth" },
+                    ] as const).map(({ n, x }) => (
                         <div key={n} className="team-card">
                             <div>
-                                <h3 className="team-card__name">{t(`about.team${n}name`)}</h3>
+                                <h3 className="team-card__name">
+                                    <a href={x} target="_blank" rel="noreferrer" className="team-card__link">
+                                        {t(`about.team${n}name`)}
+                                    </a>
+                                </h3>
                                 <p className="team-card__role">{t(`about.team${n}role`)}</p>
                             </div>
                             <p className="team-card__desc">{t(`about.team${n}desc`)}</p>
