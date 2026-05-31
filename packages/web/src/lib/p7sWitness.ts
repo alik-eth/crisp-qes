@@ -12,7 +12,12 @@
 //
 //   pubkey_x[32], pubkey_y[32]  — leaf P-256 pubkey affine coords (BE bytes).
 //   sig[64]                     — leaf ECDSA over signedAttrs, r||s, LOW-S.
-//   msghash[32]                 — sha256(signedAttrs), WITNESSED.
+//   signed_attrs[512]           — the CMS hash-input signedAttrs (zero-padded),
+//                                 sha256'd IN-CIRCUIT (sha256_var) to derive the
+//                                 ECDSA message digest + the bound messageDigest.
+//   signed_attrs_len            — true byte length of signedAttrs (pre-pad).
+//   msg_digest_off              — offset of the PKCS#9 messageDigest 04 20 OCTET
+//                                 STRING header inside signed_attrs.
 //   cert[2048]                  — the leaf-cert DER buffer (zero-padded), the
 //                                 buffer the circuit byte-reads RNOKPP + DOB from.
 //   rnokpp_oid_off              — offset where the RNOKPP run begins inside
@@ -24,8 +29,10 @@
 //
 // The circuit derives u0,u1 = hash_to_field(RNOKPP) fully in-circuit, so the
 // witness carries ONLY the SvdW hints (which still need JS-computed u0,u1) +
-// the cert/ECDSA material + the scalar r. msghash is witnessed (the circuit
-// does NOT re-hash signedAttrs); ECDSA verify binds (pubkey, sig, msghash).
+// the cert/ECDSA material + the scalar r. signedAttrs is hashed IN-CIRCUIT
+// (sha256_var); ECDSA verify binds (pubkey, sig, sha256(signedAttrs)) and the
+// circuit also returns the bound messageDigest at msg_digest_off as public
+// words so the OPRF service can pin it to sha256(challengeBytes).
 //
 // =====================================================================
 // RNOKPP ENCODING — REAL DIIA (option A, landed)
@@ -64,6 +71,9 @@ import {
 // Must equal the resized circuit's global CERT_LEN in
 // circuits/enroll_commit_v2/src/main.nr.
 export const CERT_LEN = 2048;
+
+// Must equal the circuit global SA_LEN in enroll_commit_v2/src/main.nr.
+export const SA_LEN = 512;
 
 // OID 2.5.4.5 (subject serialNumber): 06 03 55 04 05.
 const RNOKPP_OID = new Uint8Array([0x06, 0x03, 0x55, 0x04, 0x05]);
@@ -230,7 +240,8 @@ function randomScalar(): bigint {
  * REUSES parseP7s exactly as Verify.tsx does:
  *   - parsed.pubkey {x,y}          -> pubkey_x / pubkey_y
  *   - parsed.signature {r,s}       -> low-s normalized -> sig
- *   - parsed.signedAttrsSha256     -> msghash (== sha256(signedAttrs))
+ *   - parsed.signedAttrs           -> signed_attrs (padded) hashed in-circuit
+ *   - parsed.messageDigestOffset   -> msg_digest_off (04 20 header offset)
  *   - parsed.leafCertDer           -> cert buffer (RNOKPP + DOB live here)
  *   - extractRnokpp(parsed)        -> the 10-digit RNOKPP fed to hash_to_field
  */
@@ -272,7 +283,29 @@ export function buildP7sEnrollWitness(
     const pubX = i2osp32(parsed.pubkey.x);
     const pubY = i2osp32(parsed.pubkey.y);
     const sig = lowSCompactSig(parsed.signature.r, parsed.signature.s);
-    const msghash = parsed.signedAttrsSha256; // sha256(signedAttrs), witnessed
+
+    // --- bound-challenge fields (v3) ------------------------------------
+    // The circuit hashes signed_attrs in-circuit (sha256_var) and extracts the
+    // PKCS#9 messageDigest at msg_digest_off. parseP7s already re-tags
+    // signedAttrs to the CMS hash-input SET form and locates the digest value.
+    if (parsed.signedAttrs.length > SA_LEN) {
+        throw new Error(
+            `p7sWitness: signedAttrs (${parsed.signedAttrs.length} B) exceeds SA_LEN (${SA_LEN}); bump both.`,
+        );
+    }
+    const signedAttrsPadded = new Uint8Array(SA_LEN);
+    signedAttrsPadded.set(parsed.signedAttrs, 0);
+    // messageDigestOffset points at the 32-byte value; the circuit expects the
+    // 0x04 0x20 OCTET STRING header, i.e. value offset minus 2.
+    const msgDigestOff = parsed.messageDigestOffset - 2;
+    if (
+        signedAttrsPadded[msgDigestOff] !== 0x04 ||
+        signedAttrsPadded[msgDigestOff + 1] !== 0x20
+    ) {
+        throw new Error(
+            "p7sWitness: messageDigest is not a 04 20 OCTET STRING at the expected offset",
+        );
+    }
 
     // --- hash_to_field over the RNOKPP (for SvdW hints) -----------------
     const rnokppBytes = new TextEncoder().encode(rnokpp);
@@ -292,7 +325,9 @@ export function buildP7sEnrollWitness(
         pubkey_x: u8arr(pubX),
         pubkey_y: u8arr(pubY),
         sig: u8arr(sig),
-        msghash: u8arr(msghash),
+        signed_attrs: u8arr(signedAttrsPadded),
+        signed_attrs_len: parsed.signedAttrs.length.toString(),
+        msg_digest_off: msgDigestOff.toString(),
         cert: u8arr(cert),
         rnokpp_oid_off: rnokppOff.toString(),
         dob_off: dobOff.toString(),
