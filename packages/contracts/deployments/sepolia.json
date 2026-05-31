@@ -1,11 +1,16 @@
 {
-  "network": "sepolia",
+  "retired": true,
+  "retiredAt": "2026-05-31T00:00:00Z",
+  "supersededBy": "packages/contracts/deployments/base-sepolia.json",
+  "supersededReason": "Migration to Ethereum Sepolia (2026-05-29) was reverted on 2026-05-31. Ethereum Sepolia's ~12s block time made the demo's on-chain steps an order of magnitude slower than Base Sepolia's ~2s; the live demo was migrated back to Base Sepolia 84532 (task #53). The contracts below remain on-chain but are no longer referenced by the live demo.",
+  "network": "ethereum-sepolia",
   "chainId": 11155111,
+  "live": false,
   "deployedAt": "2026-05-31T00:00:00Z",
   "deployerCommit": "762c0ca",
   "blockExplorer": "https://sepolia.etherscan.io",
   "deployer": "0xB8d121CD0B2D0AB3df2aFF0B45B2fD354FF4c1f7",
-  "note": "CLEAN-SLATE redeploy 2026-05-31 to make v3 operator-blind Grumpkin enrollment the primary flow: fresh EnrollmentRegistry (genesis, leafCount 0) with the v3 attester 0xa114...8B12 so the v3 service's in-memory genesis tree matches on-chain; fresh PetitionRegistryV2 pointing at it; UltraVerifierV2 reused. Prior v2 enrollments/petitions wiped (intentional). Old addresses in supersedes_within_sepolia.",
+  "note": "Final Ethereum Sepolia clean-slate redeploy before reverting to Base Sepolia. Fresh EnrollmentRegistry (genesis, leafCount 0) with the v3 attester 0xa114...8B12; fresh PetitionRegistryV2; UltraVerifierV2 reused.",
   "contracts": {
     "enrollmentRegistry": {
       "address": "0xC9b35dE202e0Bf92e38603deEC4176557eF249a4",
@@ -20,78 +25,45 @@
     }
   },
   "params": {
-    "oprfAttester": "0x876E995c6f4f158ED5D746B5e10A00329df1E246",
+    "oprfAttester": "0xa114530Fbcb7cAD5A73164Baa67C4eB2C73b8B12",
     "admin": "0xB8d121CD0B2D0AB3df2aFF0B45B2fD354FF4c1f7",
     "genesisRoot": "0x1b49e706af69da35927cdf2b28b02fb2647245ac0ccbc376d062031185d3cd84",
     "genesisLeafCount": 0,
     "creationDepositWei": "1000000000000000"
   },
-  "verification": {
-    "enrollmentRoot": "0x1b49e706af69da35927cdf2b28b02fb2647245ac0ccbc376d062031185d3cd84",
-    "leafCount": 0,
-    "oprfAttester": "0x876E995c6f4f158ED5D746B5e10A00329df1E246",
-    "verifiedAtBlock": 10946523,
-    "previewDigestRoundTrip": {
-      "input": {
-        "newRoot": "0x000000000000000000000000000000000000000000000000000000000000beef",
-        "newCommitments": [
-          "0x0000000000000000000000000000000000000000000000000000000000000001"
-        ]
-      },
-      "expectedInner": "0x5e2a0acde467c58b9c922b01bfe04858bbdea9517249534f43dd27480ca623fb",
-      "expectedEthSigned": "0x4eec03b550bd3e9275d736d44a5d6818b4846b54b1269a76bccf88dd87009994",
-      "verified": true,
-      "notes": "Round-trip verified via on-chain previewDigest(0x...beef, [0x...01]) against the redeployed EnrollmentRegistry at 0x0214504C…6d1a. Differs from prior Sepolia entry by registry address (chainid unchanged)."
-    }
-  },
-  "supersedes": {
-    "previousNetwork": "base-sepolia",
-    "previousDeploymentRecord": "packages/contracts/deployments/base-sepolia.json",
-    "reason": "User-direct migration from Base Sepolia (84532) to Ethereum Sepolia (11155111) on 2026-05-29 to consolidate testnet target to canonical Ethereum Sepolia. Old contracts on Base Sepolia remain on-chain but the live demo no longer references them. Sealed demo signature 0xc80557d7c25c9c5b8ae4b770d4eda8690566092bd412d33e372a69526ec42dfb on Base Sepolia is preserved as a historical artifact in the grant proposal."
-  },
   "digestScheme": {
     "inner": "keccak256(abi.encode(oldRoot, newRoot, keccak256(abi.encodePacked(newCommitments)), block.chainid, address(this)))",
     "ethSigned": "keccak256(abi.encodePacked('\\x19Ethereum Signed Message:\\n32', inner))",
-    "signature": "secp256k1 (r, s, v) over ethSigned, 65 bytes, low-s",
-    "matches": [
-      "viem: walletClient.signMessage({ message: { raw: inner }, account: attester })",
-      "ethers: wallet.signMessage(arrayify(inner))",
-      "OZ ECDSA.recover(MessageHashUtils.toEthSignedMessageHash(inner), sig)"
-    ]
+    "signature": "secp256k1 (r, s, v) over ethSigned, 65 bytes, low-s"
   },
-  "notes": [
-    "Fresh genesis: enrollmentRoot=0x1b49e706…3cd84 (canonical depth-20 pedersen zero-tree), leafCount=0. OPRF service DB wiped to match at cutover.",
-    "Same oprfAttester address (0x876E995c…E246) — the underlying key is reused safely because the digest body includes chainid + address(this), so attester sigs against the prior EnrollmentRegistry cannot replay here.",
-    "Block time on Sepolia is ~12s (vs Base Sepolia's ~2s). On-chain step latency in the demo is higher by an order of magnitude."
-  ],
   "supersedes_within_sepolia": [
     {
       "deployedAt": "2026-05-29T18:33:25Z",
       "enrollmentRegistry": "0x0214504C1Be6d664bbE3AE6687507aBE19A36d1a",
       "ultraVerifierV2": "0xEC306EFA07D9688ae759d1c11D411cB6F0200acB",
       "petitionRegistryV2": "0x3bad7B7db4AE83e3c2EEbE5FFfB05a226ef8dbF7",
-      "reason": "PetitionRegistryV2 superseded by 0x4CaEeAFb…1757 on 2026-05-29T18:33Z after collapsing petitions to support-only (task #38): dropped the BallotMode enum (Signature/YesNo/YesNoAbstain) and the per-vote yes/no/abstain counters + voteByNullifier(uint8) encoding. A petition is now a one-directional support instrument — sign to support, revoke to withdraw; the per-nullifier slot is a plain bool. createPetition/signPetition lost their mode/vote args. EnrollmentRegistry + UltraVerifierV2 reused (the v2 circuit never bound the vote, so no zk/verifier change), so all existing local vaults remain valid against the new petition registry."
+      "reason": "PetitionRegistryV2 superseded after collapsing petitions to support-only (task #38): dropped the BallotMode enum and per-vote counters; a petition is now a one-directional support instrument (sign to support, revoke to withdraw)."
     },
     {
       "deployedAt": "2026-05-29T12:50:00Z",
       "enrollmentRegistry": "0x0214504C1Be6d664bbE3AE6687507aBE19A36d1a",
       "ultraVerifierV2": "0xEC306EFA07D9688ae759d1c11D411cB6F0200acB",
       "petitionRegistryV2": "0xfB3495aBF58813e1B8638e08665b6b77B42f66F0",
-      "reason": "PetitionRegistryV2 superseded by 0x3bad7B7d…dbF7 on 2026-05-29T17:55Z after the revoke + voteByNullifier storage refactor (task #35). Old PetitionRegistryV2 carried demo petition #1 + the user's first end-to-end signed signature. EnrollmentRegistry + UltraVerifierV2 reused (no storage change), so all existing local vaults remain valid against the new petition registry."
+      "reason": "PetitionRegistryV2 superseded after the revoke + voteByNullifier storage refactor (task #35)."
     },
     {
       "deployedAt": "2026-05-29T03:30:00Z",
       "enrollmentRegistry": "0x92b54725CECb48Fb988c08C6AeC861d1861beE24",
       "ultraVerifierV2": "0xBe811E09D67266B5C02b0E15dAC1a7F1107A2E79",
       "petitionRegistryV2": "0xBeaCa3c58ebb0476aAc8180E7428eD01E9367295",
-      "reason": "Superseded by user-direct clean-slate redeploy on 2026-05-29 — user wanted leaf #1 in a fresh tree to test the post-#55/#50 enrollment flow end-to-end. Prior deploy had backend's e2e enrollments + the sealed demo signature 0x9ea18325…7504 (preserved on-chain as historical artifact; live demo signature on the new EnrollmentRegistry will be captured fresh)."
+      "reason": "Superseded by a clean-slate redeploy to test the post-#55/#50 enrollment flow end-to-end in a fresh tree."
     },
     {
       "deployedAt": "2026-05-29T02:45:00Z",
       "enrollmentRegistry": "0x58119a53682A0a99fA593353675896F8d914508b",
       "ultraVerifierV2": "0x134B16Ca8508842A4DcB491DC8C386576E19E3d3",
       "petitionRegistryV2": "0x28dC62106783C04f452e122D0B21FfF74e871DA0",
-      "reason": "Initial Sepolia deploy used V2_GENESIS_ROOT=bytes32(0), which mismatched the OPRF service's canonical depth-20 zero-tree root 0x1b49e706…3cd84 → every attester sig recovered to wrong address → BadSignature(). Redeployed with V2_GENESIS_ROOT set to the pedersen-zero-tree root."
+      "reason": "Initial Ethereum Sepolia deploy used V2_GENESIS_ROOT=bytes32(0), which mismatched the OPRF service's canonical depth-20 zero-tree root → attester sigs recovered to the wrong address → BadSignature(). Redeployed with the correct genesis root."
     }
   ]
 }

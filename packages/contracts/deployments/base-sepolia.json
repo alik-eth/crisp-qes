@@ -1,56 +1,46 @@
 {
-  "retired": true,
-  "retiredAt": "2026-05-29T03:30:00Z",
-  "supersededBy": "packages/contracts/deployments/sepolia.json",
-  "supersededReason": "User-direct migration to Ethereum Sepolia on 2026-05-29 to consolidate testnet target. Base Sepolia contracts remain on-chain at the addresses below but are no longer referenced by the live demo. Sealed demo signature 0xc80557d7…2dfb is preserved as a historical artifact.",
   "network": "base-sepolia",
   "chainId": 84532,
-  "deployedAt": "2026-05-29T01:42:00Z",
-  "deployerCommit": "486cb0d",
+  "live": true,
+  "deployedAt": "2026-05-31T00:00:00Z",
   "blockExplorer": "https://sepolia.basescan.org",
   "deployer": "0xB8d121CD0B2D0AB3df2aFF0B45B2fD354FF4c1f7",
+  "note": "LIVE demo deployment. Clean-slate redeploy 2026-05-31 making the v3 operator-blind Grumpkin enrollment with the in-circuit Diia trust-chain (enroll_commit_v2, ~457k gates) the primary flow. Fresh EnrollmentRegistry (genesis, leafCount 0) wired to the v3 attester 0xa114...8B12 so the OPRF service's in-memory genesis tree matches on-chain; fresh PetitionRegistryV2 pointing at it; fresh UltraVerifierV2. Migrated back to Base Sepolia from the brief Ethereum Sepolia detour (see deployments/sepolia.json, now retired).",
   "contracts": {
     "enrollmentRegistry": {
-      "address": "0x4A17285f2f3035AD8bB6da86d9aB189cC33c4106",
-      "txHash": "0xff8df911dc4611339d7ef4366d912ad7452a05c819e288922707ed8b8fca6ffc"
+      "address": "0x64f40F22033E0AdB0c1183c42135e5C29266b817",
+      "oprfAttester": "0xa114530Fbcb7cAD5A73164Baa67C4eB2C73b8B12",
+      "fromBlock": 42244507,
+      "deployBlock": 42244510
     },
     "ultraVerifierV2": {
-      "address": "0x173F7BB534C7589d3f6D11DF3BE8Efee07312577",
-      "txHash": "0x78f08e085e73d5ece717ac2f5b930c2e83d0a07b5d6f17e40bebd9f3aa826fac"
+      "address": "0x62D83eaE3ae80c08d9945169EF638fC729aec3ea"
     },
     "petitionRegistryV2": {
-      "address": "0x11561749D669791117592332B8E5373Ff60406EF",
-      "txHash": "0x069db03ede5d1b3ee216c1a47d2af07c84a8657a1fb43c83a60e9f2b443ba1ed"
+      "address": "0x4c6b7Da31dDb645A26F821f44DD44ecF3cd7000A"
     }
   },
   "params": {
-    "oprfAttester": "0x876E995c6f4f158ED5D746B5e10A00329df1E246",
+    "oprfAttester": "0xa114530Fbcb7cAD5A73164Baa67C4eB2C73b8B12",
     "admin": "0xB8d121CD0B2D0AB3df2aFF0B45B2fD354FF4c1f7",
     "genesisRoot": "0x1b49e706af69da35927cdf2b28b02fb2647245ac0ccbc376d062031185d3cd84",
     "genesisLeafCount": 0,
     "creationDepositWei": "1000000000000000"
   },
   "verification": {
-    "enrollmentRoot": "0x1b49e706af69da35927cdf2b28b02fb2647245ac0ccbc376d062031185d3cd84",
-    "leafCount": 0,
-    "oprfAttester": "0x876E995c6f4f158ED5D746B5e10A00329df1E246",
-    "verifiedAtBlock": 42119311,
-    "previewDigestRoundTrip": {
-      "input": {
-        "newRoot": "0x000000000000000000000000000000000000000000000000000000000000beef",
-        "newCommitments": ["0x0000000000000000000000000000000000000000000000000000000000000001"]
-      },
-      "expectedInner":     "0xabb94c93ea440d2adb902d1d7c43133fa64f5c5ef065544a2c44abe3ba4bc3d4",
-      "expectedEthSigned": "0xfd171213cf168dd84640f7bc7970c3f4d26b5b35078c7dcd03ffdd3d91689c23",
-      "verified": true,
-      "notes": "previewDigest(0x...beef, [0x...01]) returned both values matching an independent Python keccak256 reference; backend's viem-style EIP-191 signatures will verify on-chain."
+    "onChainAtDeploy": {
+      "enrollmentRoot": "0x1b49e706af69da35927cdf2b28b02fb2647245ac0ccbc376d062031185d3cd84",
+      "leafCount": 0
+    },
+    "onChainObserved": {
+      "verifiedAtBlock": 42246197,
+      "oprfAttester": "0xa114530Fbcb7cAD5A73164Baa67C4eB2C73b8B12",
+      "enrollmentRoot": "0x1336db844a98afeeca617870b5858856a4b12fa88b95373226eee2ac7fe293d6",
+      "leafCount": 2,
+      "petitionRegistryV2_verifier": "0x62D83eaE3ae80c08d9945169EF638fC729aec3ea",
+      "petitionRegistryV2_enrollmentRegistry": "0x64f40F22033E0AdB0c1183c42135e5C29266b817",
+      "notes": "Root/leafCount reflect live real-Diia enrollments, not genesis. All wiring read directly from chain via cast."
     }
-  },
-  "supersedes": {
-    "enrollmentRegistry": "0x66573066C9e5f87cF63c9607BD1e75d9831850aA",
-    "ultraVerifierV2":    "0xe761daE1E69Acf9A72534605b8eaFe7bd38F76d2",
-    "petitionRegistryV2": "0xe7cC90F3E4d70e47D1d35DCDF820C3B1c27aE8Cd",
-    "reason": "Initial 7a78c86 deploy used a bytes24 DOMAIN_OPRF_ROOT digest scheme that didn't match backend's live signer. Replaced with the team-lead-pinned EIP-191 + chainid + address(this) scheme in commit 486cb0d. Old addresses remain on-chain but are unusable — backend signatures will never verify against them."
   },
   "digestScheme": {
     "inner": "keccak256(abi.encode(oldRoot, newRoot, keccak256(abi.encodePacked(newCommitments)), block.chainid, address(this)))",
@@ -63,8 +53,35 @@
     ]
   },
   "notes": [
-    "EnrollmentRegistry's genesisRoot matches the OPRF service's currentRoot at deploy time (canonical depth-20 zero-tree root confirmed by backend).",
-    "genesisLeafCount=0 confirmed by backend (enrolledCount=0 at deploy).",
-    "Replay protection: chainid + address(this) in the digest body prevent cross-chain and cross-instance replay even if the attester key is reused across deploys."
+    "Genesis: enrollmentRoot=0x1b49e706…3cd84 (canonical depth-20 pedersen zero-tree), leafCount=0. The EnrollmentRegistry MUST be deployed with genesisLeafCount=0 + this genesisRoot: the constructor sets leafCount=genesisLeafCount but emits NO CommitmentInserted event for genesis leaves, and the OPRF service rebuilds its Merkle tree purely from those events — a nonzero genesisLeafCount cold-starts the service into a crash loop.",
+    "Replay protection: chainid + address(this) in the digest body prevent cross-chain and cross-instance replay even if the attester key is reused across deploys.",
+    "Block time on Base Sepolia is ~2s, so on-chain demo step latency is ~6x lower than on the Ethereum Sepolia detour."
+  ],
+  "supersedes": [
+    {
+      "network": "ethereum-sepolia",
+      "chainId": 11155111,
+      "record": "packages/contracts/deployments/sepolia.json",
+      "reason": "Brief migration to Ethereum Sepolia (2026-05-29 → 2026-05-31) reverted: ~12s block time made the demo's on-chain steps an order of magnitude slower. Migrated back to Base Sepolia 84532 on 2026-05-31 (task #53)."
+    },
+    {
+      "network": "base-sepolia",
+      "chainId": 84532,
+      "deployedAt": "2026-05-29T01:42:00Z",
+      "deployerCommit": "486cb0d",
+      "enrollmentRegistry": "0x4A17285f2f3035AD8bB6da86d9aB189cC33c4106",
+      "ultraVerifierV2": "0x173F7BB534C7589d3f6D11DF3BE8Efee07312577",
+      "petitionRegistryV2": "0x11561749D669791117592332B8E5373Ff60406EF",
+      "reason": "First working Base Sepolia deploy (EIP-191 + chainid + address(this) digest scheme). Superseded by the Ethereum Sepolia detour and then by this clean-slate redeploy. Contracts remain on-chain but are unreferenced."
+    },
+    {
+      "network": "base-sepolia",
+      "chainId": 84532,
+      "deployerCommit": "7a78c86",
+      "enrollmentRegistry": "0x66573066C9e5f87cF63c9607BD1e75d9831850aA",
+      "ultraVerifierV2": "0xe761daE1E69Acf9A72534605b8eaFe7bd38F76d2",
+      "petitionRegistryV2": "0xe7cC90F3E4d70e47D1d35DCDF820C3B1c27aE8Cd",
+      "reason": "Initial deploy used a bytes24 DOMAIN_OPRF_ROOT digest scheme that didn't match the backend's live signer; replaced in 486cb0d. Unusable — backend signatures never verify against these."
+    }
   ]
 }

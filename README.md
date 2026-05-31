@@ -1,112 +1,114 @@
-# crisp-qes
+# crisp-qes — Civic Voice
 
-Privacy-preserving citizen-initiative petitions, backed by QES (qualified
-electronic signatures), anchored on Ethereum. Walletless for signers, on-chain
-auditable count, cross-petition-unlinkable nullifiers.
+Privacy-preserving citizen-initiative petitions. Citizens enroll once with a
+**qualified electronic signature** (QES — e.g. Ukraine's Diia), then sign
+petitions anonymously. No wallet, no app. The count is anchored on-chain and
+auditable; the same person can't sign twice, yet their signatures across
+petitions can't be linked back to them or to each other.
 
-**v3 (operator-blind enrollment) is the live system.** Enrollment is now
-**operator-blind**: the OPRF service never sees your tax ID — only a
-blinded curve point, gated by an in-browser zero-knowledge proof of a valid,
-age≥18 QES certificate. The citizen signs a session-bound **challenge** using QES,
-and that signature is bound to the enrollment *inside the ZK proof*. Signing
-petitions then takes ~2 s via a separate Noir circuit.
+> **Experimental / unaudited.** The operator-blind enrollment path (Grumpkin
+> VOPRF + in-circuit QES verification) has **not** had an external security
+> audit. An adversarial self-audit found and fixed a real forgery bug. An
+> external audit is mandatory before any real-world use.
 
-> **EXPERIMENTAL / UNAUDITED.** The v3 operator-blind path (Grumpkin VOPRF +
-> in-circuit QES cert verification) has not had an external security audit. An
-> adversarial self-audit found and fixed a real forgery bug; an external audit is
-> mandatory before any real-world use.
+## What makes it private
 
-Specs:
-[v3 funded scope](docs/specs/2026-05-29-crisp-qes-v3-funded-scope.md),
-[v3 bound-challenge enrollment](docs/superpowers/specs/2026-05-31-v3-bound-challenge-enrollment-design.md),
-[v2 refined (sign flow)](docs/specs/2026-05-29-crisp-qes-v2-refined.md).
-Original MVP design:
-[`docs/specs/2026-05-19-crisp-qes-pivot-design.md`](docs/specs/2026-05-19-crisp-qes-pivot-design.md).
+**The operator never learns who you are.** Enrollment is *operator-blind*: the
+service that gates enrollment sees only a blinded curve point and a
+zero-knowledge proof — never your tax ID, your certificate, or your date of
+birth. Three properties hold simultaneously:
+
+- **Sybil-resistant** — one real, government-issued QES identity → exactly one
+  enrollment. A deterministic nullifier blocks a second enrollment of the same
+  person.
+- **Operator-blind** — the gate checks a proof, not your data. Nothing
+  identifying leaves your device.
+- **Cross-petition-unlinkable** — each petition signature reveals only a
+  per-petition nullifier, so signatures can't be correlated across petitions.
+
+## How enrollment works
+
+1. The browser blinds your tax ID into a Grumpkin point `M = r·H2C(taxID)` and
+   downloads a session-bound **challenge** `{intent, epoch, blindedInput: M}`.
+2. You sign that challenge with **QES** → a `.p7s` (PKCS#7) signature.
+3. The browser proves `enroll_commit_v2` **entirely on-device**. The proof
+   establishes, in zero knowledge:
+   - your QES leaf certificate chains to a **pinned Diia CA** (in-circuit
+     CA → leaf ECDSA-P256 verification — the identity is *not* self-asserted);
+   - the cert holder is **age ≥ 18** (date of birth extracted in-circuit);
+   - `M` is the correct blinding of the tax ID *inside* that cert;
+   - the signed challenge digest binds the signature to *this* enrollment.
+
+   Only `M` and the proof leave the device.
+4. The service verifies the proof, evaluates `Y = k·M` (it never sees the
+   unblinded input), and — gated by a second `oprf_nullifier` proof — appends
+   `commitment = pedersen(N)` to the enrollment Merkle tree and signs the
+   on-chain `updateRoot`.
+
+Because the commitment is deterministic per identity, re-enrolling the same QES
+is **within-epoch recovery** (re-wrap the local vault on a new device — no new
+leaf, no seed phrase, no server-side backup).
+
+Signing a petition afterwards uses a separate, much smaller Noir circuit and
+takes ~2 s.
+
+## Circuits
+
+| Circuit            | Role                                                          | Size          |
+| ------------------ | ------------------------------------------------------------- | ------------- |
+| `enroll_commit_v2` | QES → Diia CA chain → age≥18 → blinded `M` + challenge binding | ~457 k gates  |
+| `oprf_nullifier`   | binds `commitment` to the cert via in-circuit DLEQ            | small         |
+| sign circuit       | per-petition membership + nullifier                           | ~28 k constraints |
+
+The enrollment proof is heavy (~457 k gates, ~700 MiB to prove) but runs in the
+browser on desktop and on mobile Safari within a single-threaded 832 MiB wasm
+budget. The sign circuit stays small by moving both P-256 ECDSA verifications
+out of the per-signature path — they run once, at enrollment.
+
+## Live demo
+
+Enroll once with a real Diia QES, then support petitions in ~2 s.
+
+| Component       | URL                                                                                |
+| --------------- | ---------------------------------------------------------------------------------- |
+| Web (UI)        | [civicvoice.fly.dev](https://civicvoice.fly.dev)                                   |
+| OPRF service    | [crisp-qes-oprf-grumpkin.fly.dev](https://crisp-qes-oprf-grumpkin.fly.dev/healthz) |
+| Relayer         | [crisp-qes-relayer.fly.dev](https://crisp-qes-relayer.fly.dev/healthz)             |
+
+**Contracts** — Base Sepolia (chain 84532):
+
+| Contract             | Address                                                                                                                          |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `EnrollmentRegistry` | [`0x64f40F22033E0AdB0c1183c42135e5C29266b817`](https://sepolia.basescan.org/address/0x64f40F22033E0AdB0c1183c42135e5C29266b817) |
+| `PetitionRegistryV2` | [`0x4c6b7Da31dDb645A26F821f44DD44ecF3cd7000A`](https://sepolia.basescan.org/address/0x4c6b7Da31dDb645A26F821f44DD44ecF3cd7000A) |
+| `UltraVerifierV2`    | [`0x62D83eaE3ae80c08d9945169EF638fC729aec3ea`](https://sepolia.basescan.org/address/0x62D83eaE3ae80c08d9945169EF638fC729aec3ea) |
+
+Enrollment is **real-Diia-cert-only** (the trust-chain pins live Diia CAs).
+Prove on desktop — the enrollment proof sits at the edge of mobile memory.
 
 ## Repo layout
 
-- `packages/oprf/v3-grumpkin/` — **v3 operator-blind enrollment**: standalone
-  Grumpkin VOPRF service + Noir circuits (`enroll_commit_v2` proves QES cert →
-  age≥18 → blinded element + signed-challenge binding, ~2^19 gates; `oprf_nullifier`
-  binds the commitment to the cert via in-circuit DLEQ). In-process bb.js proof
-  gating (no `bb` CLI). Merkle store self-heals from on-chain `CommitmentInserted`.
-- `packages/contracts/` — Foundry: `EnrollmentRegistry`, `PetitionRegistryV2`, `UltraVerifierV2`
-- `packages/oprf/` — legacy v2 VOPRF service (RFC 9497 ristretto255-SHA512); superseded by v3-grumpkin for enrollment
-- `packages/relayer/` — Fastify meta-tx relayer for `EnrollmentRegistry.updateRoot` + `PetitionRegistryV2.signPetition`
-- `packages/web/` — Vite + React: walletless v3 enrol (`/verify`) + sign flow (uk/en)
-- `packages/sdk/` — TS: `.p7s` parsing (shared by web + oprf)
-- `packages/lotl-flattener/` — TS: EU LOTL CA-trust-list flattening + Pedersen-on-BN254 primitives
-- `fixtures/diia/` — `.p7s` samples, **gitignored** (legal identity material)
+| Path                          | What it is                                                                        |
+| ----------------------------- | --------------------------------------------------------------------------------- |
+| `packages/oprf/v3-grumpkin/`  | Operator-blind enrollment: Grumpkin VOPRF service + Noir circuits. In-process bb.js proof gating; Merkle store self-heals from on-chain `CommitmentInserted` events. |
+| `packages/contracts/`         | Foundry: `EnrollmentRegistry`, `PetitionRegistryV2`, `UltraVerifierV2`.           |
+| `packages/relayer/`           | Fastify meta-tx relayer (`updateRoot`, `signPetition`) — keeps signers walletless. |
+| `packages/web/`               | Vite + React frontend: enrollment (`/verify`) + sign flow (uk/en).                |
+| `packages/sdk/`               | TypeScript `.p7s` (PKCS#7) parsing, shared by web + oprf.                          |
 
-## Prerequisites
-
-- Node 20+, pnpm 10+
-- Rust stable, Foundry (`forge`, `cast`, `anvil`)
-- Noir: `nargo` 1.0.0-beta.19, `bb` (Barretenberg) 4.0.0-nightly
-
-## Bootstrap
+## Develop
 
 ```sh
 pnpm install
 pnpm contracts:build
 ```
 
-## How v3 enrollment works (operator-blind)
-
-1. Enter tax ID → the browser computes a blinded Grumpkin point `M = r·H2C(taxID)`
-   and downloads a session **challenge** `{intent, epoch, blindedInput: M}`.
-2. Sign that challenge using **QES** → `.p7s`.
-3. The browser proves `enroll_commit_v2` entirely on-device: a valid QES leaf
-   ECDSA over `signedAttrs` (hashed in-circuit), tax ID + age≥18 extracted from
-   the cert, `M` derived from that tax ID, and the signed `messageDigest` bound
-   to `sha256(challenge)`. Only `M` + the proof leave the device.
-4. The OPRF service verifies the proof, evaluates `Y = k·M`, and (with a second
-   `oprf_nullifier` proof) appends `commitment = pedersen(N)` to the enrollment
-   tree and signs the on-chain `updateRoot`. It never sees the cert or the tax ID.
-
-Because the `commitment` is deterministic per tax ID, re-enrolling the same identity
-is treated as **recovery** (re-wrap the vault on a new device; no new leaf).
-
-## Performance (sign circuit)
-
-Full methodology + raw records in
-[`bench/v2-results-2026-05-29.md`](bench/v2-results-2026-05-29.md).
-
-| Metric                              | MVP design (2026-05-28) | Shipped v2 sign (2026-05-29) | Δ              |
-| ----------------------------------- | ----------------------- | ---------------------------- | -------------- |
-| Browser prove (Chromium, median)    | 79.7 s                  | **2.4 s**                    | **34× faster** |
-| Native prove (Node, threads=auto)   | 14.5 s                  | **0.47 s**                   | **30× faster** |
-| Proof size on the wire              | 10,176 B                | **8,640 B**                  | 15 % smaller   |
-| On-chain `signPetition` gas         | 4,242,422               | **2,620,543**                | 38 % cheaper   |
-
-The sign circuit stays small (~28 k constraints) by moving both P-256 ECDSA
-verifications **out of the per-signature circuit** — they run once at enrollment.
-The v3 *enrollment* proof is heavier (~2^19 gates, ~700 MiB to prove in-browser):
-it runs fine on desktop (Chrome, Safari) and on mobile Safari via a single-threaded
-832 MiB wasm budget.
-
-## Live demo
-
-Enrol once via the operator-blind v3 flow, then vote on petitions in ~2 s.
-
-| Layer                  | Component                     | URL                                                                        |
-| ---------------------- | ----------------------------- | -------------------------------------------------------------------------- |
-| Web (UI)               | `packages/web`                | [crisp-qes-web.fly.dev](https://crisp-qes-web.fly.dev)                      |
-| v3 OPRF (enrollment)   | `packages/oprf/v3-grumpkin`   | [crisp-qes-oprf-grumpkin.fly.dev](https://crisp-qes-oprf-grumpkin.fly.dev/healthz) |
-| Relayer                | `packages/relayer`            | [crisp-qes-relayer.fly.dev](https://crisp-qes-relayer.fly.dev/healthz)     |
-
-Contracts (Ethereum Sepolia, chain 11155111 — clean-slate redeploy 2026-05-31):
-
-| Contract              | Address                                                                                                                            |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `EnrollmentRegistry`  | [`0xC9b35dE202e0Bf92e38603deEC4176557eF249a4`](https://sepolia.etherscan.io/address/0xC9b35dE202e0Bf92e38603deEC4176557eF249a4)     |
-| `PetitionRegistryV2`  | [`0x0BF0D1BD0550028887528d5bA310F1e3019ad6DB`](https://sepolia.etherscan.io/address/0x0BF0D1BD0550028887528d5bA310F1e3019ad6DB)     |
-| `UltraVerifierV2`     | [`0xEC306EFA07D9688ae759d1c11D411cB6F0200acB`](https://sepolia.etherscan.io/address/0xEC306EFA07D9688ae759d1c11D411cB6F0200acB)     |
+**Prerequisites:** Node 20+, pnpm 10+; Rust stable + Foundry (`forge`, `cast`,
+`anvil`); Noir `nargo` 1.0.0-beta.19 and `bb` (Barretenberg) 4.0.0-nightly.
 
 ## Status
 
-Testnet demo live on Ethereum Sepolia; v3 operator-blind enrollment is the
-primary `/verify` flow (legacy v2 enrollment removed). **Experimental /
-unaudited** — external audit pending. Still ahead on the funded hardening track
-(threshold OPRF + epoch rotation) and the `cert[]`↔`pubkey` in-circuit binding;
-see [v3 funded scope](docs/specs/2026-05-29-crisp-qes-v3-funded-scope.md).
+Testnet demo live on Base Sepolia; operator-blind enrollment with in-circuit
+Diia trust-chain is the primary `/verify` flow. **Experimental / unaudited** —
+external audit pending. See [`docs/roadmap.md`](docs/roadmap.md) for what's
+next.
