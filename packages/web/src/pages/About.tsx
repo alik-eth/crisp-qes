@@ -78,7 +78,7 @@ export function About() {
                 <div className="sol-stack-grid">
                     <div>
                         <span className="sol-stack-label">{uk ? "Авторизація" : "Authorization"}</span>
-                        <p className="sol-stack mono">КЕП (eIDAS) · CAdES-BES .p7s · ECDSA P-256 · Longfellow (ZK, Sumcheck+Ligero, WASM)</p>
+                        <p className="sol-stack mono">{uk ? "КЕП" : "QES"} (eIDAS) · CAdES-BES .p7s · ECDSA P-256 · Longfellow (ZK, Sumcheck+Ligero, WASM)</p>
                     </div>
                     <div>
                         <span className="sol-stack-label">{uk ? "Голосування" : "Voting"}</span>
