@@ -53,10 +53,6 @@ export function Landing({ state, onSignIn }: Props) {
                     className="hero__title"
                     dangerouslySetInnerHTML={{ __html: t("landing.hero") }}
                 />
-                <p
-                    className="hero__sub2"
-                    dangerouslySetInnerHTML={{ __html: t("landing.heroSub2") }}
-                />
                 <p className="hero__sub">
                     {t("landing.sub")}
                 </p>

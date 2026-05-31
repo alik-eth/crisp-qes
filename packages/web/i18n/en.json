@@ -18,8 +18,7 @@
         "signIn": "Sign in"
     },
     "landing": {
-        "hero": "Voice of the nation without falsification.",
-        "heroSub2": "Anonymous, private voting with results in a <b>public registry</b>.",
+        "hero": "Anonymous, private voting with results in a <b>public registry</b>.",
         "sub": "Vote and create polls. Each participant uses QES to confirm they are an adult citizen of Ukraine. Personal data stays on your device. Your vote is private — even the registry doesn't know how you voted. Voting results are available in a public distributed registry — without the possibility of deletion or falsification.",
         "cta": "All polls",
         "statCitizens": "citizens verified",
