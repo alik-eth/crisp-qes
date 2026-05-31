@@ -56,9 +56,18 @@ function bbOptions(): { threads: number; memory?: { maximum: number } } {
     const ua = nav?.userAgent ?? "";
     const isIOS = /iP(hone|od|ad)/.test(ua);
     if (isIOS) {
+        // The bound-challenge enroll circuit is ~2^19 gates and needs ~700 MiB of
+        // wasm linear memory to prove. The old 384 MiB cap (set when the circuit
+        // was ~2^17) is now too small — the prover hits the ceiling and traps
+        // ("Unreachable code should not be executed"). Use a SINGLE thread so the
+        // memory is a regular (non-shared) WebAssembly.Memory that commits pages
+        // lazily: iOS refuses large *shared* (multi-thread) reservations — the
+        // original 1 GiB OOM — so single-thread lets the working set grow to
+        // ~700 MiB without that up-front reservation. Confirmed: traps ≤640 MiB,
+        // proves at 768; 832 gives margin. Slower than multi-thread, but it works.
         return {
-            threads: Math.max(1, Math.min(hw, 2)),
-            memory: { maximum: 6144 }, // 6144 pages × 64 KiB = 384 MiB
+            threads: 1,
+            memory: { maximum: 13312 }, // 13312 pages × 64 KiB = 832 MiB ceiling
         };
     }
     return { threads: Math.max(1, Math.min(hw, 8)) };
