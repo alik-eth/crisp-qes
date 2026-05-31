@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Modal } from "./Modal.js";
 import {
     registerPasskey,
@@ -21,6 +22,7 @@ function bytesToHex(b: Uint8Array): `0x${string}` {
 }
 
 export function RegisterModal({ onClose, onRegistered }: Props) {
+    const { t } = useTranslation();
     const probe = probeWebauthn();
     const [stage, setStage] = useState<Stage>("intro");
     const [errMsg, setErrMsg] = useState<string>("");
@@ -31,10 +33,10 @@ export function RegisterModal({ onClose, onRegistered }: Props) {
         try {
             const userId = crypto.getRandomValues(new Uint8Array(16));
             const result = await registerPasskey(
-                "CRISP-QES",
+                "Civic Voice",
                 userId,
-                `crisp-${Date.now()}`,
-                "CRISP-QES account",
+                `civic-${Date.now()}`,
+                "Civic Voice account",
             );
             await putAccount({
                 credentialId: bytesToHex(result.credentialId),
@@ -52,88 +54,72 @@ export function RegisterModal({ onClose, onRegistered }: Props) {
     };
 
     return (
-        <Modal title="Register" onClose={onClose} dismissable={stage !== "running"}>
+        <Modal title={t("register.title")} onClose={onClose} dismissable={stage !== "running"}>
             {!probe.available ? (
                 <div className="stack">
-                    <p>{probe.reason ?? "WebAuthn unavailable."}</p>
+                    <p>{probe.reason ?? t("register.unavailable")}</p>
                     <button
                         type="button"
                         className="btn btn--ghost btn--block"
                         onClick={onClose}
                     >
-                        Close
+                        {t("register.close")}
                     </button>
                 </div>
             ) : stage === "intro" ? (
                 <div className="stack--4">
-                    <p>
-                        Create a Passkey on this device. It locks your private
-                        signing key locally — nothing leaves the browser, and
-                        there's no password or seed phrase.
-                    </p>
-                    <p className="muted small">
-                        You'll be prompted by your browser to choose where to
-                        save it: device, password manager, or hardware key.
-                    </p>
+                    <p>{t("register.intro")}</p>
+                    <p className="muted small">{t("register.hint")}</p>
                     <button
                         type="button"
                         className="btn btn--primary btn--block"
                         onClick={() => void run()}
                     >
-                        Create Passkey
+                        {t("register.createBtn")}
                     </button>
                 </div>
             ) : stage === "running" ? (
                 <div className="stack--4">
-                    <p>Waiting for the Passkey prompt…</p>
-                    <p className="muted small">
-                        Follow the browser dialog to complete registration.
-                    </p>
+                    <p>{t("register.waiting")}</p>
+                    <p className="muted small">{t("register.waitingHint")}</p>
                 </div>
             ) : stage === "error" ? (
                 <div className="stack--4">
                     <div className="notice notice--bad">
                         <div>
-                            <strong>Registration failed.</strong>
+                            <strong>{t("register.failed")}</strong>
                             <br />
                             <span className="small mono">{errMsg}</span>
                         </div>
                     </div>
-                    <p className="muted small">
-                        If your authenticator doesn't support PRF, try a
-                        different one (a hardware key or a different
-                        password-manager extension).
-                    </p>
+                    <p className="muted small">{t("register.failedHint")}</p>
                     <button
                         type="button"
                         className="btn btn--primary btn--block"
                         onClick={() => void run()}
                     >
-                        Try again
+                        {t("register.tryAgain")}
                     </button>
                     <button
                         type="button"
                         className="btn btn--ghost btn--block"
                         onClick={onClose}
                     >
-                        Cancel
+                        {t("common.cancel")}
                     </button>
                 </div>
             ) : (
                 <div className="stack--4">
                     <div className="notice notice--ok">
-                        <div>Passkey created. Account ready.</div>
+                        <div>{t("register.created")}</div>
                     </div>
-                    <p className="muted small">
-                        Next: verify with your Diia QES so you can sign and
-                        create petitions.
-                    </p>
+                    <p className="muted small">{t("register.createdHint")}</p>
                     <button
                         type="button"
                         className="btn btn--primary btn--block"
                         onClick={onClose}
                     >
-                        Continue
+                        {t("common.continue")}
                     </button>
                 </div>
             )}
