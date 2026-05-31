@@ -192,7 +192,7 @@ export function CoverageGrid() {
                                     textAnchor="middle"
                                     dominantBaseline="central"
                                     fontFamily="var(--mono)"
-                                    fontSize="8"
+                                    fontSize="11"
                                     fontWeight="700"
                                     letterSpacing="0.04em"
                                     fill={isLive ? "#fff" : "var(--ink)"}
