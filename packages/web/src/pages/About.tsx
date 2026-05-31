@@ -106,6 +106,9 @@ export function About() {
                                 : "Because the tax ID has low entropy (10 digits — brute-forceable in seconds), it is protected with OPRF — a protocol that adds a cryptographic salt to the tax ID without revealing it to the server. This makes the nullifier brute-force-resistant and safe for the registry. OPRF also provides unlinkability: neither the platform nor the blockchain can link a vote to a specific person. FHE (CRISP) encrypts the votes themselves, revealing only the aggregate result."}
                         </p>
                     </div>
+                    <p className="sol-stack mono" style={{ marginTop: 20 }}>
+                        VOPRF (RFC 9497) · OPRF · Noir · Barretenberg · CRISP · FHE (BFV) · Solidity · Ethereum Sepolia
+                    </p>
                 </div>
 
                 {/* Механізми */}
@@ -130,11 +133,6 @@ export function About() {
                 {/* Порівняння */}
                 <div style={{ marginTop: 56 }}>
                     <span className="eyebrow">{uk ? "Порівняння" : "Comparison"}</span>
-                    <p className="about-lede" style={{ marginTop: 16 }}>
-                        {uk
-                            ? "Civic Voice — єдине рішення, яке одночасно гарантує верифікацію особи, унікальність, приватність голосу та перевірюваний результат."
-                            : "Civic Voice is the only solution that simultaneously guarantees identity verification, uniqueness, vote privacy and a verifiable result."}
-                    </p>
                 </div>
                 <table className="cmp-table">
                     <thead>
