@@ -5,7 +5,7 @@
 // re-prompting the Passkey. Used by both the inline Sign flow on
 // PetitionDetail and the "show my signatures" affordance on /me.
 
-import { evaluatePrfWithCredential } from "./webauthnPrf.js";
+import { evaluatePrf, evaluatePrfWithCredential } from "./webauthnPrf.js";
 import {
     listEnrollments,
     unwrapPayload,
@@ -32,7 +32,20 @@ export async function unlockVault(): Promise<SessionVault> {
     let prf = getSessionPrf();
     if (!prf) {
         const credId = encHex.fromHex(rec.credentialId);
-        prf = await evaluatePrfWithCredential(credId);
+        try {
+            // Targeted assertion (preferred — picks the enrollment passkey
+            // even if several exist on the device).
+            prf = await evaluatePrfWithCredential(credId);
+        } catch {
+            // iOS Safari (and synced/iCloud passkeys) can reject a targeted
+            // allowCredentials PRF assertion with "operation failed for an
+            // operation-specific reason" even though a DISCOVERABLE assertion
+            // for the same passkey succeeds (this is the path enrollment uses).
+            // Fall back to discoverable: the user picks the passkey; a wrong
+            // pick simply fails the AES-GCM unwrap below (fail-closed).
+            const got = await evaluatePrf();
+            prf = got.prfOutput;
+        }
         setSessionPrf(prf);
     }
     const payload = await unwrapPayload(rec.ciphertext, prf);
