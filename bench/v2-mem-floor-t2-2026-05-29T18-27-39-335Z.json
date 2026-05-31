@@ -1,0 +1,80 @@
+{
+  "threads": 2,
+  "circuit": "v2 (sign/revoke share it)",
+  "results": [
+    {
+      "pages": 16384,
+      "mib": 1024,
+      "ok": true,
+      "proveMs": 866,
+      "peakRssMb": 225,
+      "peakArrayBufMb": 1,
+      "err": ""
+    },
+    {
+      "pages": 12288,
+      "mib": 768,
+      "ok": true,
+      "proveMs": 794,
+      "peakRssMb": 162,
+      "peakArrayBufMb": 2,
+      "err": ""
+    },
+    {
+      "pages": 10240,
+      "mib": 640,
+      "ok": true,
+      "proveMs": 807,
+      "peakRssMb": 162,
+      "peakArrayBufMb": 2,
+      "err": ""
+    },
+    {
+      "pages": 8192,
+      "mib": 512,
+      "ok": true,
+      "proveMs": 827,
+      "peakRssMb": 164,
+      "peakArrayBufMb": 4,
+      "err": ""
+    },
+    {
+      "pages": 6144,
+      "mib": 384,
+      "ok": true,
+      "proveMs": 826,
+      "peakRssMb": 164,
+      "peakArrayBufMb": 1,
+      "err": ""
+    },
+    {
+      "pages": 5120,
+      "mib": 320,
+      "ok": true,
+      "proveMs": 796,
+      "peakRssMb": 164,
+      "peakArrayBufMb": 2,
+      "err": ""
+    },
+    {
+      "pages": 4096,
+      "mib": 256,
+      "ok": true,
+      "proveMs": 789,
+      "peakRssMb": 165,
+      "peakArrayBufMb": 3,
+      "err": ""
+    },
+    {
+      "pages": 3072,
+      "mib": 192,
+      "ok": true,
+      "proveMs": 789,
+      "peakRssMb": 164,
+      "peakArrayBufMb": 2,
+      "err": ""
+    }
+  ],
+  "floorMib": 192,
+  "timestamp": "2026-05-29T18:27:39.335Z"
+}

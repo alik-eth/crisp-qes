@@ -159,7 +159,7 @@ All in `vendor/longfellow-zk/lib/circuits/` (C++ builder), then witness-filled i
 
 1. **iOS WASM prover memory (dominant risk).** Cert ECDSA + chain ECDSA + H2C + ~3 scalar-mults + DLEQ + SHA on top of the existing p7s circuit. Ligero keeps EC cheap in *time*; *peak memory* is the unknown. **Mitigation: the spike is task 1**; if it exceeds iOS's ceiling we ship desktop/Android-first.
 2. **C++ circuit-builder work is unavoidable.** The Rust port cannot build circuits; the SSWU/DLEQ gadgets must be authored in `longfellow-zk` and re-serialized. This is the bulk of the effort.
-3. **Submodule extraction.** `vendor/longfellow-rs` must be created as a standalone repo seeded from `alik-eth/zk-eidas@worktree-longfellow-rust-migration:crates/longfellow` (preserving the 59-test p7s work + `abetterinternet` provenance) before it can be a submodule. **Open: confirm the new repo name/owner.**
+3. **Submodule extraction.** `vendor/longfellow-rs` is created as a standalone repo **`alik-eth/longfellow-rs`** (confirmed), seeded from `alik-eth/zk-eidas@worktree-longfellow-rust-migration:crates/longfellow` (preserving the 59-test p7s work + `abetterinternet` provenance), then added as a submodule.
 4. **Proof size.** ~350 KB Ligero proof over HTTP to the service — fine (verified off-chain), but a UX note for slow links.
 5. **Field reduction for `s`.** `SHA256(N)` is 256-bit; the Noir Merkle leaf is a BN254 field element (~254-bit). Reduce/mask deterministically and consistently on both prover and registry sides.
 6. **OPRF key migration.** Standing up a P-256 OPRF service is a new key; existing Grumpkin enrollments do not carry over (clean-slate enrollment epoch, consistent with prior redeploys).
