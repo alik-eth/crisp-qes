@@ -34,12 +34,7 @@ export function About() {
                         </p>
                         <div className="cov-legend">
                             <div className="cov-legend__item">
-                                <span className="cov-swatch cov-swatch--live" />
-                                <span>{uk ? "Live-інтеграція" : "Live integration"}</span>
-                                <span className="mono" style={{ marginLeft: "auto" }}>UA</span>
-                            </div>
-                            <div className="cov-legend__item">
-                                <span className="cov-swatch cov-swatch--p256" />
+                                <span className="cov-swatch cov-swatch--hatch" />
                                 <span>{uk ? "Підтримка ECDSA P-256" : "ECDSA P-256 support"}</span>
                             </div>
                             <div className="cov-legend__item">

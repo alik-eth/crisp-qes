@@ -135,6 +135,11 @@ export function CoverageGrid() {
                 aria-label="QES coverage map — EU + Ukraine"
                 onMouseLeave={() => setHover(null)}
             >
+                <defs>
+                    <pattern id="hatch-p256" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                        <line x1="0" y1="0" x2="0" y2="4" stroke="var(--ink)" strokeWidth="0.8" />
+                    </pattern>
+                </defs>
                 {features.map(({ feature: f, cc }) => {
                     const isLive = LIVE.has(cc);
                     const data = QTSP_BY_CODE.get(cc);
@@ -150,7 +155,7 @@ export function CoverageGrid() {
                         >
                             <path
                                 d={d}
-                                fill={isLive ? "var(--ink)" : hasP256 ? "#bbb" : "var(--line)"}
+                                fill={isLive ? "var(--ink)" : hasP256 ? "url(#hatch-p256)" : "var(--line)"}
                                 stroke="var(--bg)"
                                 strokeWidth={1}
                             />
@@ -161,7 +166,7 @@ export function CoverageGrid() {
                                     textAnchor="middle"
                                     dominantBaseline="central"
                                     fontFamily="var(--mono)"
-                                    fontSize="7"
+                                    fontSize="5.6"
                                     fontWeight="700"
                                     letterSpacing="0.04em"
                                     fill={isLive ? "#fff" : "var(--ink)"}

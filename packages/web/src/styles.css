@@ -717,8 +717,13 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 .cov-legend { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }
 .cov-legend__item { display: flex; align-items: center; gap: 10px; font-size: 13px; }
 .cov-swatch { width: 18px; height: 14px; border: 1px solid var(--line); flex-shrink: 0; }
-.cov-swatch--live { background: var(--ink); border-color: var(--ink); }
-.cov-swatch--p256 { background: #bbb; }
+.cov-swatch--hatch {
+    background: repeating-linear-gradient(
+        45deg,
+        transparent 0 2px,
+        var(--ink) 2px 3px
+    );
+}
 .cov-swatch--base { background: var(--line); }
 .cov-map-frame { position: relative; border: 1px solid var(--line); background: var(--paper-2); padding: 16px; }
 .cov-map-stamp { position: absolute; bottom: 8px; left: 16px; font-size: 10px; letter-spacing: 0.15em; color: var(--muted-2); }
