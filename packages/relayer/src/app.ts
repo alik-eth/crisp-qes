@@ -167,13 +167,11 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
 
         let txHash: Hex;
         try {
-            txHash = await clients.walletClient.writeContract({
+            txHash = await clients.sendTx({
                 address: config.enrollmentRegistry,
                 abi: enrollmentRegistryAbi,
                 functionName: "updateRoot",
                 args: args as unknown as readonly [Hex, readonly Hex[], Hex],
-                account: clients.account,
-                chain: clients.chain,
             });
         } catch (err) {
             const mapped = mapEnrollmentError(err);
@@ -288,7 +286,7 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
 
         let txHash: Hex;
         try {
-            txHash = await clients.walletClient.writeContract({
+            txHash = await clients.sendTx({
                 address: config.petitionRegistry,
                 abi: petitionRegistryV2Abi,
                 functionName: "signPetition",
@@ -298,8 +296,6 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
                     Hex,
                     readonly Hex[],
                 ],
-                account: clients.account,
-                chain: clients.chain,
             });
         } catch (err) {
             const mapped = mapContractError(err);
@@ -431,7 +427,7 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
 
         let txHash: Hex;
         try {
-            txHash = await clients.walletClient.writeContract({
+            txHash = await clients.sendTx({
                 address: config.petitionRegistry,
                 abi: petitionRegistryV2Abi,
                 functionName: "revokeVote",
@@ -441,8 +437,6 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
                     Hex,
                     readonly Hex[],
                 ],
-                account: clients.account,
-                chain: clients.chain,
             });
         } catch (err) {
             const mapped = mapContractError(err);

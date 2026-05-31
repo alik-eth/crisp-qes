@@ -45,14 +45,18 @@ function fakeClients(impls: {
     read?: ReturnType<typeof vi.fn>;
 } = {}): Clients {
     const account = privateKeyToAccount(ANVIL_KEY);
+    const chain = {
+        id: 31337,
+        name: "anvil",
+        nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+        rpcUrls: { default: { http: ["http://127.0.0.1:8545"] } },
+    } as Clients["chain"];
+    const writeContract =
+        impls.write ??
+        vi.fn().mockResolvedValue(("0x" + "ab".repeat(32)) as Hex);
     return {
         account,
-        chain: {
-            id: 31337,
-            name: "anvil",
-            nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
-            rpcUrls: { default: { http: ["http://127.0.0.1:8545"] } },
-        } as Clients["chain"],
+        chain,
         publicClient: {
             simulateContract:
                 impls.simulate ?? vi.fn().mockResolvedValue({ request: {} }),
@@ -65,10 +69,13 @@ function fakeClients(impls: {
             readContract: impls.read ?? vi.fn().mockResolvedValue(ENROLL_ROOT),
         } as unknown as Clients["publicClient"],
         walletClient: {
-            writeContract:
-                impls.write ??
-                vi.fn().mockResolvedValue(("0x" + "ab".repeat(32)) as Hex),
+            writeContract,
         } as unknown as Clients["walletClient"],
+        // Mirror the real serialized write: delegate to the same
+        // writeContract mock (adding account/chain like the real sendTx)
+        // so existing `write` call-count / canned-hash assertions hold.
+        sendTx: (params: Record<string, unknown>) =>
+            writeContract({ ...params, account, chain }) as Promise<Hex>,
     };
 }
 
