@@ -287,6 +287,19 @@ export function V3Enroll({ onDone }: Props) {
                         certRnokpp={rnokpp}
                         onFile={onFile}
                         onRun={() => void onRun()}
+                        onRegenerate={() => {
+                            setParsed(null);
+                            setP7sBytes(null);
+                            setRnokpp(null);
+                            onGenerate();
+                        }}
+                        onReset={() => {
+                            setBlindState(null);
+                            setParsed(null);
+                            setP7sBytes(null);
+                            setRnokpp(null);
+                            setStage("identify");
+                        }}
                     />
                 ) : stage === "running" ? (
                     <RunningPanel stages={stages} />
@@ -361,12 +374,16 @@ function UploadPanel({
     certRnokpp,
     onFile,
     onRun,
+    onRegenerate,
+    onReset,
 }: {
     rnokpp: string | null;
     parsed: ParsedP7s | null;
     certRnokpp: string | null;
     onFile: (file: File) => Promise<void>;
     onRun: () => void;
+    onRegenerate: () => void;
+    onReset: () => void;
 }) {
     const { t } = useTranslation();
     return (
@@ -420,15 +437,30 @@ function UploadPanel({
                     </div>
                 </div>
             ) : null}
-            <button
-                type="button"
-                className="btn btn--primary"
-                style={{ marginTop: 20 }}
-                onClick={onRun}
-                disabled={!parsed}
-            >
-                {t("verify.verifyBtn")}
-            </button>
+            <div className="row" style={{ marginTop: 20 }}>
+                <button
+                    type="button"
+                    className="btn btn--primary"
+                    onClick={onRun}
+                    disabled={!parsed}
+                >
+                    {t("verify.verifyBtn")}
+                </button>
+                <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={onRegenerate}
+                >
+                    {t("verify.redownload")}
+                </button>
+                <button
+                    type="button"
+                    className="btn btn--link"
+                    onClick={onReset}
+                >
+                    {t("verify.startOver")}
+                </button>
+            </div>
         </div>
     );
 }
