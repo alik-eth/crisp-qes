@@ -709,14 +709,24 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
     .about-section-block--paper { margin: 0 -20px; padding-left: 20px; padding-right: 20px; }
 }
 
+/* ─── coverage layout ─── */
+.cov-layout { display: grid; grid-template-columns: 1fr 1.2fr; gap: 40px; align-items: start; margin-top: 40px; }
+.cov-aside { display: flex; flex-direction: column; gap: 0; }
+.micro { font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink); font-weight: 600; display: block; margin-bottom: 12px; }
+.cov-body { font-size: 16px; line-height: 1.6; color: var(--ink-2, #1f1f1f); }
+.cov-legend { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }
+.cov-legend__item { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.cov-swatch { width: 18px; height: 14px; border: 1px solid var(--line); flex-shrink: 0; }
+.cov-swatch--live { background: var(--ink); border-color: var(--ink); }
+.cov-swatch--p256 { background: #bbb; }
+.cov-swatch--base { background: var(--line); }
+.cov-map-frame { position: relative; border: 1px solid var(--line); background: var(--paper-2); padding: 16px; }
+.cov-map-stamp { position: absolute; bottom: 8px; left: 16px; font-size: 10px; letter-spacing: 0.15em; color: var(--muted-2); }
+@media (max-width: 768px) { .cov-layout { grid-template-columns: 1fr; } }
+
 /* ─── coverage map ─── */
 .coverage-map {
-    margin-top: 32px;
     max-width: 100%;
-    border: 1px solid var(--line);
-    border-radius: var(--r);
-    padding: 24px;
-    background: var(--paper-2);
 }
 .coverage-tooltip {
     min-width: 220px;

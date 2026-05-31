@@ -22,15 +22,40 @@ export function About() {
             <div className="about-section-block">
                 <span className="eyebrow">{uk ? "Хто може голосувати" : "Who can vote"}</span>
                 <h2 className="about-h2">{uk ? "Громадяни України та 27 країн ЄС." : "Citizens of Ukraine and 27 EU countries."}</h2>
-                <p className="about-lede">
-                    {uk
-                        ? "Платформа доступна кожному, хто має кваліфікований електронний підпис (КЕП / QES) — це громадяни України та 27 країн Європейського Союзу відповідно до регламенту eIDAS."
-                        : "The platform is open to anyone holding a qualified electronic signature (QES) — citizens of Ukraine and the 27 European Union countries under the eIDAS regulation."}
-                </p>
-                <CoverageGrid />
-                <p className="muted small" style={{ marginTop: 8 }}>
-                    {t("about.mapCaption")}
-                </p>
+                <div className="cov-layout">
+                    <div className="cov-aside">
+                        <span className="micro">
+                            {uk ? "Покриття eIDAS" : "eIDAS coverage"}
+                        </span>
+                        <p className="cov-body">
+                            {uk
+                                ? "Платформа доступна кожному, хто має кваліфікований електронний підпис (КЕП / QES) — це громадяни України та 27 країн Європейського Союзу відповідно до регламенту eIDAS."
+                                : "The platform is open to anyone holding a qualified electronic signature (QES) — citizens of Ukraine and the 27 European Union countries under the eIDAS regulation."}
+                        </p>
+                        <div className="cov-legend">
+                            <div className="cov-legend__item">
+                                <span className="cov-swatch cov-swatch--live" />
+                                <span>{uk ? "Live-інтеграція" : "Live integration"}</span>
+                                <span className="mono" style={{ marginLeft: "auto" }}>UA</span>
+                            </div>
+                            <div className="cov-legend__item">
+                                <span className="cov-swatch cov-swatch--p256" />
+                                <span>{uk ? "Підтримка ECDSA P-256" : "ECDSA P-256 support"}</span>
+                            </div>
+                            <div className="cov-legend__item">
+                                <span className="cov-swatch cov-swatch--base" />
+                                <span>{uk ? "Інші країни eIDAS" : "Other eIDAS countries"}</span>
+                            </div>
+                        </div>
+                        <p className="muted small" style={{ marginTop: 16 }}>
+                            {t("about.mapCaption")}
+                        </p>
+                    </div>
+                    <div className="cov-map-frame">
+                        <CoverageGrid />
+                        <span className="cov-map-stamp mono">eIDAS · EUROPE · 2026</span>
+                    </div>
+                </div>
             </div>
 
             {/* ── Чим ми відрізняємось ── */}
