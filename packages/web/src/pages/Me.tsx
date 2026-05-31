@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link, useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import type { AccountState } from "../lib/account.js";
 import { clearAccount, shortId } from "../lib/account.js";
 import { listEnrollments, clearAll as clearEnrollments } from "../lib/encryptedStore.js";
@@ -29,6 +30,7 @@ interface DeviceFacts {
 }
 
 export function Me({ state, refresh }: Props) {
+    const { t } = useTranslation();
     const [, navigate] = useLocation();
     const [facts, setFacts] = useState<DeviceFacts | null>(null);
     const [signingOut, setSigningOut] = useState(false);
@@ -85,17 +87,12 @@ export function Me({ state, refresh }: Props) {
         }
     }, [state.kind]);
 
-    // Lock: clear the decrypted key from memory only. Vault + account row
-    // stay on disk (still Verified); the next signing action re-prompts the
-    // Passkey. Non-destructive — this is just the fresh-tab state.
     const lock = () => {
         clearSessionPrf();
         clearSessionVault();
         navigate("/petitions");
     };
 
-    // Forget: wipe local vault + Passkey reference -> Guest. Recoverable
-    // later via Diia on any device. Destructive; two-step confirm.
     const forgetDevice = async () => {
         setSigningOut(true);
         try {
@@ -112,25 +109,23 @@ export function Me({ state, refresh }: Props) {
 
     return (
         <section className="me">
-            <h1>Account</h1>
+            <h1>{t("me.heading")}</h1>
             <p className="muted" style={{ marginTop: 8, marginBottom: 24 }}>
-                Local-only. This page lives entirely on this device.
+                {t("me.subtitle")}
             </p>
 
             {state.kind === "account" ? (
                 <div className="notice notice--info" style={{ marginBottom: 20 }}>
                     <div>
-                        Your Passkey is set up, but you haven't verified with
-                        Diia QES yet. You can browse petitions, but signing
-                        and creating require verification.{" "}
-                        <Link href="/verify">Verify now →</Link>
+                        {t("me.notVerifiedBefore")}{" "}
+                        <Link href="/verify">{t("me.verifyNow")}</Link>
                     </div>
                 </div>
             ) : null}
 
             <dl className="detail__facts">
                 <div className="fact">
-                    <dt>Status</dt>
+                    <dt>{t("me.status")}</dt>
                     <dd>
                         <span
                             className={
@@ -141,26 +136,26 @@ export function Me({ state, refresh }: Props) {
                             style={{ marginRight: 8 }}
                         >
                             {state.kind === "verified"
-                                ? "Verified"
-                                : "Registered"}
+                                ? t("me.verified")
+                                : t("me.registered")}
                         </span>
                     </dd>
                 </div>
                 {state.commitment ? (
                     <div className="fact">
-                        <dt>Anonymous identity</dt>
+                        <dt>{t("me.anonIdentity")}</dt>
                         <dd className="mono">{shortId(state.commitment)}</dd>
                     </div>
                 ) : null}
                 {facts?.leafIndex !== null && facts?.leafIndex !== undefined ? (
                     <div className="fact">
-                        <dt>Enrollment leaf</dt>
+                        <dt>{t("me.enrollmentLeaf")}</dt>
                         <dd className="mono">#{facts.leafIndex}</dd>
                     </div>
                 ) : null}
                 {facts?.credentialId ? (
                     <div className="fact">
-                        <dt>Passkey credential</dt>
+                        <dt>{t("me.passkeyCredential")}</dt>
                         <dd className="mono">{shortId(facts.credentialId)}</dd>
                     </div>
                 ) : null}
@@ -169,7 +164,7 @@ export function Me({ state, refresh }: Props) {
             {facts?.commitment ? (
                 <div style={{ marginTop: 24 }}>
                     <div className="muted small" style={{ marginBottom: 4 }}>
-                        Full commitment
+                        {t("me.fullCommitment")}
                     </div>
                     <div
                         className="mono"
@@ -190,10 +185,9 @@ export function Me({ state, refresh }: Props) {
             {state.kind === "verified" ? (
                 <>
                     <hr className="hairline" />
-                    <h2>Petitions you signed</h2>
+                    <h2>{t("me.signedHeading")}</h2>
                     <p className="muted small" style={{ marginTop: 8 }}>
-                        Only you can compute this list. Nobody else — not
-                        even us — can link your nullifiers to your identity.
+                        {t("me.signedSubtitle")}
                     </p>
 
                     {sigStage === "idle" ? (
@@ -204,52 +198,33 @@ export function Me({ state, refresh }: Props) {
                             onClick={() => void scanSignatures()}
                         >
                             {getSessionVault()
-                                ? "Show my signatures"
-                                : "Unlock and show my signatures"}
+                                ? t("me.showSigned")
+                                : t("me.unlockAndShow")}
                         </button>
                     ) : sigStage === "unlocking" ? (
-                        <div
-                            className="progress-band"
-                            style={{ marginTop: 16 }}
-                        >
+                        <div className="progress-band" style={{ marginTop: 16 }}>
                             <span className="spinner" aria-hidden="true" />
-                            <span className="small">
-                                Waiting for your Passkey…
-                            </span>
+                            <span className="small">{t("me.waitingPasskey")}</span>
                         </div>
                     ) : sigStage === "scanning" ? (
-                        <div
-                            className="progress-band"
-                            style={{ marginTop: 16 }}
-                        >
+                        <div className="progress-band" style={{ marginTop: 16 }}>
                             <span className="spinner" aria-hidden="true" />
-                            <span className="small">
-                                Checking each petition on chain…
-                            </span>
+                            <span className="small">{t("me.scanningChain")}</span>
                         </div>
                     ) : sigStage === "error" ? (
-                        <div
-                            className="notice notice--bad"
-                            style={{ marginTop: 16 }}
-                        >
+                        <div className="notice notice--bad" style={{ marginTop: 16 }}>
                             <div>
-                                <strong>Couldn't load signatures.</strong>
+                                <strong>{t("me.sigError")}</strong>
                                 <br />
                                 <span className="small mono">{sigErr}</span>
                             </div>
                         </div>
                     ) : signed.length === 0 ? (
-                        <p
-                            className="muted"
-                            style={{ marginTop: 16 }}
-                        >
-                            You haven't signed any petition yet.
+                        <p className="muted" style={{ marginTop: 16 }}>
+                            {t("me.noSigned")}
                         </p>
                     ) : (
-                        <ul
-                            className="petitions"
-                            style={{ marginTop: 16 }}
-                        >
+                        <ul className="petitions" style={{ marginTop: 16 }}>
                             {signed.map((p) => (
                                 <li key={p.id.toString()}>
                                     <Link
@@ -265,13 +240,9 @@ export function Me({ state, refresh }: Props) {
                                                     "(untitled)"}
                                             </div>
                                             <div className="petitions__meta">
-                                                <span className="muted">
-                                                    Signed
-                                                </span>
+                                                <span className="muted">{t("me.signed")}</span>
                                                 <span className="muted">·</span>
-                                                <span className="muted">
-                                                    {p.status}
-                                                </span>
+                                                <span className="muted">{p.status}</span>
                                             </div>
                                         </div>
                                     </Link>
@@ -284,39 +255,31 @@ export function Me({ state, refresh }: Props) {
 
             <hr className="hairline" />
 
-            <h2>Recovery</h2>
+            <h2>{t("me.recoveryHeading")}</h2>
             <p className="muted small" style={{ marginTop: 8 }}>
-                Two ways back if you lose access: same device → unlock with
-                your Passkey (instant); new or wiped device → set up a Passkey
-                and re-run Verify with Diia, which restores your existing
-                anonymous identity. Heads-up: Diia recovery needs only your
-                Diia signature, so guard it like your passport. See{" "}
-                <Link href="/recover">how recovery works &amp; the tradeoff →</Link>
+                {t("me.recoveryBody")}{" "}
+                <Link href="/recover">{t("me.recoveryLink")}</Link>
             </p>
 
             <hr className="hairline" />
 
-            <h2>Lock</h2>
+            <h2>{t("me.lockHeading")}</h2>
             <p className="muted small" style={{ marginTop: 8, marginBottom: 16 }}>
-                Clears your decrypted signing key from memory. You stay verified
-                on this device — just tap your Passkey next time you sign.
-                Nothing is deleted. Use this when you step away.
+                {t("me.lockBody")}
             </p>
             <button
                 type="button"
                 className="btn btn--ghost"
                 onClick={lock}
             >
-                Lock now
+                {t("me.lockNow")}
             </button>
 
             <hr className="hairline" />
 
-            <h2 style={{ color: "var(--bad)" }}>Forget this device</h2>
+            <h2 style={{ color: "var(--bad)" }}>{t("me.forgetHeading")}</h2>
             <p className="muted small" style={{ marginTop: 8, marginBottom: 16 }}>
-                Wipes your local vault and Passkey reference from this device.
-                Your on-chain enrollment stays — recover later with your Diia
-                QES on any device. Use this on a shared or public computer.
+                {t("me.forgetBody")}
             </p>
             {!confirmOut ? (
                 <button
@@ -324,20 +287,18 @@ export function Me({ state, refresh }: Props) {
                     className="btn btn--ghost"
                     onClick={() => setConfirmOut(true)}
                 >
-                    Forget this device
+                    {t("me.forgetBtn")}
                 </button>
             ) : (
                 <div className="row">
                     <button
                         type="button"
                         className="btn btn--primary"
-                        style={{
-                            background: "var(--bad)",
-                        }}
+                        style={{ background: "var(--bad)" }}
                         onClick={() => void forgetDevice()}
                         disabled={signingOut}
                     >
-                        {signingOut ? "Wiping…" : "Yes, wipe local data"}
+                        {signingOut ? t("me.forgetWiping") : t("me.forgetConfirm")}
                     </button>
                     <button
                         type="button"
@@ -345,7 +306,7 @@ export function Me({ state, refresh }: Props) {
                         onClick={() => setConfirmOut(false)}
                         disabled={signingOut}
                     >
-                        Cancel
+                        {t("common.cancel")}
                     </button>
                 </div>
             )}

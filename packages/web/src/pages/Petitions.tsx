@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
+import { useTranslation } from "react-i18next";
 import type { AccountState } from "../lib/account.js";
 import {
     readAllPetitions,
@@ -25,6 +26,7 @@ function timeRemaining(deadline: bigint): string {
 }
 
 export function Petitions({ state, onSignIn }: Props) {
+    const { t } = useTranslation();
     const [petitions, setPetitions] = useState<PetitionView[] | null>(null);
     const [err, setErr] = useState<string | null>(null);
 
@@ -46,31 +48,30 @@ export function Petitions({ state, onSignIn }: Props) {
     return (
         <section>
             <header className="petitions__head">
-                <h1>Petitions</h1>
+                <h1>{t("list.heading")}</h1>
                 <CreateCta state={state} onSignIn={onSignIn} />
             </header>
 
             {state.kind === "account" ? (
                 <div className="notice notice--info" style={{ marginBottom: 20 }}>
                     <div>
-                        Your account is registered but not verified.{" "}
-                        <Link href="/verify">Verify with QES</Link>{" "}
-                        to sign or create petitions.
+                        {t("list.notVerifiedBefore")}{" "}
+                        <Link href="/verify">{t("list.notVerifiedLink")}</Link>{" "}
+                        {t("list.notVerifiedAfter")}
                     </div>
                 </div>
             ) : null}
 
             {err ? (
-                <p className="muted">Could not load petitions: {err}</p>
+                <p className="muted">{t("list.error")}: {err}</p>
             ) : petitions === null ? (
-                <p className="muted">Loading…</p>
+                <p className="muted">{t("list.loading")}</p>
             ) : petitions.length === 0 ? (
                 <p className="muted">
-                    No petitions yet. {state.kind === "verified" ? (
+                    {t("list.empty")}{" "}
+                    {state.kind === "verified" ? (
                         <Link href="/p/new">Create the first one.</Link>
-                    ) : (
-                        "Be the first to register and create one."
-                    )}
+                    ) : null}
                 </p>
             ) : (
                 <ul className="petitions">
@@ -91,7 +92,7 @@ export function Petitions({ state, onSignIn }: Props) {
                                         </div>
                                         <div className="petitions__meta">
                                             <span className="muted">
-                                                {p.signatureCount} signatures
+                                                {p.signatureCount} {t("list.card.count")}
                                             </span>
                                             <span className="muted">·</span>
                                             <span className="muted">
@@ -114,14 +115,13 @@ function firstLine(text: string): string {
 }
 
 function StatusBadge({ status }: { status: PetitionView["status"] }) {
+    const { t } = useTranslation();
     const cls =
         status === "Open" ? "badge badge--ok"
         : status === "ThresholdReached" ? "badge badge--ok"
         : status === "Closed" ? "badge badge--muted"
         : "badge";
-    const label =
-        status === "ThresholdReached" ? "Threshold met" : status;
-    return <span className={cls}>{label}</span>;
+    return <span className={cls}>{t(`list.status.${status}`)}</span>;
 }
 
 function CreateCta({
@@ -131,17 +131,18 @@ function CreateCta({
     state: AccountState;
     onSignIn: () => void;
 }) {
+    const { t } = useTranslation();
     if (state.kind === "verified") {
         return (
             <Link href="/p/new" className="btn btn--primary btn--sm">
-                New petition
+                {t("list.ctaNew")}
             </Link>
         );
     }
     if (state.kind === "account") {
         return (
             <Link href="/verify" className="btn btn--ghost btn--sm">
-                Verify to create
+                {t("list.ctaVerify")}
             </Link>
         );
     }
@@ -151,7 +152,7 @@ function CreateCta({
             className="btn btn--ghost btn--sm"
             onClick={onSignIn}
         >
-            Sign in to create
+            {t("list.ctaSignIn")}
         </button>
     );
 }

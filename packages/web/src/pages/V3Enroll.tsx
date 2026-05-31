@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import { parseP7s, type ParsedP7s } from "@crisp-qes/sdk";
 import { extractRnokpp, extractDOB, tinuaPrefixOk } from "../lib/rnokpp.js";
 import {
@@ -72,6 +73,7 @@ function randomScalarPublic(): bigint {
 }
 
 export function V3Enroll({ onDone }: Props) {
+    const { t } = useTranslation();
     const [, navigate] = useLocation();
     const [stage, setStage] = useState<Substage>("identify");
     const [rnokppInput, setRnokppInput] = useState("");
@@ -255,18 +257,16 @@ export function V3Enroll({ onDone }: Props) {
             </div>
 
             <header style={{ marginBottom: 32 }}>
-                <h1>Verify with Diia QES — operator-blind</h1>
-                <p className="muted" style={{ marginTop: 8, maxWidth: 560 }}>
-                    Prove you're a verified Ukrainian adult, anonymously. Your
-                    RNOKPP is hashed and blinded locally; the service evaluates
-                    a blind OPRF and never learns your identity.
+                <h1>{t("verify.heading")}</h1>
+                <p className="muted" style={{ marginTop: 8, maxWidth: 600 }}>
+                    {t("verify.subtitle")}
                 </p>
             </header>
 
             {error ? (
                 <div className="notice notice--bad" style={{ marginTop: 24 }}>
                     <div>
-                        <strong>Enrollment failed.</strong>
+                        <strong>{t("verify.verifyFailed")}</strong>
                         <br />
                         <span className="small mono">{error}</span>
                     </div>
@@ -314,19 +314,17 @@ function IdentifyPanel({
     onChange: (s: string) => void;
     onGenerate: () => void;
 }) {
+    const { t } = useTranslation();
     return (
         <div className="card">
-            <h3>Enter your RNOKPP</h3>
+            <h3>{t("verify.identifyTitle")}</h3>
             <p
                 className="muted small"
                 style={{ marginTop: 8, marginBottom: 16 }}
             >
-                We use this to compute your anonymous identity locally and to
-                cross-check the certificate in your .p7s. Find it in the Diia
-                app under Documents → РНОКПП. 10 digits, all numeric.
+                {t("verify.identifyBody")}
             </p>
             <label>
-                RNOKPP
                 <input
                     type="text"
                     inputMode="numeric"
@@ -342,9 +340,7 @@ function IdentifyPanel({
                 />
             </label>
             <p className="muted small" style={{ marginTop: 12 }}>
-                Your RNOKPP never reaches the service. It's hashed and blinded
-                locally; only the blinded element M is sent, gated by a
-                zero-knowledge proof of your Diia certificate.
+                {t("verify.identifyPrivacy")}
             </p>
             <button
                 type="button"
@@ -353,7 +349,7 @@ function IdentifyPanel({
                 onClick={onGenerate}
                 disabled={!RNOKPP_RE.test(rnokppInput)}
             >
-                Generate challenge
+                {t("verify.identifyBtn")}
             </button>
         </div>
     );
@@ -372,33 +368,25 @@ function UploadPanel({
     onFile: (file: File) => Promise<void>;
     onRun: () => void;
 }) {
+    const { t } = useTranslation();
     return (
         <div className="card">
-            <h3>Sign the challenge in Diia</h3>
-            <p className="muted small" style={{ marginTop: 8 }}>
-                A file <span className="mono">crisp-qes-challenge.txt</span> was
-                downloaded to this device. It contains the exact bytes you must
-                sign with your Diia QES — this binds your signature to THIS
-                enrollment and to the blinded element the service evaluates.
+            <h3>{t("verify.challengeTitle")}</h3>
+            <p className="muted small" style={{ marginTop: 8, marginBottom: 16 }}>
+                {t("verify.challengeIntro")}
             </p>
             <ol
-                className="muted small"
-                style={{ marginTop: 12, paddingLeft: 18, marginBottom: 16 }}
+                className="challenge-steps"
+                style={{ marginBottom: 16 }}
             >
-                <li>Open the Diia app.</li>
-                <li>Go to "Sign documents" (Підписати документ).</li>
-                <li>
-                    Select the downloaded{" "}
-                    <span className="mono">crisp-qes-challenge.txt</span>.
-                </li>
-                <li>Enter your Diia PIN to sign.</li>
-                <li>
-                    Save the resulting <span className="mono">.p7s</span> file
-                    and upload it here.
-                </li>
+                {(t("verify.challengeSteps", { returnObjects: true }) as string[]).map(
+                    (step, i) => (
+                        <li key={i} dangerouslySetInnerHTML={{ __html: step }} />
+                    ),
+                )}
             </ol>
             <p className="muted small" style={{ marginBottom: 16 }}>
-                RNOKPP being enrolled:{" "}
+                {t("verify.rnokppLabel")}{" "}
                 <span className="mono">{rnokpp}</span>
             </p>
             <label
@@ -419,17 +407,16 @@ function UploadPanel({
                     style={{ display: "none" }}
                 />
                 <span className="dropzone__label">
-                    Drop the signed .p7s here, or click to choose
+                    {t("verify.dropLabel")}
                 </span>
                 <span className="dropzone__hint muted small">
-                    Must be the .p7s produced by signing the file above
+                    {t("verify.dropHint")}
                 </span>
             </label>
             {parsed ? (
                 <div className="notice notice--ok" style={{ marginTop: 16 }}>
                     <div>
-                        Diia QES recognised and RNOKPP matches{" "}
-                        <span className="mono">{certRnokpp}</span>.
+                        {t("verify.parsed")}
                     </div>
                 </div>
             ) : null}
@@ -440,19 +427,19 @@ function UploadPanel({
                 onClick={onRun}
                 disabled={!parsed}
             >
-                Enroll (operator-blind)
+                {t("verify.verifyBtn")}
             </button>
         </div>
     );
 }
 
 function RunningPanel({ stages }: { stages: Record<string, RealRunStage> }) {
+    const { t } = useTranslation();
     return (
         <div className="card">
-            <h3>Enrolling anonymously…</h3>
+            <h3>{t("verify.verifyingTitle")}</h3>
             <p className="muted small" style={{ marginTop: 8 }}>
-                Two UltraHonk proofs run in this browser. This can take
-                10–60 seconds on a phone. Don't close this tab.
+                {t("verify.verifyingBody")}
             </p>
             <ol
                 style={{ listStyle: "none", padding: "1rem 0 0", margin: 0 }}
@@ -504,22 +491,23 @@ function EnrolledPanel({
     result: RealEnrollResult;
     onSave: () => void;
 }) {
+    const { t } = useTranslation();
     return (
         <div className="card">
-            <h3>{result.recovered ? "Recovered." : "Verified on chain."}</h3>
+            <h3>{result.recovered ? t("verify.verifiedRecoveredTitle") : t("verify.verifiedTitle")}</h3>
             <p className="muted small" style={{ marginTop: 8 }}>
                 {result.recovered ? (
-                    "This Diia identity was already enrolled — recovered the existing on-chain commitment for this device."
+                    t("verify.verifiedRecoveredBody")
                 ) : (
                     <>
-                        Your anonymous commitment is now on Sepolia.{" "}
+                        {t("verify.verifiedBody")}{" "}
                         {result.txHash && (
                             <a
                                 href={explorerTxUrl(result.txHash)}
                                 target="_blank"
                                 rel="noreferrer"
                             >
-                                View transaction →
+                                {t("verify.viewTx")}
                             </a>
                         )}
                     </>
@@ -531,35 +519,32 @@ function EnrolledPanel({
             >
                 {result.commitment}
             </p>
-            <p style={{ marginTop: 20, marginBottom: 16 }}>
-                Last step: encrypt your private signing material with your
-                Passkey and save it to this device.
-            </p>
-            <button type="button" className="btn btn--primary" onClick={onSave}>
-                Encrypt and save
+            <button type="button" className="btn btn--primary" style={{ marginTop: 20 }} onClick={onSave}>
+                {result.recovered ? t("verify.restoreBtn") : t("verify.saveBtn")}
             </button>
         </div>
     );
 }
 
 function SavingPanel() {
+    const { t } = useTranslation();
     return (
         <div className="card">
-            <h3>Saving…</h3>
-            <p className="muted small" style={{ marginTop: 8 }}>
-                Waiting for the Passkey prompt, then encrypting.
-            </p>
+            <h3>{t("verify.savingTitle")}</h3>
+            <div className="progress-band" style={{ marginTop: 12 }}>
+                <span className="spinner" aria-hidden="true" />
+                <span className="small">{t("verify.savingBody")}</span>
+            </div>
         </div>
     );
 }
 
 function SavedPanel({ onContinue }: { onContinue: () => void }) {
+    const { t } = useTranslation();
     return (
         <div className="card">
             <div className="notice notice--ok">
-                <div>
-                    You're verified. You can sign and create petitions now.
-                </div>
+                <div>{t("verify.savedOk")}</div>
             </div>
             <button
                 type="button"
@@ -567,7 +552,7 @@ function SavedPanel({ onContinue }: { onContinue: () => void }) {
                 style={{ marginTop: 20 }}
                 onClick={onContinue}
             >
-                Browse petitions
+                {t("verify.savedBtn")}
             </button>
         </div>
     );

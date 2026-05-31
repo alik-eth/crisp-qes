@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useLocation, Link } from "wouter";
+import { useTranslation } from "react-i18next";
 import {
     formatEther,
     decodeEventLog,
@@ -20,16 +21,10 @@ import {
     type WalletSession,
 } from "../lib/wallet.js";
 
-const DURATION_OPTIONS = [
-    { key: "7", label: "7 days", days: 7 },
-    { key: "14", label: "14 days", days: 14 },
-    { key: "30", label: "30 days", days: 30 },
-    { key: "90", label: "90 days", days: 90 },
-];
-
 type Stage = "form" | "confirm" | "connect" | "submitting" | "mining" | "done" | "error";
 
 export function CreatePetition() {
+    const { t } = useTranslation();
     const [, navigate] = useLocation();
     const { session, setSession } = useWallet();
 
@@ -45,6 +40,13 @@ export function CreatePetition() {
     const [errMsg, setErrMsg] = useState<string | null>(null);
     const [txHash, setTxHash] = useState<`0x${string}` | null>(null);
     const [newId, setNewId] = useState<bigint | null>(null);
+
+    const durationOptions = [
+        { key: "7", label: t("create.days7"), days: 7 },
+        { key: "14", label: t("create.days14"), days: 14 },
+        { key: "30", label: t("create.days30"), days: 30 },
+        { key: "90", label: t("create.days90"), days: 90 },
+    ];
 
     useEffect(() => {
         startInjectedDiscovery();
@@ -63,7 +65,7 @@ export function CreatePetition() {
     }, []);
 
     const durationDays =
-        DURATION_OPTIONS.find((o) => o.key === durationKey)?.days ?? 14;
+        durationOptions.find((o) => o.key === durationKey)?.days ?? 14;
     const deadline = BigInt(
         Math.floor(Date.now() / 1000) + durationDays * 86400,
     );
@@ -139,7 +141,6 @@ export function CreatePetition() {
                     return;
                 }
 
-                // Extract new petition id from PetitionCreated event.
                 let foundId: bigint | null = null;
                 for (const log of receipt.logs) {
                     if (
@@ -174,36 +175,36 @@ export function CreatePetition() {
     return (
         <section className="create">
             <div className="detail__crumbs">
-                <Link href="/petitions">← All petitions</Link>
+                <Link href="/petitions">{t("create.back")}</Link>
             </div>
-            <h1 style={{ marginBottom: 24 }}>New petition</h1>
+            <h1 style={{ marginBottom: 24 }}>{t("create.heading")}</h1>
 
             {stage === "form" || stage === "confirm" || stage === "error" ? (
                 <div className="form">
-                    <Field label="Title">
+                    <Field label={t("create.title")}>
                         <input
                             type="text"
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
-                            placeholder="A short, clear claim"
+                            placeholder={t("create.titlePlaceholder")}
                             maxLength={200}
                         />
                         <Hint>{title.length}/200</Hint>
                     </Field>
-                    <Field label="Body (optional)">
+                    <Field label={t("create.body")}>
                         <textarea
                             value={body}
                             onChange={(e) => setBody(e.target.value)}
-                            placeholder="Background, why it matters, what signing means."
+                            placeholder={t("create.bodyPlaceholder")}
                             rows={8}
                         />
                         <Hint>
                             {fullTextBytes.length.toLocaleString()} bytes / 64 KiB
                         </Hint>
                     </Field>
-                    <Field label="Duration">
+                    <Field label={t("create.duration")}>
                         <div className="row">
-                            {DURATION_OPTIONS.map((opt) => (
+                            {durationOptions.map((opt) => (
                                 <label key={opt.key} className="radio">
                                     <input
                                         type="radio"
@@ -216,7 +217,7 @@ export function CreatePetition() {
                             ))}
                         </div>
                     </Field>
-                    <Field label="Threshold (signatures needed)">
+                    <Field label={t("create.threshold")}>
                         <input
                             type="number"
                             min={1}
@@ -238,16 +239,16 @@ export function CreatePetition() {
 
                     <div className="deposit">
                         <div>
-                            <div className="muted small">Creation deposit</div>
+                            <div className="muted small">{t("create.deposit")}</div>
                             <div className="deposit__amount mono">
                                 {depositErr
                                     ? "—"
                                     : deposit === null
-                                      ? "loading…"
+                                      ? t("create.depositLoading")
                                       : `${formatEther(deposit)} ETH`}
                             </div>
                             <div className="muted small">
-                                Refunded after the deadline.
+                                {t("create.depositRefund")}
                             </div>
                         </div>
                         <button
@@ -256,14 +257,14 @@ export function CreatePetition() {
                             onClick={() => void onSubmit()}
                             disabled={!valid || deposit === null}
                         >
-                            {session ? "Create" : "Connect & create"}
+                            {session ? t("create.createBtn") : t("create.connectAndCreate")}
                         </button>
                     </div>
 
                     {errMsg ? (
                         <div className="notice notice--bad" style={{ marginTop: 16 }}>
                             <div>
-                                <strong>Could not create.</strong>
+                                <strong>{t("create.errorTitle")}</strong>
                                 <br />
                                 <span className="small mono">{errMsg}</span>
                             </div>
@@ -280,13 +281,13 @@ export function CreatePetition() {
                 />
             ) : stage === "submitting" ? (
                 <StatusPanel
-                    title="Sign in your wallet"
-                    body="Approve the createPetition transaction."
+                    title={t("create.signingTitle")}
+                    body={t("create.signingBody")}
                 />
             ) : stage === "mining" ? (
                 <StatusPanel
-                    title="Mining…"
-                    body="Waiting for the transaction to confirm on Sepolia."
+                    title={t("create.miningTitle")}
+                    body={t("create.miningBody")}
                     txHash={txHash}
                 />
             ) : (
@@ -328,6 +329,7 @@ function ConnectPanel({
     onConnected: (s: WalletSession) => Promise<void>;
     onCancel: () => void;
 }) {
+    const { t } = useTranslation();
     const [busy, setBusy] = useState<string | null>(null);
     const [err, setErr] = useState<string | null>(null);
     const injected = listInjectedProviders();
@@ -349,11 +351,9 @@ function ConnectPanel({
 
     return (
         <div className="card">
-            <h3>Connect a wallet to pay the deposit</h3>
+            <h3>{t("create.connectTitle")}</h3>
             <p className="muted small" style={{ marginTop: 8 }}>
-                Petition creation is a public transaction. Your wallet address
-                will be visible on the petition (this is by design — signing
-                stays anonymous).
+                {t("create.connectBody")}
             </p>
             <div className="stack--4" style={{ marginTop: 16 }}>
                 {injected.map((d, i) => (
@@ -364,7 +364,7 @@ function ConnectPanel({
                         disabled={busy !== null}
                         onClick={() => void connect("injected", i)}
                     >
-                        {busy === `i-${i}` ? "Opening…" : d.info.name}
+                        {busy === `i-${i}` ? t("create.opening") : d.info.name}
                     </button>
                 ))}
                 <button
@@ -373,14 +373,14 @@ function ConnectPanel({
                     disabled={busy !== null}
                     onClick={() => void connect("wc")}
                 >
-                    {busy === "wc" ? "Opening…" : "WalletConnect"}
+                    {busy === "wc" ? t("create.opening") : "WalletConnect"}
                 </button>
                 <button
                     type="button"
                     className="btn btn--link"
                     onClick={onCancel}
                 >
-                    Cancel
+                    {t("common.cancel")}
                 </button>
             </div>
             {err ? (
@@ -430,15 +430,16 @@ function DonePanel({
     newId: bigint | null;
     onView: () => void;
 }) {
+    const { t } = useTranslation();
     return (
         <div className="card">
             <div className="notice notice--ok">
                 <div>
-                    Petition {newId !== null ? `#${newId.toString()}` : ""} created.
+                    {t("create.doneOk", { id: newId !== null ? `#${newId.toString()}` : "" })}
                 </div>
             </div>
             <p className="muted small" style={{ marginTop: 12 }}>
-                Transaction:{" "}
+                {t("create.doneTx")}{" "}
                 <a
                     href={`${config.blockExplorerUrl}/tx/${txHash}`}
                     target="_blank"
@@ -454,7 +455,7 @@ function DonePanel({
                 style={{ marginTop: 16 }}
                 onClick={onView}
             >
-                {newId !== null ? "View petition" : "Back to petitions"}
+                {newId !== null ? t("create.viewPoll") : t("create.backToPolls")}
             </button>
         </div>
     );

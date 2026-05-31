@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import type { AccountState } from "../lib/account.js";
 import { shortId } from "../lib/account.js";
 
@@ -10,6 +11,8 @@ interface Props {
 
 export function Masthead({ state, onSignInRequest, onChipClick }: Props) {
     const [location] = useLocation();
+    const { t, i18n } = useTranslation();
+
     const navItem = (path: string, label: string) => {
         const active =
             path === "/petitions"
@@ -26,30 +29,48 @@ export function Masthead({ state, onSignInRequest, onChipClick }: Props) {
         );
     };
 
+    const currentLang = i18n.language;
+
     return (
-        <header className="masthead">
-            <div className="masthead__inner">
-                <div className="masthead__brand">
-                    <Link href="/" className="masthead__logo">
-                        CRISP-QES
-                    </Link>
-                    <nav className="masthead__nav" aria-label="Primary">
-                        {navItem("/petitions", "Petitions")}
-                    </nav>
+        <header className="masthead--bar">
+            <Link href="/" className="brandbox">
+                <span className="brandbox__mark" aria-hidden="true" />
+                CIVIC VOICE
+            </Link>
+            <div className="topnav__right">
+                <nav className="topnav" aria-label="Primary">
+                    {navItem("/petitions", t("nav.petitions"))}
+                    {navItem("/about", t("footer.about"))}
+                </nav>
+                <div className="langseg" role="radiogroup" aria-label="Language">
+                    <button
+                        type="button"
+                        className={`langseg__opt${currentLang === "uk" ? " is-active" : ""}`}
+                        aria-checked={currentLang === "uk"}
+                        onClick={() => void i18n.changeLanguage("uk")}
+                    >
+                        UA
+                    </button>
+                    <button
+                        type="button"
+                        className={`langseg__opt${currentLang === "en" ? " is-active" : ""}`}
+                        aria-checked={currentLang === "en"}
+                        onClick={() => void i18n.changeLanguage("en")}
+                    >
+                        EN
+                    </button>
                 </div>
-                <div className="masthead__right">
-                    {state.kind === "guest" ? (
-                        <button
-                            type="button"
-                            className="btn btn--primary btn--sm"
-                            onClick={onSignInRequest}
-                        >
-                            Sign in
-                        </button>
-                    ) : (
-                        <AccountChip state={state} onClick={onChipClick} />
-                    )}
-                </div>
+                {state.kind === "guest" ? (
+                    <button
+                        type="button"
+                        className="btn btn--sm"
+                        onClick={onSignInRequest}
+                    >
+                        {t("nav.signIn")}
+                    </button>
+                ) : (
+                    <AccountChip state={state} onClick={onChipClick} />
+                )}
             </div>
         </header>
     );
@@ -66,7 +87,8 @@ function AccountChip({
         state.kind === "verified"
             ? "chip__dot chip__dot--verified"
             : "chip__dot chip__dot--account";
-    const label = state.kind === "verified" ? "Verified" : "Not verified";
+    const { t } = useTranslation();
+    const label = state.kind === "verified" ? t("nav.verified") : t("nav.notVerified");
     const id = state.commitment ?? state.credentialId;
     return (
         <button type="button" className="chip" onClick={onClick}>

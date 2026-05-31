@@ -1,25 +1,26 @@
-import { config } from "../config.js";
+import { Link } from "wouter";
+import { useTranslation } from "react-i18next";
 
 export function Footer() {
+    const { t } = useTranslation();
     return (
-        <footer className="footer">
-            <div className="footer__inner">
-                <span>CRISP-QES · v3 · {config.chain.name}</span>
-                <span className="row">
+        <footer className="footnote">
+            <div className="footnote__inner">
+                <div className="footnote__text">
+                    <span>{t("app.footnote")}</span>
+                    <br />
+                    <span>{t("app.footnote2")}</span>
+                </div>
+                <span className="footnote__links">
                     <a
-                        href="https://github.com/alik-eth/crisp-qes"
+                        href="https://github.com/alik-eth/crisp-qes/tree/main"
                         target="_blank"
                         rel="noreferrer"
                     >
-                        Source
+                        {t("footer.github")}
                     </a>
-                    <a
-                        href={`${config.blockExplorerUrl}/address/${config.petitionRegistryV2}`}
-                        target="_blank"
-                        rel="noreferrer"
-                    >
-                        Contracts
-                    </a>
+                    <Link href="/petitions">{t("footer.polls")}</Link>
+                    <Link href="/about">{t("footer.about")}</Link>
                 </span>
             </div>
         </footer>
