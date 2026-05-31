@@ -90,18 +90,21 @@ export function About() {
             {/* ── Дорожня карта ── */}
             <div className="about-section-block">
                 <span className="eyebrow">{uk ? "Дорожня карта" : "Roadmap"}</span>
-                <h2 className="about-h2">{uk ? "Найризикованіше ми вже зробили." : "The riskiest part is already done."}</h2>
                 <div className="roadmap">
                     <div className="roadmap__phase roadmap__phase--done">
                         <div className="roadmap__head">
                             <span className="micro">{uk ? "v2 · готово" : "v2 · done"}</span>
                             <span className="roadmap__status">{uk ? "Працює сьогодні" : "Works today"}</span>
                         </div>
-                        <h3 className="how-card__title">{uk ? "Анонімний голос на блокчейні" : "Anonymous vote on-chain"}</h3>
                         <ul className="roadmap__list">
-                            <li>{uk ? "Ідентифікація через КЕП → ZK-доказ → запис у відкритий реєстр" : "QES identification → ZK proof → record in open registry"}</li>
-                            <li>{uk ? "Без MetaMask, без розкриття особи" : "No MetaMask, no identity disclosure"}</li>
-                            <li>{uk ? "Перша демо-петиція підписана on-chain" : "First demo petition signed on-chain"}</li>
+                            <li>{uk ? "Ідентифікація через КЕП — розбір .p7s, перевірка ECDSA P-256 над signedAttrs, кореневий ZK-доказ (поточно на бекенді, cert→signedAttrs)" : "QES identification — .p7s parsing, ECDSA P-256 over signedAttrs verification, root ZK proof (currently on backend)"}</li>
+                            <li>{uk ? "ZK-доказ у браузері (Noir + Barretenberg UltraHonk) — Merkle-доказ + nullifier" : "ZK proof in browser (Noir + Barretenberg UltraHonk) — Merkle proof + nullifier"}</li>
+                            <li>{uk ? "OPRF (Blindswap) для захисту РНОКПП — M = HKDF(РНОКПП), операція blind, детермінований протидублікат через Sybil" : "OPRF (Blindswap) for tax ID protection — M = HKDF(RNOKPP), blind operation, deterministic anti-Sybil"}</li>
+                            <li>{uk ? "Bound-challenge enrollment — UX «РНОКПП → чекбокс + підпис у ДІ + upload»" : "Bound-challenge enrollment — UX flow"}</li>
+                            <li>{uk ? "Вікова верифікація 18+ in-circuit (DOB із SubjectDirectoryAttributes)" : "Age verification 18+ in-circuit (DOB from SubjectDirectoryAttributes)"}</li>
+                            <li>{uk ? "Смарт-контракти PetitionRegistryV2, міграція на Base Sepolia (gas ~>1000 газоміни)" : "PetitionRegistryV2 smart contracts, migration to Base Sepolia"}</li>
+                            <li>{uk ? "Walletless (relayer без криптогаманців), локалізація UK / EN" : "Walletless (relayer, no crypto wallets), UK/EN localization"}</li>
+                            <li>{uk ? "Демо: crisp-qes-web.fly.dev" : "Demo: crisp-qes-web.fly.dev"}</li>
                         </ul>
                     </div>
                     <div className="roadmap__phase">
@@ -109,10 +112,12 @@ export function About() {
                             <span className="micro">{uk ? "v3 · в роботі" : "v3 · in progress"}</span>
                             <span className="roadmap__status">{uk ? "У роботі" : "In progress"}</span>
                         </div>
-                        <h3 className="how-card__title">{uk ? "Стійкість до примусу та покращення" : "Coercion resistance & improvements"}</h3>
                         <ul className="roadmap__list">
-                            <li>{uk ? "FHE (CRISP) — зашифрований підрахунок голосів" : "FHE (CRISP) — encrypted vote tally"}</li>
-                            <li>{uk ? "Захист від примусу за схемою JCJ" : "Coercion protection via JCJ scheme"}</li>
+                            <li>{uk ? "Перехід enrollment на Longfellow — один доказ: cert → шлях до Diia CA → РНОКПП → 18+ → M → DLEQ → unblind → s" : "Enrollment transition to Longfellow — single proof: cert → path to CA → tax ID → 18+ → M → DLEQ → unblind → s"}</li>
+                            <li>{uk ? "Перевірка ланцюга сертифіката до кореня (Diia QTSP CA в системних cross-trust anchors)" : "Certificate chain verification to root (QTSP CA in system cross-trust anchors)"}</li>
+                            <li>{uk ? "P-256 OPRF in-circuit (RFC 9393: SSW) — expand_message_xmd + новий hash_to_curve + variable-base scalar-mul P + DLEQ (Chaum-Pedersen) + unblind" : "P-256 OPRF in-circuit (RFC 9393: SSW)"}</li>
+                            <li>{uk ? "FHE (CRISP / Interfold) — шифрування голосів, тільки підрахунок" : "FHE (CRISP / Interfold) — vote encryption, tally only"}</li>
+                            <li>{uk ? "Реєстр K_pub (поки OPRF) on-chain" : "K_pub registry (OPRF for now) on-chain"}</li>
                             <li>{uk ? "Допрацювання дизайну сайту" : "Site design improvements"}</li>
                             <li>{uk ? "Тестування та виправлення помилок" : "Testing and bug fixes"}</li>
                         </ul>
@@ -122,12 +127,16 @@ export function About() {
                             <span className="micro">{uk ? "Далі" : "Next"}</span>
                             <span className="roadmap__status">{uk ? "Заплановано" : "Planned"}</span>
                         </div>
-                        <h3 className="how-card__title">{uk ? "Масштаб і незалежність" : "Scale and independence"}</h3>
                         <ul className="roadmap__list">
+                            <li>{uk ? "UI / UX: фільтри по країнах, категоріях, статусу" : "UI/UX: filters by country, category, status"}</li>
+                            <li>{uk ? "КЕП інших країн EC (eIDAS) — єдина схема на кралну (pan-eIDAS, variable-length serialNumber), кожна перевірка свій trust-list" : "QES from other EU countries (eIDAS) — unified per-country scheme, each with own trust-list"}</li>
+                            <li>{uk ? "Вікова верифікація (18+) для окремих країн" : "Age verification (18+) for individual countries"}</li>
+                            <li>{uk ? "Мобільний додаток (наразі iOS — Rust-prover через uniffi, поки натівний WASM-out на Safari)" : "Mobile app (iOS — Rust-prover via uniffi, native WASM-out on Safari)"}</li>
+                            <li>{uk ? "Офлайн-голосування" : "Offline voting"}</li>
+                            <li>{uk ? "SDK для інтеграції з сторонніми сервісами" : "SDK for integration with third-party services"}</li>
                             <li>{uk ? "Аудит криптографії" : "Cryptography audit"}</li>
                             <li>{uk ? "Додатковий аналіз і можливий перехід на zkID" : "Additional analysis and possible transition to zkID"}</li>
                             <li>{uk ? "Аналіз і можлива імплементація більш user-friendly вимог до створення голосувань (альтернатива депозиту 0.001 ETH)" : "Analysis and possible implementation of more user-friendly poll creation requirements (alternative to 0.001 ETH deposit)"}</li>
-                            <li>{uk ? "Підтримка інших надавачів КЕП та європейських eIDAS-провайдерів" : "Support for other QES providers and European eIDAS providers"}</li>
                         </ul>
                     </div>
                 </div>
