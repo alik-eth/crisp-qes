@@ -25,7 +25,7 @@ try {
 } catch { /* no .env — fall back to process.env */ }
 
 const RPC = process.env.RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com";
-const REGISTRY = "0x0BF0D1BD0550028887528d5bA310F1e3019ad6DB"; // PetitionRegistryV2
+const REGISTRY = "0x19f7d9eb732e0747b252aab0402296fe6c988894"; // PetitionRegistryV2
 const DEPOSIT = 1000000000000000n; // CREATION_DEPOSIT = 0.001 ETH
 const THRESHOLD = 100;
 const DEADLINE = BigInt(Math.floor(Date.now() / 1000) + 30 * 86400); // +30 days

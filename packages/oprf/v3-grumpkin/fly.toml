@@ -14,14 +14,14 @@ primary_region = "fra"
   CHAIN_ID = "11155111"
   # Fresh clean-slate EnrollmentRegistry (genesis, leafCount 0) — the attester
   # digest pins this address, so the v3 service's genesis tree matches on-chain.
-  ENROLLMENT_REGISTRY = "0xC9b35dE202e0Bf92e38603deEC4176557eF249a4"
+  ENROLLMENT_REGISTRY = "0x33958a305EBD45Af5FC11eCaeBf5f9A90DE7Af0D"
   # Merkle store self-heals from chain: at boot (and before each append when the
   # on-chain root has moved) the store is rebuilt from the registry's
   # CommitmentInserted events and verified against enrollmentRoot(). RPC_URL
   # enables this; REGISTRY_FROM_BLOCK is a block at/just-before the registry
   # deploy (genesis, leafCount 0) so the event scan starts from the first leaf.
   RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
-  REGISTRY_FROM_BLOCK = "10946000"
+  REGISTRY_FROM_BLOCK = "10960700"
   # GRUMPKIN_OPRF_KEY (32-byte hex node secret) is REQUIRED in production and is
   # set via `flyctl secrets set GRUMPKIN_OPRF_KEY=...`, NOT here.
 
