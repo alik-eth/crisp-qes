@@ -136,8 +136,8 @@ export function CoverageGrid() {
                 onMouseLeave={() => setHover(null)}
             >
                 <defs>
-                    <pattern id="hatch-p256" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                        <line x1="0" y1="0" x2="0" y2="4" stroke="var(--ink)" strokeWidth="0.8" />
+                    <pattern id="hatch-p256" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                        <line x1="0" y1="0" x2="0" y2="5" stroke="var(--ink)" strokeWidth="0.4" opacity="0.35" />
                     </pattern>
                 </defs>
                 {features.map(({ feature: f, cc }) => {
@@ -156,35 +156,27 @@ export function CoverageGrid() {
                             <path
                                 d={d}
                                 fill={isLive ? "var(--ink)" : hasP256 ? "url(#hatch-p256)" : "var(--line)"}
-                                stroke="var(--bg)"
-                                strokeWidth={1}
+                                stroke="var(--line)"
+                                strokeWidth={0.5}
                             />
                             {Number.isFinite(c[0]) && (
-                                <>
-                                    <rect
-                                        x={c[0] - 8}
-                                        y={c[1] - 5}
-                                        width={16}
-                                        height={10}
-                                        fill={isLive ? "var(--ink)" : "var(--bg)"}
-                                        opacity={isLive ? 0 : 0.85}
-                                        style={{ pointerEvents: "none" }}
-                                    />
-                                    <text
-                                        x={c[0]}
-                                        y={c[1]}
-                                        textAnchor="middle"
-                                        dominantBaseline="central"
-                                        fontFamily="var(--mono)"
-                                        fontSize="5.6"
-                                        fontWeight="700"
-                                        letterSpacing="0.04em"
-                                        fill={isLive ? "#fff" : "var(--ink)"}
-                                        style={{ pointerEvents: "none" }}
-                                    >
-                                        {cc}
-                                    </text>
-                                </>
+                                <text
+                                    x={c[0]}
+                                    y={c[1]}
+                                    textAnchor="middle"
+                                    dominantBaseline="central"
+                                    fontFamily="var(--mono)"
+                                    fontSize="5.6"
+                                    fontWeight="700"
+                                    letterSpacing="0.04em"
+                                    fill={isLive ? "#fff" : "var(--ink)"}
+                                    stroke={isLive ? "none" : "var(--bg)"}
+                                    strokeWidth={isLive ? 0 : 2}
+                                    paintOrder="stroke"
+                                    style={{ pointerEvents: "none" }}
+                                >
+                                    {cc}
+                                </text>
                             )}
                         </g>
                     );
