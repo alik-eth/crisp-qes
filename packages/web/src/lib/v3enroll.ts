@@ -3,7 +3,7 @@
 // Runs entirely in the browser:
 //   1. build a SYNTHETIC Diia-style P-256 cert + enroll_commit_v2 witness
 //      (mirrors gen-enroll-commit-v2-witness.mjs);
-//   2. prove enroll_commit_v2 (~118k gates) in a Web Worker -> public M;
+//   2. prove enroll_commit_v2 (~457k gates) in a Web Worker -> public M;
 //   3. POST { M, proof, publicInputs } to the LIVE Grumpkin OPRF service
 //      -> { Y, dleq:{c,z}, Kpub };
 //   4. build the oprf_nullifier witness (unblind + DLEQ) and prove it;
@@ -347,19 +347,19 @@ export async function runEnrollment(
         ms: performance.now() - t,
     });
 
-    // 2. Prove enroll_commit_v2 (~118k gates).
+    // 2. Prove enroll_commit_v2 (~457k gates).
     t = performance.now();
-    onStage({ key: "enrollProve", label: "Prove enroll_commit_v2 (~118k gates)", status: "running" });
+    onStage({ key: "enrollProve", label: "Prove enroll_commit_v2 (~457k gates)", status: "running" });
     let enroll: ProveResult;
     try {
         enroll = await runProof("enroll", enrollWitness, ENROLL_CIRCUIT_URL, () => {});
     } catch (err) {
-        onStage({ key: "enrollProve", label: "Prove enroll_commit_v2 (~118k gates)", status: "error", detail: String(err) });
+        onStage({ key: "enrollProve", label: "Prove enroll_commit_v2 (~457k gates)", status: "error", detail: String(err) });
         throw err;
     }
     onStage({
         key: "enrollProve",
-        label: "Prove enroll_commit_v2 (~118k gates)",
+        label: "Prove enroll_commit_v2 (~457k gates)",
         status: "done",
         ms: performance.now() - t,
     });
@@ -606,19 +606,19 @@ export async function runRealEnrollment(
         ms: performance.now() - t,
     });
 
-    // 2. Prove enroll_commit_v2 (~118k gates).
+    // 2. Prove enroll_commit_v2 (~457k gates).
     t = performance.now();
-    stage("enrollProve", "Prove enroll_commit_v2 (~118k gates)", "running");
+    stage("enrollProve", "Prove enroll_commit_v2 (~457k gates)", "running");
     let enroll: ProveResult;
     try {
         enroll = await runProof("enroll", enrollWitness, ENROLL_CIRCUIT_URL, () => {});
     } catch (err) {
-        stage("enrollProve", "Prove enroll_commit_v2 (~118k gates)", "error", {
+        stage("enrollProve", "Prove enroll_commit_v2 (~457k gates)", "error", {
             detail: String(err),
         });
         throw err;
     }
-    stage("enrollProve", "Prove enroll_commit_v2 (~118k gates)", "done", {
+    stage("enrollProve", "Prove enroll_commit_v2 (~457k gates)", "done", {
         ms: performance.now() - t,
     });
 

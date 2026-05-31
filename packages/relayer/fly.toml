@@ -13,6 +13,8 @@ primary_region = "fra"
   ENROLLMENT_REGISTRY = "0x64f40F22033E0AdB0c1183c42135e5C29266b817"
   BLOCK_EXPLORER_BASE = "https://sepolia.basescan.org/tx/"
   RATE_LIMIT_WINDOW_MS = "10000"
+  # Frontend renamed crisp-qes-web -> civicvoice; allow both origins for /v2/* CORS.
+  CORS_ALLOWED_ORIGINS = "https://civicvoice.fly.dev,https://crisp-qes-web.fly.dev"
 
 [http_service]
   internal_port = 8789
