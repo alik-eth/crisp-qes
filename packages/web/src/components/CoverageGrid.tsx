@@ -20,6 +20,16 @@ const SUPPORTED = new Set(Object.values(NUMERIC_TO_ALPHA2));
 const LIVE = new Set(["UA"]);
 const QTSP_BY_CODE = new Map(QTSP_DATA.map((d) => [d.code, d]));
 
+// Manual label offsets for countries where centroid falls badly
+const LABEL_OFFSET: Record<string, [number, number]> = {
+    NO: [-12, 20],
+    SE: [-4, 12],
+    FI: [4, 8],
+    IT: [-6, -10],
+    GR: [-2, -6],
+    FR: [0, 4],
+};
+
 function normaliseId(id: string | number | undefined): string {
     if (id === undefined) return "";
     const s = String(id);
@@ -161,17 +171,17 @@ export function CoverageGrid() {
                             />
                             {Number.isFinite(c[0]) && (
                                 <text
-                                    x={c[0]}
-                                    y={c[1]}
+                                    x={c[0] + (LABEL_OFFSET[cc]?.[0] ?? 0)}
+                                    y={c[1] + (LABEL_OFFSET[cc]?.[1] ?? 0)}
                                     textAnchor="middle"
                                     dominantBaseline="central"
                                     fontFamily="var(--mono)"
-                                    fontSize="5.6"
+                                    fontSize="6"
                                     fontWeight="700"
                                     letterSpacing="0.04em"
                                     fill={isLive ? "#fff" : "var(--ink)"}
                                     stroke={isLive ? "none" : "var(--bg)"}
-                                    strokeWidth={isLive ? 0 : 2}
+                                    strokeWidth={isLive ? 0 : 2.5}
                                     paintOrder="stroke"
                                     style={{ pointerEvents: "none" }}
                                 >
