@@ -1,10 +1,8 @@
 import { useState, useCallback, useEffect } from "react";
 import type { PetitionView } from "../lib/registry.js";
-import {
-    readEnrollmentRoot,
-    readHasNullifier,
-} from "../lib/registry.js";
+import { readHasNullifier } from "../lib/registry.js";
 import { pedersenNullifier } from "../lib/pedersen.js";
+import { v3RecoverPath } from "../lib/v3enroll.js";
 import {
     submitSignature,
     submitRevoke,
@@ -148,10 +146,15 @@ export function SignBlock({ petition, onSigned }: Props) {
             const u = await unlockVault();
 
             setStage("preparing");
-            setStageLine("Deriving nullifier and reading the chain root…");
-            const [nul, root] = await Promise.all([
+            setStageLine("Deriving nullifier and syncing the chain root…");
+            // The enrollment tree is append-only, so a path stored at
+            // enrollment time goes stale the moment anyone else enrolls.
+            // Always fetch a fresh path + root from the chain-synced OPRF
+            // service right before proving. The vault's enrollmentSecret
+            // IS the on-chain leaf (pedersen(N) commitment).
+            const [nul, fresh] = await Promise.all([
                 pedersenNullifier(u.enrollmentSecret, petition.id),
-                readEnrollmentRoot(),
+                v3RecoverPath(u.enrollmentSecret),
             ]);
 
             // Last-chance pre-flight: avoid a guaranteed revert if a
@@ -169,21 +172,48 @@ export function SignBlock({ petition, onSigned }: Props) {
             );
             const proveOut = await generateProof(
                 u.enrollmentSecret,
-                u.merklePath,
-                u.merklePathIndices,
+                fresh.merklePath,
+                fresh.merklePathIndices,
                 nul,
-                root,
+                fresh.root,
             );
 
             setStage("submitting");
             setStageLine("Submitting via the relayer…");
             const proofHex = bytesToHex(proveOut.proofBytes);
-            const res = await submitSignature({
+            let res = await submitSignature({
                 petitionId: petition.id,
                 nullifier: nul,
                 proof: proofHex,
                 publicInputs: proveOut.publicInputs as `0x${string}`[],
             });
+            // The tree may have grown between our path fetch and the
+            // relayer's mine. Re-sync the path, re-prove, and resubmit
+            // once before giving up.
+            if (!res.ok && res.code === "StaleEnrollmentRoot") {
+                setStage("preparing");
+                setStageLine("Root moved — re-syncing and re-proving…");
+                const fresh2 = await v3RecoverPath(u.enrollmentSecret);
+                setStage("proving");
+                setStageLine(
+                    "Generating UltraHonk proof in this browser (5–30 seconds)…",
+                );
+                const proveOut2 = await generateProof(
+                    u.enrollmentSecret,
+                    fresh2.merklePath,
+                    fresh2.merklePathIndices,
+                    nul,
+                    fresh2.root,
+                );
+                setStage("submitting");
+                setStageLine("Submitting via the relayer…");
+                res = await submitSignature({
+                    petitionId: petition.id,
+                    nullifier: nul,
+                    proof: bytesToHex(proveOut2.proofBytes),
+                    publicInputs: proveOut2.publicInputs as `0x${string}`[],
+                });
+            }
             if (!res.ok) {
                 throw new Error(`${res.code}${res.detail ? ": " + res.detail : ""}`);
             }
@@ -208,10 +238,12 @@ export function SignBlock({ petition, onSigned }: Props) {
             const u = await unlockVault();
 
             setStage("preparing");
-            setStageLine("Deriving nullifier and reading the chain root…");
-            const [nul, root] = await Promise.all([
+            setStageLine("Deriving nullifier and syncing the chain root…");
+            // Same append-only staleness applies to revoke: fetch a
+            // fresh path + root from the chain-synced OPRF service.
+            const [nul, fresh] = await Promise.all([
                 pedersenNullifier(u.enrollmentSecret, petition.id),
-                readEnrollmentRoot(),
+                v3RecoverPath(u.enrollmentSecret),
             ]);
 
             setStage("proving");
@@ -220,21 +252,46 @@ export function SignBlock({ petition, onSigned }: Props) {
             );
             const proveOut = await generateProof(
                 u.enrollmentSecret,
-                u.merklePath,
-                u.merklePathIndices,
+                fresh.merklePath,
+                fresh.merklePathIndices,
                 nul,
-                root,
+                fresh.root,
             );
 
             setStage("submitting");
             setStageLine("Submitting revoke via the relayer…");
             const proofHex = bytesToHex(proveOut.proofBytes);
-            const res = await submitRevoke({
+            let res = await submitRevoke({
                 petitionId: petition.id,
                 nullifier: nul,
                 proof: proofHex,
                 publicInputs: proveOut.publicInputs as `0x${string}`[],
             });
+            // Re-sync + re-prove once if the tree grew under us.
+            if (!res.ok && res.code === "StaleEnrollmentRoot") {
+                setStage("preparing");
+                setStageLine("Root moved — re-syncing and re-proving…");
+                const fresh2 = await v3RecoverPath(u.enrollmentSecret);
+                setStage("proving");
+                setStageLine(
+                    "Generating UltraHonk proof in this browser (5–30 seconds)…",
+                );
+                const proveOut2 = await generateProof(
+                    u.enrollmentSecret,
+                    fresh2.merklePath,
+                    fresh2.merklePathIndices,
+                    nul,
+                    fresh2.root,
+                );
+                setStage("submitting");
+                setStageLine("Submitting revoke via the relayer…");
+                res = await submitRevoke({
+                    petitionId: petition.id,
+                    nullifier: nul,
+                    proof: bytesToHex(proveOut2.proofBytes),
+                    publicInputs: proveOut2.publicInputs as `0x${string}`[],
+                });
+            }
             if (!res.ok) {
                 if (res.code === "NullifierNotUsed") {
                     // Defensive: only reachable if state drifted under
