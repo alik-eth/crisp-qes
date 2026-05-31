@@ -34,10 +34,18 @@ Everything downstream is unchanged: RNOKPP → `H2C` → `M = r·H2C`, the bound
 | Proving stack | **Unchanged** — Noir/UltraHonk, deployed service/web/chain | This is the whole point of the pivot: reuse the working, all-platform system. |
 | Test CA | **Synthetic test CA** for dev fixtures; real Diia keys pinned but exercised only by the user's real `.p7s` (out-of-band, PII) | Can't sign a synthetic cert with the real Diia key. Same pattern the longfellow build used. |
 
-## 4. Cost & risk
+## 4. Cost & risk — SPIKE MEASURED (2026-05-31)
 
-- **Circuit size:** +1 ECDSA-P256 (~the existing leaf-ECDSA cost) + `sha256_var(~1203 B ≈ 19 blocks)` + extraction. Estimate ~2¹⁹→~2²⁰ gates.
-- **iOS prove memory (the risk):** the deployed 2¹⁹ circuit fits the iOS 832 MiB cap; ~2²⁰ may approach/exceed it. The spike measures the real bb.js peak. Fallbacks if it overflows iOS: keep iOS on the lighter (non-chain) circuit as a documented degradation, or the same "native app later" path. Desktop/Android are not at risk.
+**Gate-count spike result (Task 1):** added the 2nd ECDSA + `sha256_var(leaf_tbs[1536])` to a throwaway copy and measured via `bb gates`:
+
+| | gates (`circuit_size`) | ACIR opcodes | UltraHonk domain |
+|---|---|---|---|
+| Deployed (iOS-capable today) | 276,910 | 18,890 | 2¹⁹ = 524,288 |
+| **+ Diia chain check** | **459,519** | 28,011 | **2¹⁹ = 524,288 (unchanged)** |
+
+The chain check adds ~183k gates (1.66×) **but stays inside the same 2¹⁹ proving domain.** UltraHonk pads to the next power of two and prover memory is dominated by the padded domain size — so the **prover-memory class is essentially unchanged from the deployed iOS-capable circuit.** The feared ~2²⁰ jump does **not** happen: 459,519 < 524,288. So **iOS is very likely preserved** (no domain increase), and **desktop/Android are not at risk**. This is a strong contrast to the parked longfellow path (2.81 GiB, loses iOS).
+
+**Remaining confirmation:** the definitive bb.js peak-RSS on a real iOS device (Task 4 Step 3) — but the structural signal (same 2¹⁹ domain) is strong. If a future tighter `LEAF_TBS_LEN` is wanted, the real Diia leaf TBS is ~1203 B (20 blocks); the spike used 1536 (24-block headroom) and still fit 2¹⁹.
 - **No new proving system, service rewrite, or web rewrite** — the witness builder gains `leaf_tbs`/`leaf_cert_sig`/`ca_pubkey`/offsets (from `@crisp-qes/sdk` `parseP7s`, which already exposes `leafTbsBytes`, `leafPubkeyOffset`, `subjectSerialOffset`).
 
 ## 5. Components touched
