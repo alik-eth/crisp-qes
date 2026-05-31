@@ -69,7 +69,7 @@ const messageDigest = sha256(challenge); // 32 bytes
 // The circuit only checks the OCTET STRING at msg_digest_off + the ECDSA over
 // sha256_var(signed_attrs, len). msgDigestOff points at the 0x04 tag.
 const SA_USED = 8 + 2 + 32 + 8; // 50 bytes used
-const SA_LEN = 512;             // must equal the circuit global
+const SA_LEN = 2048;             // must equal the circuit global
 const signedAttrs = new Uint8Array(SA_LEN);
 for (let i = 0; i < 8; i++) signedAttrs[i] = (i * 13 + 1) & 0xff;
 const msgDigestOff = 8;

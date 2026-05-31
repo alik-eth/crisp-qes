@@ -53,7 +53,7 @@ global CERT_LEN: u32 = 2048;
 // Bound on the CMS signedAttrs blob the ECDSA signature actually covers
 // (real Diia signedAttrs ~100-300 B). Hashed in-circuit with sha256_var so
 // only `signed_attrs_len` bytes are digested (padding bytes are ignored).
-global SA_LEN: u32 = 512;
+global SA_LEN: u32 = 2048;
 
 global ZETA: Field = 5;
 global BCURVE: Field = -17;

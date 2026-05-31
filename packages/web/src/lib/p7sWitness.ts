@@ -73,7 +73,7 @@ import {
 export const CERT_LEN = 2048;
 
 // Must equal the circuit global SA_LEN in enroll_commit_v2/src/main.nr.
-export const SA_LEN = 512;
+export const SA_LEN = 2048;
 
 // OID 2.5.4.5 (subject serialNumber): 06 03 55 04 05.
 const RNOKPP_OID = new Uint8Array([0x06, 0x03, 0x55, 0x04, 0x05]);
