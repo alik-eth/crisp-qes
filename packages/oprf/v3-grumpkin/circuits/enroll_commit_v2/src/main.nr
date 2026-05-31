@@ -173,6 +173,10 @@ fn main(
     // The value is DER OCTET STRING `04 20 <32 bytes>` at msg_digest_off.
     assert(signed_attrs[msg_digest_off] == 0x04);
     assert(signed_attrs[msg_digest_off + 1] == 0x20);
+    // The 34-byte messageDigest TLV (04 20 || 32B) MUST lie inside the SIGNED
+    // region [0, signed_attrs_len); otherwise a prover could read the digest
+    // from unsigned padding and emit a value the signature never covered.
+    assert(msg_digest_off + 34 <= signed_attrs_len);
     let mut digest_hi: Field = 0; // bytes [0..16]
     let mut digest_lo: Field = 0; // bytes [16..32]
     for k in 0..16 {
