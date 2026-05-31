@@ -1,18 +1,18 @@
 # crisp-qes
 
-Privacy-preserving citizen-initiative petitions, backed by Ukrainian Diia QES
-signatures, anchored on Ethereum. Walletless for signers, on-chain auditable
-count, cross-petition-unlinkable nullifiers.
+Privacy-preserving citizen-initiative petitions, backed by QES (qualified
+electronic signatures), anchored on Ethereum. Walletless for signers, on-chain
+auditable count, cross-petition-unlinkable nullifiers.
 
 **v3 (operator-blind enrollment) is the live system.** Enrollment is now
-**operator-blind**: the OPRF service never sees your RNOKPP (tax ID) — only a
+**operator-blind**: the OPRF service never sees your tax ID — only a
 blinded curve point, gated by an in-browser zero-knowledge proof of a valid,
-age≥18 Diia certificate. The citizen signs a session-bound **challenge** in Diia,
+age≥18 QES certificate. The citizen signs a session-bound **challenge** using QES,
 and that signature is bound to the enrollment *inside the ZK proof*. Signing
 petitions then takes ~2 s via a separate Noir circuit.
 
 > **EXPERIMENTAL / UNAUDITED.** The v3 operator-blind path (Grumpkin VOPRF +
-> in-circuit Diia cert verification) has not had an external security audit. An
+> in-circuit QES cert verification) has not had an external security audit. An
 > adversarial self-audit found and fixed a real forgery bug; an external audit is
 > mandatory before any real-world use.
 
@@ -26,7 +26,7 @@ Original MVP design:
 ## Repo layout
 
 - `packages/oprf/v3-grumpkin/` — **v3 operator-blind enrollment**: standalone
-  Grumpkin VOPRF service + Noir circuits (`enroll_commit_v2` proves Diia-cert →
+  Grumpkin VOPRF service + Noir circuits (`enroll_commit_v2` proves QES cert →
   age≥18 → blinded element + signed-challenge binding, ~2^19 gates; `oprf_nullifier`
   binds the commitment to the cert via in-circuit DLEQ). In-process bb.js proof
   gating (no `bb` CLI). Merkle store self-heals from on-chain `CommitmentInserted`.
@@ -53,18 +53,18 @@ pnpm contracts:build
 
 ## How v3 enrollment works (operator-blind)
 
-1. Enter RNOKPP → the browser computes a blinded Grumpkin point `M = r·H2C(RNOKPP)`
+1. Enter tax ID → the browser computes a blinded Grumpkin point `M = r·H2C(taxID)`
    and downloads a session **challenge** `{intent, epoch, blindedInput: M}`.
-2. Sign that challenge in **Diia (QES)** → `.p7s`.
-3. The browser proves `enroll_commit_v2` entirely on-device: a valid Diia leaf
-   ECDSA over `signedAttrs` (hashed in-circuit), RNOKPP + age≥18 extracted from
-   the cert, `M` derived from that RNOKPP, and the signed `messageDigest` bound
+2. Sign that challenge using **QES** → `.p7s`.
+3. The browser proves `enroll_commit_v2` entirely on-device: a valid QES leaf
+   ECDSA over `signedAttrs` (hashed in-circuit), tax ID + age≥18 extracted from
+   the cert, `M` derived from that tax ID, and the signed `messageDigest` bound
    to `sha256(challenge)`. Only `M` + the proof leave the device.
 4. The OPRF service verifies the proof, evaluates `Y = k·M`, and (with a second
    `oprf_nullifier` proof) appends `commitment = pedersen(N)` to the enrollment
-   tree and signs the on-chain `updateRoot`. It never sees the cert or RNOKPP.
+   tree and signs the on-chain `updateRoot`. It never sees the cert or the tax ID.
 
-Because `commitment` is deterministic per RNOKPP, re-enrolling the same identity
+Because the `commitment` is deterministic per tax ID, re-enrolling the same identity
 is treated as **recovery** (re-wrap the vault on a new device; no new leaf).
 
 ## Performance (sign circuit)
@@ -87,7 +87,7 @@ it runs fine on desktop (Chrome, Safari) and on mobile Safari via a single-threa
 
 ## Live demo
 
-Enrol once via the operator-blind v3 flow, then sign petitions in ~2 s.
+Enrol once via the operator-blind v3 flow, then vote on petitions in ~2 s.
 
 | Layer                  | Component                     | URL                                                                        |
 | ---------------------- | ----------------------------- | -------------------------------------------------------------------------- |
