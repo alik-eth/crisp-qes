@@ -6,7 +6,11 @@ export function Footer() {
     return (
         <footer className="footnote">
             <div className="footnote__inner">
-                <span>{t("app.footnote")}</span>
+                <div className="footnote__text">
+                    <span>{t("app.footnote")}</span>
+                    <br />
+                    <span>{t("app.footnote2")}</span>
+                </div>
                 <span className="footnote__links">
                     <a
                         href="https://github.com/alik-eth/crisp-qes/tree/main"

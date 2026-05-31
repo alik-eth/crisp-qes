@@ -8,7 +8,8 @@
         "name": "Civic Voice",
         "tagline": "Enroll once, sign in seconds. No re-issuing your QES on every click, no individual tax number on-chain.",
         "issue": "v2.1 prototype",
-        "footnote": "Open service. Not an official Diia service. Site is running in Demo mode."
+        "footnote": "Open service.",
+        "footnote2": "Site is running in demo mode and only for citizens of Ukraine."
     },
     "nav": {
         "petitions": "Polls",
@@ -43,7 +44,7 @@
         "step4n": "04",
         "step4title": "Poll closes",
         "step4body": "When the vote count reaches the threshold, the poll closes. Results carry no legal consequences and only reflect the opinion of the verified community on a given issue.",
-        "transparencyLabel": "Transparency · What's visible",
+        "transparencyLabel": "What's visible and what's private",
         "transparencyTitle": "What data goes to the registry",
         "registryCol": "Recorded in the registry",
         "registryItems": ["Poll text", "Voting end date", "Vote threshold", "Anonymous identifier of each vote", "Total vote count"],
@@ -403,12 +404,12 @@
     },
     "about": {
         "heading": "About the project",
-        "disclaimer": "Open voting service. Not an official Diia service. Results have no legal consequences and serve as a tool for expressing public opinion.",
+        "disclaimer": "Open voting service. Results have no legal consequences and serve as a tool for expressing public opinion.",
         "availability": "The platform is available to all citizens who have a qualified electronic signature (QES/KEP) — citizens of Ukraine and 27 European Union countries under the eIDAS regulation.",
         "body": "Civic Voice was created so that every citizen can freely express their position — anonymously, privately, and with a guarantee that their vote will be counted fairly. We combine state identification (QES) with zero-knowledge cryptography so that nobody — neither the organizer, nor the platform, nor any third party — can find out who voted and how. Results are available to everyone in a public distributed registry (blockchain), where they cannot be changed, deleted, or falsified. The project's code is open — anyone can verify that the system works exactly as stated.",
         "techIntro": "Civic Voice is the first solution that combines state electronic identification (QES) with zero-knowledge proofs and homomorphic encryption for conducting civic polls. For the first time, a citizen can confirm their uniqueness via their tax ID (IPN) without revealing it to anyone — not the platform, not the blockchain, not even Diia. One person — one vote, mathematically guaranteed, with no way to find out who voted and how.",
         "techStack": "Noir (ZK proofs) · VOPRF (RFC 9497) · Solidity/Foundry (Ethereum) · CRISP/FHE (encrypted tally) · QES integration",
-        "transparencyLabel": "Transparency · What's visible",
+        "transparencyLabel": "What's visible and what's private",
         "transparencyTitle": "What data goes to the registry",
         "registryCol": "Recorded in the registry",
         "registryItems": ["Poll text", "Voting end date", "Vote threshold", "Anonymous identifier of each vote", "Total vote count"],
