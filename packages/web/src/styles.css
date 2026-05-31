@@ -767,7 +767,10 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 .sol-inner { border: 1px solid var(--line); border-top: 0; padding: 28px; font-size: 14px; line-height: 1.6; color: var(--ink-2, #1f1f1f); }
 .sol-inner p { margin: 12px 0 0; }
 .sol-inner p:first-of-type { margin-top: 16px; }
-.sol-stack { font-size: 12px; letter-spacing: 0.04em; color: var(--muted-2); }
+.sol-stack { font-size: 12px; letter-spacing: 0.04em; color: var(--muted-2); margin: 0; }
+.sol-stack-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.sol-stack-label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: var(--muted); display: block; margin-bottom: 6px; }
+@media (max-width: 640px) { .sol-stack-grid { grid-template-columns: 1fr; } }
 
 /* comparison table */
 .cmp-table { width: 100%; border-collapse: collapse; margin-top: 24px; border: 1px solid var(--line); font-size: 14px; }

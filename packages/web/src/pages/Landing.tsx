@@ -159,7 +159,16 @@ export function Landing({ state, onSignIn }: Props) {
                     </div>
                     <div style={{ marginTop: 20 }}>
                         <span className="micro" style={{ marginBottom: 6, display: "block" }}>{i18n.language === "uk" ? "Наш стек" : "Our stack"}</span>
-                        <p className="sol-stack mono">VOPRF (RFC 9497) · OPRF · Noir · Barretenberg · CRISP · FHE (BFV) · Solidity · Ethereum Sepolia</p>
+                        <div className="sol-stack-grid">
+                            <div>
+                                <span className="sol-stack-label">{i18n.language === "uk" ? "Авторизація" : "Authorization"}</span>
+                                <p className="sol-stack mono">КЕП (eIDAS) · CAdES-BES .p7s · ECDSA P-256 · Longfellow (ZK, Sumcheck+Ligero, WASM)</p>
+                            </div>
+                            <div>
+                                <span className="sol-stack-label">{i18n.language === "uk" ? "Голосування" : "Voting"}</span>
+                                <p className="sol-stack mono">Interfold (CRISP) · FHE · Noirlang (Aztec) · Barretenberg UltraHonk · Solidity</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div className="mech-grid-3" style={{ marginTop: 56 }}>
