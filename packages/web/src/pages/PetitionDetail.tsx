@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "wouter";
+import { useTranslation } from "react-i18next";
 import type { AccountState } from "../lib/account.js";
 import { readPetition, type PetitionView } from "../lib/registry.js";
 import { SignBlock } from "../components/SignBlock.js";
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function PetitionDetail({ id, state, onSignIn }: Props) {
+    const { t } = useTranslation();
     const [petition, setPetition] = useState<PetitionView | null>(null);
     const [err, setErr] = useState<string | null>(null);
 
@@ -20,11 +22,11 @@ export function PetitionDetail({ id, state, onSignIn }: Props) {
             const idBig = BigInt(id);
             const p = await readPetition(idBig);
             if (p) setPetition(p);
-            else setErr("Petition not found.");
+            else setErr(t("detail.notFound"));
         } catch (e) {
             setErr(e instanceof Error ? e.message : "load failed");
         }
-    }, [id]);
+    }, [id, t]);
 
     useEffect(() => {
         let alive = true;
@@ -34,7 +36,7 @@ export function PetitionDetail({ id, state, onSignIn }: Props) {
                 const p = await readPetition(idBig);
                 if (!alive) return;
                 if (p) setPetition(p);
-                else setErr("Petition not found.");
+                else setErr(t("detail.notFound"));
             } catch (e) {
                 if (alive)
                     setErr(e instanceof Error ? e.message : "load failed");
@@ -43,7 +45,7 @@ export function PetitionDetail({ id, state, onSignIn }: Props) {
         return () => {
             alive = false;
         };
-    }, [id]);
+    }, [id, t]);
 
     if (err) {
         return (
@@ -51,7 +53,7 @@ export function PetitionDetail({ id, state, onSignIn }: Props) {
                 <p className="muted">{err}</p>
                 <p style={{ marginTop: 16 }}>
                     <Link href="/petitions" className="btn btn--ghost btn--sm">
-                        Back to petitions
+                        {t("detail.backBtn")}
                     </Link>
                 </p>
             </section>
@@ -60,37 +62,37 @@ export function PetitionDetail({ id, state, onSignIn }: Props) {
     if (!petition) {
         return (
             <section className="section">
-                <p className="muted">Loading…</p>
+                <p className="muted">{t("detail.loading")}</p>
             </section>
         );
     }
 
     const lines = petition.fullText.split(/\r?\n/);
-    const title = lines[0] || `Petition #${petition.id.toString()}`;
+    const title = lines[0] || `#${petition.id.toString()}`;
     const body = lines.slice(1).join("\n").trim();
 
     return (
         <section className="detail">
             <div className="detail__crumbs">
-                <Link href="/petitions">← All petitions</Link>
+                <Link href="/petitions">{t("detail.back")}</Link>
             </div>
 
             <h1 className="detail__title">{title}</h1>
 
             <dl className="detail__facts">
-                <Fact label="Status" value={petition.status} />
+                <Fact label={t("detail.status")} value={t(`list.status.${petition.status}`)} />
                 <Fact
-                    label="Deadline"
+                    label={t("detail.deadline")}
                     value={new Date(
                         Number(petition.deadline) * 1000,
                     ).toLocaleString()}
                 />
-                <Fact label="Threshold" value={petition.threshold.toLocaleString()} />
+                <Fact label={t("detail.threshold")} value={petition.threshold.toLocaleString()} />
                 <Fact
-                    label="Signatures"
+                    label={t("detail.signatures")}
                     value={petition.signatureCount.toLocaleString()}
                 />
-                <Fact label="Creator" value={shortAddr(petition.creator)} mono />
+                <Fact label={t("detail.creator")} value={shortAddr(petition.creator)} mono />
             </dl>
 
             {body ? (
@@ -141,10 +143,11 @@ function SignCta({
     onSignIn: () => void;
     onSigned: (txHash: `0x${string}`) => void;
 }) {
+    const { t } = useTranslation();
     if (petition.status !== "Open") {
         return (
             <div className="detail__cta">
-                <p className="muted">This petition is closed.</p>
+                <p className="muted">{t("detail.closed")}</p>
             </div>
         );
     }
@@ -156,7 +159,7 @@ function SignCta({
                     className="btn btn--primary"
                     onClick={onSignIn}
                 >
-                    Sign in to support
+                    {t("detail.signIn")}
                 </button>
             </div>
         );
@@ -165,7 +168,7 @@ function SignCta({
         return (
             <div className="detail__cta">
                 <Link href="/verify" className="btn btn--primary">
-                    Verify with QES to sign
+                    {t("detail.verify")}
                 </Link>
             </div>
         );
