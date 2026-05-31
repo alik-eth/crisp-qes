@@ -567,6 +567,56 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
     padding: 16px;
     background: var(--paper-2);
 }
+.coverage-tooltip {
+    min-width: 220px;
+    max-width: 250px;
+    padding: 12px 14px;
+    background: var(--bg);
+    border: 1px solid var(--ink);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+    pointer-events: none;
+    z-index: 100;
+    line-height: 1.45;
+}
+.coverage-tooltip__head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 6px;
+    border-bottom: 1px dashed var(--line);
+    padding-bottom: 6px;
+}
+.coverage-tooltip__cc {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--ink);
+}
+.coverage-tooltip__name {
+    font-size: 13px;
+    font-weight: 600;
+}
+.coverage-tooltip__status {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+.coverage-tooltip__grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    row-gap: 3px;
+    column-gap: 12px;
+    font-size: 11.5px;
+}
+.coverage-tooltip__label {
+    color: var(--muted);
+}
+.coverage-tooltip__val {
+    text-align: right;
+    font-weight: 600;
+}
 
 /* ─── footnote (footer) ─── */
 .footnote {

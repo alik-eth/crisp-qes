@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { geoConicEqualArea, geoPath } from "d3-geo";
 import { feature } from "topojson-client";
 import type { Topology, GeometryCollection } from "topojson-specification";
 import type { Feature, MultiPolygon, Polygon } from "geojson";
 import worldTopo from "world-atlas/countries-110m.json";
+import { QTSP_SUMMARY } from "../generated/qtsp-summary.js";
 
 const NUMERIC_TO_ALPHA2: Record<string, string> = {
     "040": "AT", "056": "BE", "100": "BG", "196": "CY", "203": "CZ",
@@ -18,15 +19,43 @@ const NUMERIC_TO_ALPHA2: Record<string, string> = {
 const SUPPORTED = new Set(Object.values(NUMERIC_TO_ALPHA2));
 const LIVE = new Set(["UA"]);
 
+const COUNTRY_NAMES: Record<string, string> = {
+    AT: "Austria", BE: "Belgium", BG: "Bulgaria", CY: "Cyprus", CZ: "Czechia",
+    DE: "Germany", DK: "Denmark", EE: "Estonia", GR: "Greece", ES: "Spain",
+    FI: "Finland", FR: "France", HR: "Croatia", HU: "Hungary", IE: "Ireland",
+    IS: "Iceland", IT: "Italy", LI: "Liechtenstein", LT: "Lithuania",
+    LU: "Luxembourg", LV: "Latvia", MT: "Malta", NL: "Netherlands", NO: "Norway",
+    PL: "Poland", PT: "Portugal", RO: "Romania", SE: "Sweden", SI: "Slovenia",
+    SK: "Slovakia", UA: "Ukraine",
+};
+
+interface CountryAgg {
+    total: number;
+    p256: number;
+    rsa: number;
+    services: number;
+}
+
+function buildAggregates(): Map<string, CountryAgg> {
+    const map = new Map<string, CountryAgg>();
+    for (const q of QTSP_SUMMARY) {
+        const prev = map.get(q.country) ?? { total: 0, p256: 0, rsa: 0, services: 0 };
+        prev.total += 1;
+        prev.services += q.serviceCount;
+        if (q.p256) prev.p256 += 1;
+        if (q.keyAlgs.includes("RSA")) prev.rsa += 1;
+        map.set(q.country, prev);
+    }
+    return map;
+}
+
 function normaliseId(id: string | number | undefined): string {
     if (id === undefined) return "";
     const s = String(id);
     return s.length < 3 ? s.padStart(3, "0") : s;
 }
 
-// Clip France to mainland (exclude overseas territories)
 const FR_BBOX: [number, number, number, number] = [-5.5, 41, 10, 51.5];
-// Clip Norway to mainland (exclude Svalbard)
 const NO_BBOX: [number, number, number, number] = [3, 57, 32, 72];
 
 function clipToBbox(
@@ -35,11 +64,11 @@ function clipToBbox(
 ): Polygon | MultiPolygon {
     if (geom.type === "Polygon") {
         const c = centroid(geom.coordinates[0] ?? []);
-        return inBbox(c, bbox) ? geom : { ...geom, coordinates: [] };
+        return inBox(c, bbox) ? geom : { ...geom, coordinates: [] };
     }
     const kept = geom.coordinates.filter((poly: number[][][]) => {
         const c = centroid(poly[0] ?? []);
-        return inBbox(c, bbox);
+        return inBox(c, bbox);
     });
     return { ...geom, coordinates: kept };
 }
@@ -53,11 +82,10 @@ function centroid(ring: ReadonlyArray<readonly number[]>): [number, number] {
     return n === 0 ? [NaN, NaN] : [lon / n, lat / n];
 }
 
-function inBbox(c: [number, number], b: [number, number, number, number]) {
+function inBox(c: [number, number], b: [number, number, number, number]) {
     return c[0] >= b[0] && c[0] <= b[2] && c[1] >= b[1] && c[1] <= b[3];
 }
 
-// Re-attribute Crimea from RU to UA
 const CRIMEA_BBOX: [number, number, number, number] = [32.0, 44.0, 37.0, 46.5];
 
 function ringFits(ring: ReadonlyArray<readonly number[]>, bbox: [number, number, number, number]) {
@@ -79,6 +107,8 @@ function findCrimea(features: ReadonlyArray<Feature<Polygon | MultiPolygon>>): n
 }
 
 export function CoverageGrid() {
+    const aggregates = useMemo(() => buildAggregates(), []);
+
     const { features, pathGen, viewBox } = useMemo(() => {
         const topo = worldTopo as unknown as Topology<{ countries: GeometryCollection }>;
         const fc = feature(topo, topo.objects.countries) as unknown as {
@@ -124,24 +154,34 @@ export function CoverageGrid() {
         };
     }, []);
 
+    const [hover, setHover] = useState<{ cc: string; x: number; y: number } | null>(null);
+
     return (
-        <div className="coverage-map">
+        <div className="coverage-map" style={{ position: "relative" }}>
             <svg
                 viewBox={viewBox}
                 width="100%"
                 preserveAspectRatio="xMidYMid meet"
                 role="img"
                 aria-label="QES coverage map — EU + Ukraine"
+                onMouseLeave={() => setHover(null)}
             >
                 {features.map(({ feature: f, cc }) => {
                     const isLive = LIVE.has(cc);
+                    const agg = aggregates.get(cc);
+                    const hasData = agg && agg.total > 0;
                     const d = pathGen(f) ?? "";
                     const c = pathGen.centroid(f);
                     return (
-                        <g key={cc}>
+                        <g
+                            key={cc}
+                            style={{ cursor: "pointer" }}
+                            onMouseEnter={(e) => setHover({ cc, x: e.clientX, y: e.clientY })}
+                            onMouseMove={(e) => setHover({ cc, x: e.clientX, y: e.clientY })}
+                        >
                             <path
                                 d={d}
-                                fill={isLive ? "var(--ink)" : "var(--line)"}
+                                fill={isLive ? "var(--ink)" : hasData ? "var(--line)" : "var(--paper-2)"}
                                 stroke="var(--bg)"
                                 strokeWidth={1}
                             />
@@ -165,6 +205,69 @@ export function CoverageGrid() {
                     );
                 })}
             </svg>
+            {hover && (
+                <CoverageTooltip
+                    cc={hover.cc}
+                    x={hover.x}
+                    y={hover.y}
+                    agg={aggregates.get(hover.cc)}
+                />
+            )}
+        </div>
+    );
+}
+
+function CoverageTooltip({
+    cc,
+    x,
+    y,
+    agg,
+}: {
+    cc: string;
+    x: number;
+    y: number;
+    agg: CountryAgg | undefined;
+}) {
+    const name = COUNTRY_NAMES[cc] ?? cc;
+    const isLive = LIVE.has(cc);
+    const flipLeft = typeof window !== "undefined" && x > window.innerWidth - 260;
+
+    return (
+        <div
+            className="coverage-tooltip"
+            style={{
+                position: "fixed",
+                left: flipLeft ? x - 250 : x + 16,
+                top: Math.max(8, y - 8),
+            }}
+        >
+            <div className="coverage-tooltip__head">
+                <span className="coverage-tooltip__cc">{cc}</span>
+                <span className="coverage-tooltip__name">{name}</span>
+            </div>
+            <div
+                className="coverage-tooltip__status"
+                style={{ color: isLive ? "var(--ok)" : "var(--muted)" }}
+            >
+                {isLive ? "● LIVE" : "● eIDAS READY"}
+            </div>
+            {agg ? (
+                <div className="coverage-tooltip__grid">
+                    <span className="coverage-tooltip__label">QTSPs</span>
+                    <span className="coverage-tooltip__val">{agg.total}</span>
+                    <span className="coverage-tooltip__label">ECDSA P-256</span>
+                    <span className="coverage-tooltip__val">{agg.p256}</span>
+                    <span className="coverage-tooltip__label">RSA</span>
+                    <span className="coverage-tooltip__val">{agg.rsa}</span>
+                    <span className="coverage-tooltip__label">Services</span>
+                    <span className="coverage-tooltip__val">{agg.services}</span>
+                </div>
+            ) : (
+                <div className="coverage-tooltip__grid">
+                    <span className="coverage-tooltip__label">QTSPs</span>
+                    <span className="coverage-tooltip__val">—</span>
+                </div>
+            )}
         </div>
     );
 }
