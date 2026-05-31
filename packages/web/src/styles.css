@@ -558,6 +558,53 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
     }
 }
 
+/* ─── coverage grid ─── */
+.coverage-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    margin-top: 32px;
+}
+.coverage-tile {
+    background: var(--bg);
+    padding: 16px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.coverage-tile--live {
+    background: var(--ink);
+    color: #fff;
+}
+.coverage-tile__code {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--muted-2);
+}
+.coverage-tile--live .coverage-tile__code {
+    color: rgba(255, 255, 255, 0.6);
+}
+.coverage-tile__name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink);
+}
+.coverage-tile--live .coverage-tile__name {
+    color: #fff;
+}
+.coverage-tile__badge {
+    margin-top: 4px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: var(--yellow);
+}
+
 /* ─── footnote (footer) ─── */
 .footnote {
     border-top: 1px solid var(--line);

@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { CoverageGrid } from "../components/CoverageGrid.js";
 
 export function About() {
     const { t } = useTranslation();
@@ -15,6 +16,8 @@ export function About() {
             <p className="about-section__body" style={{ marginTop: 24 }}>
                 <strong>{t("about.availability")}</strong>
             </p>
+
+            <CoverageGrid />
 
             <div className="tech-intro">
                 <p className="tech-intro__body">{t("about.techIntro")}</p>
