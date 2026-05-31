@@ -24,6 +24,21 @@ export function About() {
                 <p className="tech-intro__stack mono">{t("about.techStack")}</p>
             </div>
 
+            <div className="team-section">
+                <p className="team-section__label">— {t("about.teamLabel")} —</p>
+                <div className="team-grid">
+                    {([1, 2] as const).map((n) => (
+                        <div key={n} className="team-card">
+                            <div>
+                                <h3 className="team-card__name">{t(`about.team${n}name`)}</h3>
+                                <p className="team-card__role">{t(`about.team${n}role`)}</p>
+                            </div>
+                            <p className="team-card__desc">{t(`about.team${n}desc`)}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
         </section>
     );
 }

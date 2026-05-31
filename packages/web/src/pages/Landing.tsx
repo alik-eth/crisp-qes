@@ -136,21 +136,6 @@ export function Landing({ state, onSignIn }: Props) {
                 </div>
             </div>
 
-            {/* Team */}
-            <div className="team-section">
-                <p className="team-section__label">— {t("landing.teamLabel")} —</p>
-                <div className="team-grid">
-                    {([1, 2] as const).map((n) => (
-                        <div key={n} className="team-card">
-                            <div>
-                                <h3 className="team-card__name">{t(`landing.team${n}name`)}</h3>
-                                <p className="team-card__role">{t(`landing.team${n}role`)}</p>
-                            </div>
-                            <p className="team-card__desc">{t(`landing.team${n}desc`)}</p>
-                        </div>
-                    ))}
-                </div>
-            </div>
         </section>
     );
 }
