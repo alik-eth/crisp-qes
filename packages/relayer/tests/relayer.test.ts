@@ -45,14 +45,18 @@ function fakeClients(impls: {
     read?: ReturnType<typeof vi.fn>;
 } = {}): Clients {
     const account = privateKeyToAccount(ANVIL_KEY);
+    const chain = {
+        id: 31337,
+        name: "anvil",
+        nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+        rpcUrls: { default: { http: ["http://127.0.0.1:8545"] } },
+    } as Clients["chain"];
+    const writeContract =
+        impls.write ??
+        vi.fn().mockResolvedValue(("0x" + "ab".repeat(32)) as Hex);
     return {
         account,
-        chain: {
-            id: 31337,
-            name: "anvil",
-            nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
-            rpcUrls: { default: { http: ["http://127.0.0.1:8545"] } },
-        } as Clients["chain"],
+        chain,
         publicClient: {
             simulateContract:
                 impls.simulate ?? vi.fn().mockResolvedValue({ request: {} }),
@@ -65,10 +69,13 @@ function fakeClients(impls: {
             readContract: impls.read ?? vi.fn().mockResolvedValue(ENROLL_ROOT),
         } as unknown as Clients["publicClient"],
         walletClient: {
-            writeContract:
-                impls.write ??
-                vi.fn().mockResolvedValue(("0x" + "ab".repeat(32)) as Hex),
+            writeContract,
         } as unknown as Clients["walletClient"],
+        // Mirror the real serialized write: delegate to the same
+        // writeContract mock (adding account/chain like the real sendTx)
+        // so existing `write` call-count / canned-hash assertions hold.
+        sendTx: (params: Record<string, unknown>) =>
+            writeContract({ ...params, account, chain }) as Promise<Hex>,
     };
 }
 
@@ -563,7 +570,10 @@ describe("POST /v2/enroll replay / bad sig", () => {
 
     it("write-side failure with unknown selector → 502 retryable", async () => {
         const simulate = vi.fn().mockResolvedValue({ request: {} });
-        const write = vi.fn().mockRejectedValue(new Error("nonce too low"));
+        // Genuinely-unrecognised write failure (no funds/nonce signature).
+        const write = vi
+            .fn()
+            .mockRejectedValue(new Error("upstream rpc connection reset"));
         const clients = fakeClients({ simulate, write });
         const app = buildApp({ config: cfg(), clientsFactory: () => clients });
 
@@ -576,6 +586,44 @@ describe("POST /v2/enroll replay / bad sig", () => {
         const body = res.json() as { error: string; retryable: boolean };
         expect(body.error).toBe("RelayerEnrollFailed");
         expect(body.retryable).toBe(true);
+        await app.close();
+    });
+
+    it("write-side nonce error → 503 RelayerNonceError", async () => {
+        const simulate = vi.fn().mockResolvedValue({ request: {} });
+        const write = vi.fn().mockRejectedValue(new Error("nonce too low"));
+        const clients = fakeClients({ simulate, write });
+        const app = buildApp({ config: cfg(), clientsFactory: () => clients });
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/enroll",
+            payload: VALID_ENROLL,
+        });
+        expect(res.statusCode).toBe(503);
+        expect((res.json() as { error: string }).error).toBe("RelayerNonceError");
+        await app.close();
+    });
+
+    it("write-side insufficient funds → 503 InsufficientRelayerFunds", async () => {
+        const simulate = vi.fn().mockResolvedValue({ request: {} });
+        const write = vi
+            .fn()
+            .mockRejectedValue(
+                new Error("insufficient funds for gas * price + value"),
+            );
+        const clients = fakeClients({ simulate, write });
+        const app = buildApp({ config: cfg(), clientsFactory: () => clients });
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v2/enroll",
+            payload: VALID_ENROLL,
+        });
+        expect(res.statusCode).toBe(503);
+        expect((res.json() as { error: string }).error).toBe(
+            "InsufficientRelayerFunds",
+        );
         await app.close();
     });
 });

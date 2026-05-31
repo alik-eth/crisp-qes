@@ -1,0 +1,50 @@
+app = "crisp-qes-oprf-grumpkin"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8788"
+  # bb.js verifier CRS is baked into the image at /app/.bb-crs (no runtime fetch).
+  CRS_PATH = "/app/.bb-crs"
+  BB_BACKEND = "Wasm"
+  BB_THREADS = "1"
+  CHAIN_ID = "84532"
+  # Fresh clean-slate EnrollmentRegistry (genesis, leafCount 0) — the attester
+  # digest pins this address, so the v3 service's genesis tree matches on-chain.
+  ENROLLMENT_REGISTRY = "0xC48d5e645f569b5Cd9E1C315f4344DF85e09CFBa"
+  # Merkle store self-heals from chain: at boot (and before each append when the
+  # on-chain root has moved) the store is rebuilt from the registry's
+  # CommitmentInserted events and verified against enrollmentRoot(). RPC_URL
+  # enables this; REGISTRY_FROM_BLOCK is a block at/just-before the registry
+  # deploy (genesis, leafCount 0) so the event scan starts from the first leaf.
+  RPC_URL = "https://base-sepolia-rpc.publicnode.com"
+  REGISTRY_FROM_BLOCK = "42230300"
+  # GRUMPKIN_OPRF_KEY (32-byte hex node secret) is REQUIRED in production and is
+  # set via `flyctl secrets set GRUMPKIN_OPRF_KEY=...`, NOT here.
+
+[http_service]
+  internal_port = 8788
+  force_https = true
+  # Store now self-heals from chain on boot/append, so a cold start no longer
+  # desyncs. Kept warm anyway to avoid a multi-second event-scan + bb.js verify
+  # on the first request of the demo (belt-and-suspenders, not correctness).
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[http_service.checks]]
+  method = "GET"
+  path = "/healthz"
+  interval = "15s"
+  timeout = "5s"
+  grace_period = "10s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  # bb.js wasm/NAPI verifier needs more headroom than the v2 ristretto node;
+  # 1GB keeps UltraHonk verification comfortable on a shared-cpu VM.
+  memory_mb = 2048

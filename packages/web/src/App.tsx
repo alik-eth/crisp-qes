@@ -9,10 +9,10 @@ import { Landing } from "./pages/Landing.js";
 import { Petitions } from "./pages/Petitions.js";
 import { PetitionDetail } from "./pages/PetitionDetail.js";
 import { CreatePetition } from "./pages/CreatePetition.js";
-import { Verify } from "./pages/Verify.js";
 import { Recover } from "./pages/Recover.js";
 import { Me } from "./pages/Me.js";
 import { About } from "./pages/About.js";
+import { V3Enroll } from "./pages/V3Enroll.js";
 import { NotFound } from "./pages/NotFound.js";
 
 type Modal = null | { kind: "signin" } | { kind: "register" };
@@ -22,30 +22,21 @@ export function App() {
     const [modal, setModal] = useState<Modal>(null);
     const [, navigate] = useLocation();
 
-    // Top-of-masthead "Sign in / Register" button. If the user has no
-    // Passkey on this device, open the register modal; otherwise open
-    // the sign-in modal.
     const openSignIn = useCallback(() => {
         if (state.kind === "guest") setModal({ kind: "register" });
         else setModal({ kind: "signin" });
     }, [state.kind]);
 
-    // Clicking the account chip — opens the local /me page for any
-    // non-Guest state. (Guest sees the "Sign in" button instead of a
-    // chip, so this never fires for Guest.)
     const onChipClick = useCallback(() => {
         navigate("/me");
     }, [navigate]);
 
-    // Register success: account is now Account state; push them to /verify.
     const onRegistered = useCallback(async () => {
         await refresh();
         setModal(null);
         navigate("/verify");
     }, [refresh, navigate]);
 
-    // Sign-in unlock: nothing routing-wise unless they are Account and
-    // need to verify; in that case push to /verify.
     const onUnlocked = useCallback(() => {
         setModal(null);
         if (state.kind === "account") navigate("/verify");
@@ -58,7 +49,7 @@ export function App() {
                 onSignInRequest={openSignIn}
                 onChipClick={onChipClick}
             />
-            <main className="page">
+            <main className="page" style={{ flex: 1 }}>
                 {loading ? null : (
                     <Switch>
                         <Route path="/">
@@ -90,7 +81,7 @@ export function App() {
                             ) : state.kind === "verified" ? (
                                 <Redirect to="/petitions" />
                             ) : (
-                                <Verify onDone={refresh} />
+                                <V3Enroll onDone={refresh} />
                             )}
                         </Route>
                         <Route path="/recover">
@@ -105,6 +96,9 @@ export function App() {
                         </Route>
                         <Route path="/about">
                             <About />
+                        </Route>
+                        <Route path="/v3">
+                            <Redirect to="/verify" />
                         </Route>
                         <Route>
                             <NotFound />

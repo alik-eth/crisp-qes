@@ -102,6 +102,31 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
 
     const app = Fastify({ logger: { level: config.isProd ? "info" : "warn" } });
 
+    // Startup balance check. The relayer pays gas for every enroll/sign/revoke;
+    // if it runs dry, writes fail with insufficient funds while simulate (a free
+    // eth_call) still passes — a confusing post-simulate revert. Surface an empty
+    // gas tank loudly at boot. Guarded so test fakes without getBalance no-op.
+    const LOW_BALANCE_WEI = 50_000_000_000_000_000n; // 0.05 ETH
+    app.addHook("onReady", async () => {
+        const pc = clients.publicClient as { getBalance?: (a: unknown) => Promise<bigint> };
+        if (typeof pc.getBalance !== "function") return;
+        try {
+            const bal = await pc.getBalance({ address: clients.account.address });
+            const balanceEth = (Number(bal) / 1e18).toFixed(5);
+            const meta = { relayerAddr: clients.account.address, balanceEth };
+            if (bal < LOW_BALANCE_WEI) {
+                app.log.warn(
+                    meta,
+                    "LOW RELAYER BALANCE — fund this key or writes fail with InsufficientRelayerFunds",
+                );
+            } else {
+                app.log.info(meta, "relayer balance");
+            }
+        } catch (err) {
+            app.log.warn({ err: (err as Error).message }, "relayer balance check failed");
+        }
+    });
+
     const allowAll = config.corsAllowedOrigins.includes("*");
     void app.register(fastifyCors, {
         origin: allowAll ? true : config.corsAllowedOrigins,
@@ -167,13 +192,11 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
 
         let txHash: Hex;
         try {
-            txHash = await clients.walletClient.writeContract({
+            txHash = await clients.sendTx({
                 address: config.enrollmentRegistry,
                 abi: enrollmentRegistryAbi,
                 functionName: "updateRoot",
                 args: args as unknown as readonly [Hex, readonly Hex[], Hex],
-                account: clients.account,
-                chain: clients.chain,
             });
         } catch (err) {
             const mapped = mapEnrollmentError(err);
@@ -282,13 +305,28 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
             });
         } catch (err) {
             const mapped = mapContractError(err);
-            req.log.warn({ err: mapped.body }, "simulate revert");
+            // Diagnostic capture: on an EMPTY (selector 0x) signPetition revert
+            // the verifier rejected the proof. Log the exact artifact so it can
+            // be decoded / re-verified offline against the circuit VK.
+            req.log.warn(
+                {
+                    err: mapped.body,
+                    petitionId: String(body.petitionId),
+                    nullifier: body.nullifier,
+                    publicInputs: body.publicInputs,
+                    liveRoot,
+                    proofLen: (body.proof as string).length,
+                    proofHead: (body.proof as string).slice(0, 18),
+                    proofTail: (body.proof as string).slice(-18),
+                },
+                "simulate revert (proof artifact)",
+            );
             return reply.code(mapped.status).send(mapped.body);
         }
 
         let txHash: Hex;
         try {
-            txHash = await clients.walletClient.writeContract({
+            txHash = await clients.sendTx({
                 address: config.petitionRegistry,
                 abi: petitionRegistryV2Abi,
                 functionName: "signPetition",
@@ -298,8 +336,6 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
                     Hex,
                     readonly Hex[],
                 ],
-                account: clients.account,
-                chain: clients.chain,
             });
         } catch (err) {
             const mapped = mapContractError(err);
@@ -431,7 +467,7 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
 
         let txHash: Hex;
         try {
-            txHash = await clients.walletClient.writeContract({
+            txHash = await clients.sendTx({
                 address: config.petitionRegistry,
                 abi: petitionRegistryV2Abi,
                 functionName: "revokeVote",
@@ -441,8 +477,6 @@ export function buildApp(opts: BuildAppOptions): FastifyInstance {
                     Hex,
                     readonly Hex[],
                 ],
-                account: clients.account,
-                chain: clients.chain,
             });
         } catch (err) {
             const mapped = mapContractError(err);

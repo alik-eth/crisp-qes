@@ -40,6 +40,14 @@ export interface Clients {
     walletClient: WalletClient;
     account: ReturnType<typeof privateKeyToAccount>;
     chain: Chain;
+    /**
+     * Serialized contract write. All on-chain writes funnel through one
+     * promise queue with a managed sequential nonce, so concurrent requests
+     * on the single relayer key cannot collide on the same nonce. Adds
+     * `account`, `chain`, and `nonce` automatically — callers pass only the
+     * contract call params (address, abi, functionName, args, gas, value…).
+     */
+    sendTx: (params: Record<string, unknown>) => Promise<Hex>;
 }
 
 export function makeClients(cfg: RelayerConfig): Clients {
@@ -48,5 +56,45 @@ export function makeClients(cfg: RelayerConfig): Clients {
     const account = privateKeyToAccount(cfg.privateKey as Hex);
     const publicClient = createPublicClient({ chain, transport });
     const walletClient = createWalletClient({ account, chain, transport });
-    return { publicClient, walletClient, account, chain };
+
+    let queue: Promise<unknown> = Promise.resolve();
+    let nextNonce: number | null = null;
+
+    const sendTx = (params: Record<string, unknown>): Promise<Hex> => {
+        const run = async (): Promise<Hex> => {
+            if (nextNonce === null) {
+                nextNonce = await publicClient.getTransactionCount({
+                    address: account.address,
+                    blockTag: "pending",
+                });
+            }
+            const nonce = nextNonce;
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const hash = (await walletClient.writeContract({
+                    ...(params as any),
+                    account,
+                    chain,
+                    nonce,
+                })) as Hex;
+                nextNonce = nonce + 1;
+                return hash;
+            } catch (err) {
+                // The nonce is now uncertain (tx may not have been accepted);
+                // force a fresh read from the chain on the next send.
+                nextNonce = null;
+                throw err;
+            }
+        };
+        // Chain onto the queue so runs execute strictly one-at-a-time. Keep
+        // the queue alive regardless of this run's success/failure.
+        const result = queue.then(run, run);
+        queue = result.then(
+            () => undefined,
+            () => undefined,
+        );
+        return result;
+    };
+
+    return { publicClient, walletClient, account, chain, sendTx };
 }

@@ -107,6 +107,60 @@ function findRevertSelector(err: unknown): Hex | undefined {
     return m ? (m[0] as Hex) : undefined;
 }
 
+// Classify a TRANSACTION-level failure that is NOT a contract revert — these
+// surface from writeContract (gas estimation / broadcast), not the contract's
+// own `revert`, so they have no selector. Previously they fell through to the
+// generic "RelayerSubmitFailed / signPetition reverted", which is misleading:
+// the proof may be perfectly valid and the real cause is the relayer account
+// being out of gas money (simulate is a free eth_call and passes; the write
+// can't be paid for) or a nonce conflict. Walk the viem cause chain by both
+// error name and message text (node RPC errors only carry a message).
+function classifyTxError(
+    err: unknown,
+): { error: string; status: number; detail: string } | undefined {
+    const msgs: string[] = [];
+    let cursor: unknown = err;
+    while (cursor) {
+        if (cursor instanceof Error) {
+            const name = cursor.name ?? "";
+            if (name === "InsufficientFundsError") {
+                return {
+                    error: "InsufficientRelayerFunds",
+                    status: 503,
+                    detail:
+                        "relayer account has insufficient ETH to pay gas — fund the relayer key",
+                };
+            }
+            if (/^Nonce(TooLow|TooHigh|MaxValue)Error$/.test(name)) {
+                return {
+                    error: "RelayerNonceError",
+                    status: 503,
+                    detail: "relayer nonce conflict — transient, retry",
+                };
+            }
+            if (cursor.message) msgs.push(cursor.message);
+        }
+        cursor = (cursor as { cause?: unknown }).cause;
+    }
+    const blob = msgs.join(" | ").toLowerCase();
+    if (/insufficient funds/.test(blob)) {
+        return {
+            error: "InsufficientRelayerFunds",
+            status: 503,
+            detail:
+                "relayer account has insufficient ETH to pay gas — fund the relayer key",
+        };
+    }
+    if (/nonce too (low|high)|replacement transaction underpriced/.test(blob)) {
+        return {
+            error: "RelayerNonceError",
+            status: 503,
+            detail: "relayer nonce conflict — transient, retry",
+        };
+    }
+    return undefined;
+}
+
 export function mapContractError(err: unknown): RelayerErrorResponse {
     const selector = findRevertSelector(err);
     const name = selector ? SELECTOR_TO_NAME.get(selector) : undefined;
@@ -117,6 +171,12 @@ export function mapContractError(err: unknown): RelayerErrorResponse {
             status: STATUS_BY_NAME[name],
             body: { error: name, selector, detail },
         };
+    }
+
+    // Not a known contract revert — is it a tx-level failure (funds / nonce)?
+    const tx = classifyTxError(err);
+    if (tx) {
+        return { status: tx.status, body: { error: tx.error, detail: tx.detail } };
     }
 
     return {
@@ -156,6 +216,12 @@ export function mapEnrollmentError(err: unknown): RelayerErrorResponse {
                 "/oprf/register and retry.";
         }
         return { status: ENROLL_STATUS_BY_NAME[name], body: baseBody };
+    }
+
+    // Not a known contract revert — funds / nonce tx-level failure?
+    const tx = classifyTxError(err);
+    if (tx) {
+        return { status: tx.status, body: { error: tx.error, detail: tx.detail } };
     }
 
     return {

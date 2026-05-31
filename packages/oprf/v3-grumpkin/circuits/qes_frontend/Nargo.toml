@@ -1,0 +1,7 @@
+[package]
+name = "qes_frontend"
+type = "bin"
+authors = ["crisp-qes"]
+compiler_version = ">=1.0.0"
+
+[dependencies]

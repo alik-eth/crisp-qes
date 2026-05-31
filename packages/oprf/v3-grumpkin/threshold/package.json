@@ -1,0 +1,10 @@
+{
+    "name": "@crisp-qes/oprf-v3-grumpkin-threshold",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "description": "CRISP-QES v3 threshold OPRF prototype over Grumpkin (build/unaudited). Reuses ../lib.mjs. JS validation of the no-single-keyholder design; Rust-node precursor (PSE vOPRF-ID fork).",
+    "scripts": {
+        "test": "node test.mjs"
+    }
+}

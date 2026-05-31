@@ -5,18 +5,18 @@ primary_region = "fra"
   dockerfile = "Dockerfile"
 
   [build.args]
-    VITE_CHAIN_ID = "11155111"
-    VITE_RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
+    VITE_CHAIN_ID = "84532"
+    VITE_RPC_URL = "https://base-sepolia-rpc.publicnode.com"
     VITE_OPRF_URL = "https://crisp-qes-oprf.fly.dev"
     # Addresses from packages/contracts/deployments/sepolia.json.
     # PetitionRegistryV2 redeployed 2026-05-29 T18:33Z (support-only collapse,
     # task #38). Prior Sepolia addresses preserved in sepolia.json
     # `supersedes_within_sepolia` array for audit trail.
-    VITE_ENROLLMENT_REGISTRY = "0x0214504C1Be6d664bbE3AE6687507aBE19A36d1a"
-    VITE_PETITION_REGISTRY_V2 = "0x4CaEeAFbd5CAAD10dE75995ae5b1Cc8d29c01757"
+    VITE_ENROLLMENT_REGISTRY = "0xC48d5e645f569b5Cd9E1C315f4344DF85e09CFBa"
+    VITE_PETITION_REGISTRY_V2 = "0x6b0C722fa50F6325028781DC5A25e9beC1fE4a89"
     VITE_RELAYER_URL = "https://crisp-qes-relayer.fly.dev"
     VITE_CIRCUIT_URL = "/crisp_qes_v2_circuit.json"
-    VITE_BLOCK_EXPLORER = "https://sepolia.etherscan.io"
+    VITE_BLOCK_EXPLORER = "https://sepolia.basescan.org"
     VITE_WALLETCONNECT_PROJECT_ID = "33a263ffda20d72b289cf92b369cfa47"
     # v2.1: pin K_pub at build time so a MITM running its own (K_pub*, k*)
     # can't pass DLEQ against a spoofed pubkey served from /healthz. v2.2

@@ -1,22 +1,22 @@
 {
   "network": "sepolia",
   "chainId": 11155111,
-  "deployedAt": "2026-05-29T18:33:25Z",
-  "deployerCommit": "fb0ecbf",
+  "deployedAt": "2026-05-31T00:00:00Z",
+  "deployerCommit": "762c0ca",
   "blockExplorer": "https://sepolia.etherscan.io",
   "deployer": "0xB8d121CD0B2D0AB3df2aFF0B45B2fD354FF4c1f7",
+  "note": "CLEAN-SLATE redeploy 2026-05-31 to make v3 operator-blind Grumpkin enrollment the primary flow: fresh EnrollmentRegistry (genesis, leafCount 0) with the v3 attester 0xa114...8B12 so the v3 service's in-memory genesis tree matches on-chain; fresh PetitionRegistryV2 pointing at it; UltraVerifierV2 reused. Prior v2 enrollments/petitions wiped (intentional). Old addresses in supersedes_within_sepolia.",
   "contracts": {
     "enrollmentRegistry": {
-      "address": "0x0214504C1Be6d664bbE3AE6687507aBE19A36d1a",
-      "txHash": "0x267362dde4e18676b96749a5c45886e7e3ef515b453082e028546dacead58b41"
+      "address": "0xC9b35dE202e0Bf92e38603deEC4176557eF249a4",
+      "oprfAttester": "0xa114530Fbcb7cAD5A73164Baa67C4eB2C73b8B12"
     },
     "ultraVerifierV2": {
       "address": "0xEC306EFA07D9688ae759d1c11D411cB6F0200acB",
       "txHash": "0x2862c8ff30c94509921560cfae4ecd73e96708db2c1a441aad987bd4f7da12e5"
     },
     "petitionRegistryV2": {
-      "address": "0x4CaEeAFbd5CAAD10dE75995ae5b1Cc8d29c01757",
-      "txHash": "0xff86371d6efb835b157c8cb1638eb1b1d6f36e9bb27fbe9ea7124e5d9075d7d9"
+      "address": "0x0BF0D1BD0550028887528d5bA310F1e3019ad6DB"
     }
   },
   "params": {

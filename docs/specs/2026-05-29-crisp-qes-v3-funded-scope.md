@@ -198,16 +198,37 @@ Citizen proves, with public inputs `(M, K_pub, s)`:
 
 `RNOKPP` and `N` are private. `M`, `K_pub`, `s` are public.
 
-### 5.3 Circuit shape
+### 5.3 Circuit shape — RESOLVED: OPRF moves to Grumpkin
 
-Noir, similar to v2 signature circuit but with Ristretto255
-arithmetic. Open question: Ristretto255 in Noir is not a
-first-class primitive — needs either an embedded-curve approach
-(if proof of `M` correctness can be done over a related curve)
-or accept the cost of in-circuit Ristretto255 (~10⁴ constraints).
+The open ristretto255-in-Noir question is settled by the Phase-0
+spike (`bench/v3-enroll-spike-results.md`, task #39). Measured
+UltraHonk gate counts (nargo beta.19 / bb nightly):
 
-Likely ~10⁵ constraint count, browser prove time ~10–30 s.
-Acceptable as a one-time enrollment cost.
+- in-circuit blinding `M = r·P` on ristretto255 (non-native to
+  BN254): no stdlib support, ~10⁵–10⁶+ gates → dominates, likely
+  mobile-infeasible;
+- the same on the **native embedded curve (Grumpkin): 3,564 gates.**
+
+Decision: **run the OPRF over Grumpkin** (`y² = x³ − 17` over the
+BN254 scalar field; group order = BN254 base field; cofactor 1),
+not RFC-9497 ristretto255. Cofactor 1 is a bonus — ristretto255
+exists only to give cofactor-8 Curve25519 a prime-order
+abstraction; Grumpkin is natively prime-order, dropping the
+subgroup-clearing subtleties. The 2HashDH VOPRF is validated
+end-to-end over Grumpkin (determinism, unblind correctness, DLEQ)
+in `packages/oprf/grumpkin-oprf-poc.mjs`.
+
+Cost of leaving the standard: needs RFC-9380 SSWU hash-to-curve for
+Grumpkin + a security review of the non-standard ciphersuite. The
+server-side OPRF (`oprf.ts`) moves off `@noble/curves` ristretto255
+to a Grumpkin instantiation. Composes with threshold OPRF (§2) —
+DKG works over any prime-order group.
+
+With Grumpkin the full enroll circuit budgets at ~300k gates
+(blinding 3.5k + ECDSA-P256 72k + SHA-256 ~120k + DER/membership
+~100k) — same order as the sign circuit, browser-provable; on-device
+(iOS) feasibility is the remaining open question (circuit is ~10× the
+sign circuit; re-bench against the 384 MiB cap).
 
 ### 5.4 Engineering scope
 
@@ -216,6 +237,99 @@ Acceptable as a one-time enrollment cost.
   verification.
 - Wire ABI change for `/oprf/register`: send `{commitment,
   enrollProof, dleqProofs[]}`, no `unblindedOutput`.
+
+### 5.5 Operator-blind blind-eval (gates → client proof)
+
+§5.1–5.4 remove the unblinded `N` from the `/oprf/register` call,
+and §5.2 already binds the blinded element `M` to the private
+RNOKPP. The remaining plaintext leak is at **`/oprf/blind-eval`**:
+today the client ships the cleartext `.p7s` so the server can run
+the eligibility gates (cert-chain, ECDSA-over-`signedAttrs`, age
+from DOB, per-RNOKPP rate-limit, replay dedup — v2 tasks #27–#32).
+This subsection folds those gates into the *same* client-side proof
+so the OPRF service receives only `{M, enrollProof}` and never sees
+the cert, RNOKPP, or DOB.
+
+Design rationale (see "two leaks" analysis): we **keep** the OPRF
+(tax-id binding gives durable, cert-renewal-proof Sybil resistance
+— a per-cert-pubkey nullifier à la v1 resets on every cert renewal).
+The OPRF key-holder enumeration risk ("leak b") is closed separately
+by threshold OPRF (§2). This section closes the orthogonal
+"plaintext-at-eval" risk ("leak a").
+
+**Extended proof statement.** On top of §5.2's blinding binding, the
+client additionally proves over the private `.p7s` / leaf cert:
+
+> - **(sig)** the leaf cert's ECDSA-P256 signature over `signedAttrs`
+>   verifies, and `signedAttrs` commits to the challenge the citizen
+>   signed, with the challenge bound to `(M, epoch)` per #29/#33;
+> - **(chain)** the leaf is issued by a trusted Diia CA — verify the
+>   issuing CA's ECDSA signature over the leaf TBS, and prove the CA
+>   key/SKI ∈ a pinned Merkle set of Diia trust anchors (avoids an
+>   unbounded in-circuit chain walk);
+> - **(id)** the `subjectSerialNumber` (OID 2.5.4.5) extracted from
+>   the leaf subject DN is the *same* RNOKPP used in §5.2's
+>   `M = r·H2C(RNOKPP)` — one shared witness; this binding is what
+>   makes the scheme sound (no enrolling an unbound value);
+> - **(age)** the DOB in `SubjectDirectoryAttributes` yields
+>   age ≥ threshold at the public `epoch`.
+
+Server side: `/oprf/blind-eval` drops `.p7s` from the body, accepts
+`{M, enrollProof}`, verifies the proof, runs `Y = k·M` + DLEQ. No
+identifying plaintext ever reaches it.
+
+**Gate migration:**
+
+- **Age, cert-chain, ECDSA** → in-circuit (above). ✓
+- **Per-RNOKPP rate-limit (#32)** → *removed/relaxed.* Its job was to
+  stop grinding the OPRF oracle over arbitrary tax-ids; once every
+  eval needs a ZK-proven valid Diia cert *bound to `M`*, arbitrary-
+  input grinding is impossible (you'd need a real Diia signature per
+  guess). Keep per-IP throttling for DoS. **CRITICAL invariant: never
+  emit a per-RNOKPP public tag** — any deterministic value derived
+  from the low-entropy RNOKPP that the server sees re-creates exactly
+  the enumeration leak (b) the OPRF key exists to prevent.
+- **Replay dedup (#31)** → largely inherent: the `.p7s` signs a fresh
+  challenge bound to `(M, epoch)`; fresh `r` ⇒ fresh `M` ⇒ different
+  challenge ⇒ different `.p7s`, and forging one needs the citizen's
+  Diia again. If explicit dedup is still wanted, emit an epoch-scoped
+  **high-entropy** replay tag (hash of the signature value), never a
+  function of the RNOKPP.
+
+**Engineering risks (severity order):**
+
+1. **Ristretto255-in-BN254 binding (dominant).** Per §5.3: proving
+   `M = r·H2C(RNOKPP)` needs ristretto255 group ops + hash-to-curve
+   inside a BN254 UltraHonk circuit = foreign-field arithmetic, the
+   single biggest cost driver. **De-risk first** with a spike that
+   benchmarks *only* this gadget before building anything else; if
+   prohibitive, co-design the OPRF group with a SNARK-friendly curve
+   or switch proof system.
+2. **SHA-256 over cert / `signedAttrs`** — expensive in ZK (~K gates/
+   block; a 1–2 KB cert is many blocks). Borrow zk-email optimizations;
+   prove over minimal byte ranges, not the whole DER.
+3. **ASN.1/DER field extraction in-circuit** — prove "these bytes are
+   the `subjectSerialNumber` / the DOB" without a general parser. Use
+   zk-regex / substring-with-context commitments (zk-email pattern).
+4. **ECDSA-P256 verify in-circuit** — real cost but a solved-ish
+   quantity (zkPassport / Noir ECDSA libs verify P-256 over real
+   certs). Cost, not research risk.
+
+**Phasing:**
+
+- **Phase 0 — spike (1–2 wks):** implement + benchmark *only* risk #1
+  (ristretto blinding binding) and one ECDSA-P256 verify in Noir. Gate
+  the whole effort on acceptable one-time-enroll cost. Re-measure
+  against the iOS memory ceiling (`bench/v2-mem-floor.mjs`, 384 MiB)
+  — this enroll circuit is *far larger* than the sign circuit, so
+  on-device enrollment feasibility is a genuine open question and may
+  need a higher cap or an "enroll on desktop" path.
+- **Phase 1:** SHA-256 + DER extraction (RNOKPP + DOB) + age predicate.
+- **Phase 2:** chain-to-trust-root membership; swap `/oprf/blind-eval`
+  + `/oprf/register` to proof-gated; drop `.p7s` and `N` from the wire.
+- **Phase 3:** compose with threshold OPRF (§2). End state: neither
+  plaintext-at-eval (this section) nor keyholder-enumeration (§2)
+  is possible without t-of-n collusion — both leaks closed.
 
 ## 6. Epoch-rotated enrollment
 

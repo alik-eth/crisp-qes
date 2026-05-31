@@ -1,0 +1,22 @@
+{
+    "name": "@crisp-qes/oprf-v3-grumpkin",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "description": "v3 Grumpkin VOPRF node (build, unaudited). Standalone; does NOT touch the live v2 ristretto service in packages/oprf/src/. Deps live here (rather than service/) so module resolution works for both lib.mjs and service/*.mjs. Proof-gating verifies enroll_commit_v2 UltraHonk proofs IN-PROCESS via @aztec/bb.js (no `bb` CLI).",
+    "main": "service/server.mjs",
+    "scripts": {
+        "start": "node service/server.mjs",
+        "test": "node service/gating-test.mjs",
+        "test:roundtrip": "node service/roundtrip-test.mjs",
+        "test:verify": "node service/inprocess-verify-test.mjs"
+    },
+    "dependencies": {
+        "@aztec/bb.js": "4.0.0-nightly.20260120",
+        "@fastify/cors": "^10.1.0",
+        "@noble/curves": "^1.9.7",
+        "@noble/hashes": "^1.8.0",
+        "fastify": "^5.0.0",
+        "viem": "^2.21.0"
+    }
+}
