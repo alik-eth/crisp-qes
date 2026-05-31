@@ -55,6 +55,11 @@ export function Landing({ state, onSignIn }: Props) {
                 />
                 <p className="hero__sub">
                     {t("landing.sub")}
+                    {" "}{t("landing.subAvail")}
+                    <Link href="/about" style={{ color: "var(--ink)", fontWeight: 500 }}>
+                        {t("landing.subAvailLink")}
+                    </Link>
+                    {t("landing.subAvailAfter")}
                 </p>
                 <div className="hero__cta">
                     <Link href="/petitions" className="btn btn--primary">

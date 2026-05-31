@@ -19,7 +19,10 @@
     },
     "landing": {
         "hero": "Anonymous, private voting of verified citizens with results in a public blockchain that <b>cannot be deleted or falsified</b>.",
-        "sub": "Discover the opinion of verified citizens on the issue that interests you! Vote and create polls. Each participant uses QES to confirm they are an adult citizen. Personal data stays on your device. Your vote is private — even the registry doesn't know how you voted. Voting results are available in a public distributed registry (blockchain) — without the possibility of deletion or falsification. Available to all citizens of Ukraine and 27 EU countries who use a qualified electronic signature (QES).",
+        "sub": "Discover the opinion of verified citizens on the issue that interests you! Vote and create polls. Each participant uses QES to confirm they are an adult citizen. Personal data stays on your device. Your vote is private — even the registry doesn't know how you voted. Voting results are available in a public distributed registry (blockchain) — without the possibility of deletion or falsification.",
+        "subAvail": "Available to all citizens of ",
+        "subAvailLink": "Ukraine and 27 EU countries",
+        "subAvailAfter": " who use a qualified electronic signature (QES).",
         "cta": "All polls",
         "statCitizens": "citizens verified",
         "statPolls": "polls",

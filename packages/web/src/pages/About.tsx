@@ -106,9 +106,12 @@ export function About() {
                                 : "Because the tax ID has low entropy (10 digits — brute-forceable in seconds), it is protected with OPRF — a protocol that adds a cryptographic salt to the tax ID without revealing it to the server. This makes the nullifier brute-force-resistant and safe for the registry. OPRF also provides unlinkability: neither the platform nor the blockchain can link a vote to a specific person. FHE (CRISP) encrypts the votes themselves, revealing only the aggregate result."}
                         </p>
                     </div>
-                    <p className="sol-stack mono" style={{ marginTop: 20 }}>
-                        VOPRF (RFC 9497) · OPRF · Noir · Barretenberg · CRISP · FHE (BFV) · Solidity · Ethereum Sepolia
-                    </p>
+                    <div style={{ marginTop: 20 }}>
+                        <span className="micro" style={{ marginBottom: 6, display: "block" }}>{uk ? "Наш стек" : "Our stack"}</span>
+                        <p className="sol-stack mono">
+                            VOPRF (RFC 9497) · OPRF · Noir · Barretenberg · CRISP · FHE (BFV) · Solidity · Ethereum Sepolia
+                        </p>
+                    </div>
                 </div>
 
                 {/* Механізми */}
