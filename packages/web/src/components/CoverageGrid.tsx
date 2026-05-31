@@ -165,9 +165,9 @@ export function CoverageGrid() {
                         >
                             <path
                                 d={d}
-                                fill={isLive ? "var(--ink)" : hasP256 ? "url(#hatch-p256)" : "var(--line)"}
-                                stroke="var(--line)"
-                                strokeWidth={0.5}
+                                fill={isLive ? "var(--ink)" : hasP256 ? "url(#hatch-p256)" : "#ccc"}
+                                stroke="var(--ink)"
+                                strokeWidth={0.3}
                             />
                             {Number.isFinite(c[0]) && (
                                 <text
