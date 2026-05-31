@@ -93,7 +93,7 @@ export function About() {
                 <div className="roadmap">
                     <div className="roadmap__phase roadmap__phase--done">
                         <div className="roadmap__head">
-                            <span className="micro">{uk ? "v2 · готово" : "v2 · done"}</span>
+                            <span className="micro">{uk ? "v1 · готово" : "v1 · done"}</span>
                             <span className="roadmap__status">{uk ? "Працює сьогодні" : "Works today"}</span>
                         </div>
                         <ul className="roadmap__list">
@@ -109,7 +109,7 @@ export function About() {
                     </div>
                     <div className="roadmap__phase roadmap__phase--progress">
                         <div className="roadmap__head">
-                            <span className="micro">{uk ? "v3 · в роботі" : "v3 · in progress"}</span>
+                            <span className="micro">{uk ? "v2 · в роботі" : "v2 · in progress"}</span>
                             <span className="roadmap__status">{uk ? "У роботі" : "In progress"}</span>
                         </div>
                         <ul className="roadmap__list">
@@ -130,13 +130,12 @@ export function About() {
                         <ul className="roadmap__list">
                             <li>{uk ? "UI / UX: фільтри по країнах, категоріях, статусу" : "UI/UX: filters by country, category, status"}</li>
                             <li>{uk ? "КЕП інших країн EC (eIDAS) — єдина схема на кралну (pan-eIDAS, variable-length serialNumber), кожна перевірка свій trust-list" : "QES from other EU countries (eIDAS) — unified per-country scheme, each with own trust-list"}</li>
-                            <li>{uk ? "Вікова верифікація (18+) для окремих країн" : "Age verification (18+) for individual countries"}</li>
                             <li>{uk ? "Мобільний додаток (наразі iOS — Rust-prover через uniffi, поки натівний WASM-out на Safari)" : "Mobile app (iOS — Rust-prover via uniffi, native WASM-out on Safari)"}</li>
                             <li>{uk ? "Офлайн-голосування" : "Offline voting"}</li>
                             <li>{uk ? "SDK для інтеграції з сторонніми сервісами" : "SDK for integration with third-party services"}</li>
                             <li>{uk ? "Аудит криптографії" : "Cryptography audit"}</li>
                             <li>{uk ? "Додатковий аналіз і можливий перехід на zkID (OpenAC)" : "Additional analysis and possible transition to zkID (OpenAC)"}</li>
-                            <li>{uk ? "Аналіз і можлива імплементація більш user-friendly вимог до створення голосувань (альтернатива депозиту 0.001 ETH)" : "Analysis and possible implementation of more user-friendly poll creation requirements (alternative to 0.001 ETH deposit)"}</li>
+                            <li>{uk ? "Аналіз і впровадження доступніших способів створення голосувань замість депозиту в ETH" : "Analysis and implementation of more accessible poll creation methods instead of ETH deposit"}</li>
                         </ul>
                     </div>
                 </div>

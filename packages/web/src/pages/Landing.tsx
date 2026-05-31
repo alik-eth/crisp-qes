@@ -157,7 +157,6 @@ export function Landing({ state, onSignIn }: Props) {
                             ? "Оскільки ІПН має низьку ентропію (10 цифр — можна перебрати за секунди), для безпечного використання в публічному блокчейні застосовується OPRF — протокол, що додає криптографічну сіль до ІПН без розкриття його серверу. Це робить nullifier стійким до перебору й безпечним для реєстру. OPRF також забезпечує unlinkability: ні платформа, ні блокчейн не можуть пов'язати голос з конкретною особою. FHE (CRISP) шифрує самі голоси, розкриваючи лише загальний результат."
                             : "Because the tax ID has low entropy (10 digits — brute-forceable in seconds), it is protected with OPRF — a protocol that adds a cryptographic salt to the tax ID without revealing it to the server. This makes the nullifier brute-force-resistant and safe for the registry. OPRF also provides unlinkability: neither the platform nor the blockchain can link a vote to a specific person. FHE (CRISP) encrypts the votes themselves, revealing only the aggregate result."}</p>
                     </div>
-                    </div>
                 </div>
                 <div style={{ marginTop: 56 }}>
                     <span className="eyebrow">{i18n.language === "uk" ? "Порівняння" : "Comparison"}</span>
