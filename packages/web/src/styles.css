@@ -656,9 +656,8 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 .roadmap::before {
     content: "";
     grid-column: 1 / -1;
-    height: 3px;
-    display: flex;
-    background: linear-gradient(to right, var(--ink) 33%, var(--blue, #0057b7) 33%, var(--blue, #0057b7) 66%, var(--yellow, #ffd700) 66%);
+    height: 1px;
+    background: var(--ink);
 }
 .roadmap__phase {
     padding: 28px 24px 28px 0;
@@ -670,7 +669,9 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 }
 .roadmap__phase:last-child { border-right: 0; }
 .roadmap__phase:not(:first-child) { padding-left: 24px; }
-.roadmap__phase--done { background: var(--paper-2); }
+.roadmap__phase--done { background: var(--paper-2); color: var(--muted); }
+.roadmap__phase--done .roadmap__list { color: var(--muted); }
+.roadmap__phase--done .how-card__title { color: var(--muted); }
 .roadmap__head { display: flex; flex-direction: column; gap: 6px; }
 .roadmap__status {
     font-size: 11px;
