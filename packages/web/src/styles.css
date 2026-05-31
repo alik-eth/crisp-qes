@@ -559,7 +559,7 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 }
 
 /* ─── about page ─── */
-.about-page { max-width: 100%; }
+.about-page { max-width: 760px; }
 .about-page h1 { font-family: var(--display); font-weight: 300; font-size: clamp(28px, 3.6vw, 40px); letter-spacing: -0.02em; }
 
 /* ─── coverage map ─── */
