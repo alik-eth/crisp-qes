@@ -635,8 +635,79 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 }
 
 /* ─── about page ─── */
-.about-page { max-width: 760px; }
-.about-page h1 { font-family: var(--display); font-weight: 300; font-size: clamp(28px, 3.6vw, 40px); letter-spacing: -0.02em; }
+.about-page { max-width: 900px; }
+.eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.32em;
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+}
+.about-hero { padding-bottom: 48px; border-bottom: 1px solid var(--line); }
+.about-hero__lede {
+    font-size: 17px;
+    line-height: 1.65;
+    color: var(--ink-2, #1f1f1f);
+    max-width: 62ch;
+    margin-top: 26px;
+}
+.about-section-block { padding: 56px 0; border-bottom: 1px solid var(--line); }
+.about-section-block--paper { background: var(--paper-2); margin: 0 -56px; padding-left: 56px; padding-right: 56px; }
+.about-h2 {
+    font-family: var(--display);
+    font-weight: 300;
+    font-size: clamp(28px, 3.4vw, 44px);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin-top: 18px;
+}
+.about-lede {
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--ink-2, #1f1f1f);
+    max-width: 62ch;
+    margin-top: 24px;
+}
+
+/* split columns (crypto vs social) */
+.split-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); margin-top: 40px; }
+.split-col { background: var(--bg); padding: 28px; font-size: 14px; line-height: 1.6; color: var(--ink-2, #1f1f1f); }
+.split-col p { margin: 12px 0 0; }
+.split-tag { display: flex; align-items: center; gap: 10px; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 600; color: var(--ink); }
+.split-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink); flex-shrink: 0; }
+.split-ref { display: block; margin-top: 16px; font-family: var(--mono); font-size: 11px; color: var(--muted-2); letter-spacing: 0.04em; }
+
+/* solution block */
+.sol-block { margin-top: 32px; }
+.accent-rule { height: 3px; width: 100%; display: flex; }
+.accent-rule__b { flex: 1; background: var(--blue, #0057b7); }
+.accent-rule__y { flex: 1; background: var(--yellow, #ffd700); }
+.sol-inner { border: 1px solid var(--line); border-top: 0; padding: 28px; font-size: 14px; line-height: 1.6; color: var(--ink-2, #1f1f1f); }
+.sol-inner p { margin: 12px 0 0; }
+.sol-inner p:first-of-type { margin-top: 16px; }
+
+/* comparison table */
+.cmp-table { width: 100%; border-collapse: collapse; margin-top: 24px; border: 1px solid var(--line); font-size: 14px; }
+.cmp-table th, .cmp-table td { padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: center; }
+.cmp-table th { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; color: var(--muted); background: var(--paper-2); border-right: 1px solid var(--line); }
+.cmp-table th:first-child { text-align: left; }
+.cmp-table td { border-right: 1px solid var(--line); }
+.cmp-table td:last-child, .cmp-table th:last-child { border-right: 0; }
+.cmp-label { text-align: left !important; font-weight: 500; color: var(--ink); }
+.cmp-cv { background: var(--paper-2); }
+.cmp-tick { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border: 1px solid var(--line); font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--muted-2); }
+.cmp-tick--yes { border-color: var(--ink); color: var(--ink); }
+
+@media (max-width: 900px) {
+    .about-section-block--paper { margin: 0 -24px; padding-left: 24px; padding-right: 24px; }
+    .split-cols { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+    .about-section-block--paper { margin: 0 -20px; padding-left: 20px; padding-right: 20px; }
+}
 
 /* ─── coverage map ─── */
 .coverage-map {
