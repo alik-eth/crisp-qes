@@ -82,13 +82,12 @@ export function About() {
                     ] as const).map(({ n, x }) => (
                         <div key={n} className="team-card">
                             <div>
-                                <h3 className="team-card__name">
-                                    {t(`about.team${n}name`)}
-                                    <a href={x} target="_blank" rel="noreferrer" className="team-card__x" aria-label="X/Twitter">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-                                    </a>
-                                </h3>
+                                <h3 className="team-card__name">{t(`about.team${n}name`)}</h3>
                                 <p className="team-card__role">{t(`about.team${n}role`)}</p>
+                                <a href={x} target="_blank" rel="noreferrer" className="team-card__x">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                                    <span>@{t(`about.team${n}name`).replace(".eth", "_eth")}</span>
+                                </a>
                             </div>
                             <p className="team-card__desc">{t(`about.team${n}desc`)}</p>
                         </div>
