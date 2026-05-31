@@ -1,0 +1,37 @@
+// QTSP counts per country — sourced from EU DSS Trusted Lists
+// https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/tl-info
+// Last updated: 2026-05-31
+
+export const QTSP_COUNTS: Record<string, { name: string; qtspCount: number }> = {
+    AT: { name: "Austria", qtspCount: 8 },
+    BE: { name: "Belgium", qtspCount: 16 },
+    BG: { name: "Bulgaria", qtspCount: 8 },
+    CY: { name: "Cyprus", qtspCount: 1 },
+    CZ: { name: "Czechia", qtspCount: 10 },
+    DE: { name: "Germany", qtspCount: 30 },
+    DK: { name: "Denmark", qtspCount: 4 },
+    EE: { name: "Estonia", qtspCount: 3 },
+    GR: { name: "Greece", qtspCount: 5 },
+    ES: { name: "Spain", qtspCount: 71 },
+    FI: { name: "Finland", qtspCount: 1 },
+    FR: { name: "France", qtspCount: 39 },
+    HR: { name: "Croatia", qtspCount: 4 },
+    HU: { name: "Hungary", qtspCount: 11 },
+    IE: { name: "Ireland", qtspCount: 5 },
+    IS: { name: "Iceland", qtspCount: 2 },
+    IT: { name: "Italy", qtspCount: 56 },
+    LI: { name: "Liechtenstein", qtspCount: 4 },
+    LT: { name: "Lithuania", qtspCount: 10 },
+    LU: { name: "Luxembourg", qtspCount: 5 },
+    LV: { name: "Latvia", qtspCount: 1 },
+    MT: { name: "Malta", qtspCount: 3 },
+    NL: { name: "Netherlands", qtspCount: 14 },
+    NO: { name: "Norway", qtspCount: 16 },
+    PL: { name: "Poland", qtspCount: 13 },
+    PT: { name: "Portugal", qtspCount: 10 },
+    RO: { name: "Romania", qtspCount: 8 },
+    SE: { name: "Sweden", qtspCount: 4 },
+    SI: { name: "Slovenia", qtspCount: 10 },
+    SK: { name: "Slovakia", qtspCount: 10 },
+    UA: { name: "Ukraine", qtspCount: 10 },
+};

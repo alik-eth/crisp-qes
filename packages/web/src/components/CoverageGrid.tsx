@@ -4,7 +4,7 @@ import { feature } from "topojson-client";
 import type { Topology, GeometryCollection } from "topojson-specification";
 import type { Feature, MultiPolygon, Polygon } from "geojson";
 import worldTopo from "world-atlas/countries-110m.json";
-import { QTSP_SUMMARY } from "../generated/qtsp-summary.js";
+import { QTSP_COUNTS } from "../generated/qtsp-counts.js";
 
 const NUMERIC_TO_ALPHA2: Record<string, string> = {
     "040": "AT", "056": "BE", "100": "BG", "196": "CY", "203": "CZ",
@@ -18,36 +18,6 @@ const NUMERIC_TO_ALPHA2: Record<string, string> = {
 
 const SUPPORTED = new Set(Object.values(NUMERIC_TO_ALPHA2));
 const LIVE = new Set(["UA"]);
-
-const COUNTRY_NAMES: Record<string, string> = {
-    AT: "Austria", BE: "Belgium", BG: "Bulgaria", CY: "Cyprus", CZ: "Czechia",
-    DE: "Germany", DK: "Denmark", EE: "Estonia", GR: "Greece", ES: "Spain",
-    FI: "Finland", FR: "France", HR: "Croatia", HU: "Hungary", IE: "Ireland",
-    IS: "Iceland", IT: "Italy", LI: "Liechtenstein", LT: "Lithuania",
-    LU: "Luxembourg", LV: "Latvia", MT: "Malta", NL: "Netherlands", NO: "Norway",
-    PL: "Poland", PT: "Portugal", RO: "Romania", SE: "Sweden", SI: "Slovenia",
-    SK: "Slovakia", UA: "Ukraine",
-};
-
-interface CountryAgg {
-    total: number;
-    p256: number;
-    rsa: number;
-    services: number;
-}
-
-function buildAggregates(): Map<string, CountryAgg> {
-    const map = new Map<string, CountryAgg>();
-    for (const q of QTSP_SUMMARY) {
-        const prev = map.get(q.country) ?? { total: 0, p256: 0, rsa: 0, services: 0 };
-        prev.total += 1;
-        prev.services += q.serviceCount;
-        if (q.p256) prev.p256 += 1;
-        if (q.keyAlgs.includes("RSA")) prev.rsa += 1;
-        map.set(q.country, prev);
-    }
-    return map;
-}
 
 function normaliseId(id: string | number | undefined): string {
     if (id === undefined) return "";
@@ -107,8 +77,6 @@ function findCrimea(features: ReadonlyArray<Feature<Polygon | MultiPolygon>>): n
 }
 
 export function CoverageGrid() {
-    const aggregates = useMemo(() => buildAggregates(), []);
-
     const { features, pathGen, viewBox } = useMemo(() => {
         const topo = worldTopo as unknown as Topology<{ countries: GeometryCollection }>;
         const fc = feature(topo, topo.objects.countries) as unknown as {
@@ -168,8 +136,6 @@ export function CoverageGrid() {
             >
                 {features.map(({ feature: f, cc }) => {
                     const isLive = LIVE.has(cc);
-                    const agg = aggregates.get(cc);
-                    const hasData = agg && agg.total > 0;
                     const d = pathGen(f) ?? "";
                     const c = pathGen.centroid(f);
                     return (
@@ -181,7 +147,7 @@ export function CoverageGrid() {
                         >
                             <path
                                 d={d}
-                                fill={isLive ? "var(--ink)" : hasData ? "var(--line)" : "var(--paper-2)"}
+                                fill={isLive ? "var(--ink)" : "var(--line)"}
                                 stroke="var(--bg)"
                                 strokeWidth={1}
                             />
@@ -205,30 +171,13 @@ export function CoverageGrid() {
                     );
                 })}
             </svg>
-            {hover && (
-                <CoverageTooltip
-                    cc={hover.cc}
-                    x={hover.x}
-                    y={hover.y}
-                    agg={aggregates.get(hover.cc)}
-                />
-            )}
+            {hover && <CoverageTooltip cc={hover.cc} x={hover.x} y={hover.y} />}
         </div>
     );
 }
 
-function CoverageTooltip({
-    cc,
-    x,
-    y,
-    agg,
-}: {
-    cc: string;
-    x: number;
-    y: number;
-    agg: CountryAgg | undefined;
-}) {
-    const name = COUNTRY_NAMES[cc] ?? cc;
+function CoverageTooltip({ cc, x, y }: { cc: string; x: number; y: number }) {
+    const data = QTSP_COUNTS[cc];
     const isLive = LIVE.has(cc);
     const flipLeft = typeof window !== "undefined" && x > window.innerWidth - 260;
 
@@ -243,7 +192,7 @@ function CoverageTooltip({
         >
             <div className="coverage-tooltip__head">
                 <span className="coverage-tooltip__cc">{cc}</span>
-                <span className="coverage-tooltip__name">{name}</span>
+                <span className="coverage-tooltip__name">{data?.name ?? cc}</span>
             </div>
             <div
                 className="coverage-tooltip__status"
@@ -251,23 +200,10 @@ function CoverageTooltip({
             >
                 {isLive ? "● LIVE" : "● eIDAS READY"}
             </div>
-            {agg ? (
-                <div className="coverage-tooltip__grid">
-                    <span className="coverage-tooltip__label">QTSPs</span>
-                    <span className="coverage-tooltip__val">{agg.total}</span>
-                    <span className="coverage-tooltip__label">ECDSA P-256</span>
-                    <span className="coverage-tooltip__val">{agg.p256}</span>
-                    <span className="coverage-tooltip__label">RSA</span>
-                    <span className="coverage-tooltip__val">{agg.rsa}</span>
-                    <span className="coverage-tooltip__label">Services</span>
-                    <span className="coverage-tooltip__val">{agg.services}</span>
-                </div>
-            ) : (
-                <div className="coverage-tooltip__grid">
-                    <span className="coverage-tooltip__label">QTSPs</span>
-                    <span className="coverage-tooltip__val">—</span>
-                </div>
-            )}
+            <div className="coverage-tooltip__grid">
+                <span className="coverage-tooltip__label">QTSPs</span>
+                <span className="coverage-tooltip__val">{data?.qtspCount ?? "—"}</span>
+            </div>
         </div>
     );
 }
