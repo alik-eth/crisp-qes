@@ -26,10 +26,13 @@ import {
     verifyEnrollCommitProof,
     verifyNullifierProof,
     extractMFromPublicInputs,
+    extractDigestFromPublicInputs,
     OPRF_NULLIFIER_JSON,
 } from "./proof-gate.mjs";
+import { expectedDigestLimbs } from "./challenge.mjs";
 import { Attester } from "./attester.mjs";
 import { MerkleIndex, TREE_DEPTH, GENESIS_ROOT, bigintToHex32 } from "./merkle.mjs";
+import { syncMerkleFromChain, readOnchainRoot } from "./chain-sync.mjs";
 
 // — EnrollmentRegistry deployment the v3 attester signs root updates for ────────
 // FRESH clean-slate registry (genesis, leafCount 0) so the v3 service's
@@ -219,6 +222,7 @@ export async function buildApp(opts = {}) {
     // existing relayer /v2/enroll can post a v3 commitment to the SAME contract.
     const chainId = opts.chainId ?? DEFAULT_CHAIN_ID;
     const enrollmentRegistry = opts.enrollmentRegistry ?? DEFAULT_ENROLLMENT_REGISTRY;
+    const enrollEpoch = process.env.OPRF_ENROLLMENT_EPOCH_V3 ?? "v3-2026";
     const attester = new Attester(opts.attesterKey ?? resolveAttesterKey());
     // The attester address is whatever V3_ATTESTER_KEY derives to (the registry
     // attester was rotated; no address is hardcoded). In production assert only
@@ -229,7 +233,78 @@ export async function buildApp(opts = {}) {
             "[oprf-v3] V3_ATTESTER_KEY derived a zero attester address; refusing to boot",
         );
     }
-    const merkle = opts.merkle ?? (await MerkleIndex.fromLeaves(opts.leaves ?? []));
+    // — Merkle store, synced from the on-chain EnrollmentRegistry ─────────────
+    // The store is a pure function of the ordered leaf set, so we rebuild it
+    // from the registry's CommitmentInserted events at boot (and re-sync before
+    // each append when the on-chain root has moved). This makes the service
+    // self-healing across restarts and failed relays instead of resetting to an
+    // empty genesis tree on every cold start. Enabled whenever RPC_URL is set
+    // (always, in prod via fly.toml). Tests still inject opts.merkle/opts.leaves
+    // directly, which take precedence.
+    const syncCfg =
+        opts.syncCfg ??
+        (process.env.RPC_URL && !opts.merkle && !opts.leaves
+            ? {
+                  rpcUrl: process.env.RPC_URL,
+                  registry: enrollmentRegistry,
+                  fromBlock: BigInt(process.env.REGISTRY_FROM_BLOCK ?? 0),
+              }
+            : null);
+
+    // commitment(0x-hex) -> leafIndex, kept in lock-step with `merkle.leaves`.
+    const indexLeaves = (leaves) => {
+        const m = new Map();
+        leaves.forEach((leaf, i) => m.set(bigintToHex32(BigInt(leaf)), i));
+        return m;
+    };
+
+    let merkle;
+    let leafIndexOf;
+    if (opts.merkle) {
+        merkle = opts.merkle;
+        leafIndexOf = opts.leafIndexOf ?? indexLeaves(opts.merkle.leaves ?? []);
+    } else if (syncCfg) {
+        const synced = await syncMerkleFromChain(syncCfg);
+        merkle = synced.index;
+        leafIndexOf = indexLeaves(synced.leaves);
+        if (opts.logger !== false) {
+            console.info(
+                `[oprf-v3] merkle synced from chain: leafCount=${synced.leafCount} ` +
+                    `root=${synced.onchainRoot}`,
+            );
+        }
+    } else {
+        merkle = await MerkleIndex.fromLeaves(opts.leaves ?? []);
+        leafIndexOf = opts.leafIndexOf ?? indexLeaves(opts.leaves ?? []);
+    }
+
+    // Re-sync the store to on-chain truth when the registry root has advanced
+    // past ours (another node enrolled, our last relay landed after a restart,
+    // or a prior append never confirmed on-chain). Called before each append so
+    // the oldRoot we sign always equals the live on-chain root. No-op when the
+    // roots already agree (one cheap eth_call) or sync is disabled (tests).
+    async function resyncIfStale() {
+        if (!syncCfg) return;
+        const onchain = await readOnchainRoot(syncCfg);
+        if (bigintToHex32(merkle.root).toLowerCase() === onchain.toLowerCase()) return;
+        const synced = await syncMerkleFromChain(syncCfg);
+        merkle = synced.index;
+        leafIndexOf = indexLeaves(synced.leaves);
+    }
+
+    // Reconstruct the v3 challenge from the PUBLIC M + intent + epoch, sha256 it,
+    // and require it equals the digest the enroll proof bound (public words 14/15).
+    // Stateless + operator-blind: we never see the cert, only M (which we have).
+    function challengeDigestOk(Mhex, publicInputs) {
+        let bound, expected;
+        try {
+            bound = extractDigestFromPublicInputs(publicInputs);
+            expected = expectedDigestLimbs(Mhex.toLowerCase(), enrollEpoch);
+        } catch {
+            return false;
+        }
+        return bound.hi === expected.hi && bound.lo === expected.lo;
+    }
 
     const app = Fastify({ logger: opts.logger ?? { level: "warn" } });
 
@@ -323,6 +398,15 @@ export async function buildApp(opts = {}) {
             req.log.info({ code: gateResult.code }, "v3 blind-eval proof rejected");
             return reply.code(status).send({ error: gateResult.code, detail: gateResult.detail });
         }
+        if (!challengeDigestOk(M, publicInputs)) {
+            req.log.info("v3 blind-eval challenge digest mismatch");
+            return reply.code(409).send({
+                error: "ChallengeMismatch",
+                detail:
+                    "proof's bound messageDigest != sha256(challenge) for this M/epoch; " +
+                    "re-sign the downloaded challenge for this session",
+            });
+        }
         req.log.info("v3 blind-eval proof accepted");
 
         // — BlindEvaluate + DLEQ ─────────────────────────────────────────
@@ -347,9 +431,6 @@ export async function buildApp(opts = {}) {
             proofAccepted: "verified (in-process bb.js verify + M-binding)",
         });
     });
-
-    // commitment(0x-hex) -> leafIndex, for the recovery path lookup.
-    const leafIndexOf = opts.leafIndexOf ?? new Map();
 
     // — POST /v3/register ────────────────────────────────────────────────
     // Land a v3 enrollment commitment on-chain via the SAME EnrollmentRegistry
@@ -426,6 +507,13 @@ export async function buildApp(opts = {}) {
             return reply.code(status).send({ error: enrollResult.code, detail: enrollResult.detail });
         }
 
+        // bind the registered leaf to the live-signed challenge as well.
+        const exHex = enrollPublicInputs[12].replace(/^0x/, "").padStart(64, "0");
+        const eyHex = enrollPublicInputs[13].replace(/^0x/, "").padStart(64, "0");
+        if (!challengeDigestOk(`0x${exHex}${eyHex}`, enrollPublicInputs)) {
+            return reply.code(409).send({ error: "ChallengeMismatch", detail: "enroll proof challenge digest mismatch" });
+        }
+
         // — (2) Verify the nullifier proof + enforce the binding cross-checks ─
         // Bind nullifier.M to the enroll proof's M, nullifier.Kpub to THIS
         // node's Kpub, and nullifier.commitment to the submitted commitment.
@@ -448,6 +536,21 @@ export async function buildApp(opts = {}) {
             const status = nullifierResult.code === "ProofRejected" ? 401 : 400;
             req.log.info({ code: nullifierResult.code }, "v3 register nullifier proof rejected");
             return reply.code(status).send({ error: nullifierResult.code, detail: nullifierResult.detail });
+        }
+
+        // — Sync to on-chain truth before signing ─────────────────────────
+        // Pull the live registry root; if it has advanced past ours (restart,
+        // late relay, another node), rebuild the store from chain so the
+        // oldRoot we are about to sign equals the on-chain root and the
+        // updateRoot is accepted. Fail closed if the chain is unreachable.
+        try {
+            await resyncIfStale();
+        } catch (e) {
+            req.log.error({ err: e.message }, "v3 register: chain re-sync failed");
+            return reply.code(503).send({
+                error: "ChainSyncUnavailable",
+                detail: "could not reconcile the enrollment tree with chain; try again",
+            });
         }
 
         // — Collision check ───────────────────────────────────────────────
