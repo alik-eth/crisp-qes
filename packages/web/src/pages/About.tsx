@@ -137,7 +137,7 @@ export function About() {
                             <th />
                             <th>{uk ? "Соцмережі · опитування" : "Social polls"}</th>
                             <th>{uk ? "Крипто-рішення" : "Crypto solutions"}</th>
-                            <th className="cmp-cv">Civic Voice</th>
+                            <th className="cmp-cv">CIVIC VOICE</th>
                         </tr>
                     </thead>
                     <tbody>

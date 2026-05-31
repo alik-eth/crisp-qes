@@ -704,14 +704,15 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 /* comparison table */
 .cmp-table { width: 100%; border-collapse: collapse; margin-top: 24px; border: 1px solid var(--line); font-size: 14px; }
 .cmp-table th, .cmp-table td { padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: center; }
-.cmp-table th { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; color: var(--muted); background: var(--paper-2); border-right: 1px solid var(--line); }
+.cmp-table th { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 600; color: var(--muted); background: var(--bg); border-right: 1px solid var(--line); }
 .cmp-table th:first-child { text-align: left; }
+.cmp-table th.cmp-cv { background: var(--ink); color: #fff; }
 .cmp-table td { border-right: 1px solid var(--line); }
 .cmp-table td:last-child, .cmp-table th:last-child { border-right: 0; }
 .cmp-label { text-align: left !important; font-weight: 500; color: var(--ink); }
-.cmp-cv { background: var(--paper-2); }
-.cmp-tick { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border: 1px solid var(--line); font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--muted-2); }
-.cmp-tick--yes { border-color: var(--ink); color: var(--ink); }
+.cmp-cv { background: var(--bg); }
+.cmp-tick { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border: 1px solid var(--ink); font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--ink); }
+.cmp-tick--yes { background: var(--ink); color: #fff; }
 
 @media (max-width: 900px) {
     .about-section-block--paper { margin: 0 -24px; padding-left: 24px; padding-right: 24px; }
