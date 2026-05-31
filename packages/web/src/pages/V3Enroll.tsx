@@ -482,16 +482,24 @@ function EnrolledPanel({
 }) {
     return (
         <div className="card">
-            <h3>Verified on chain.</h3>
+            <h3>{result.recovered ? "Recovered." : "Verified on chain."}</h3>
             <p className="muted small" style={{ marginTop: 8 }}>
-                Your anonymous commitment is now on Sepolia.{" "}
-                <a
-                    href={explorerTxUrl(result.txHash)}
-                    target="_blank"
-                    rel="noreferrer"
-                >
-                    View transaction →
-                </a>
+                {result.recovered ? (
+                    "This Diia identity was already enrolled — recovered the existing on-chain commitment for this device."
+                ) : (
+                    <>
+                        Your anonymous commitment is now on Sepolia.{" "}
+                        {result.txHash && (
+                            <a
+                                href={explorerTxUrl(result.txHash)}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                View transaction →
+                            </a>
+                        )}
+                    </>
+                )}
             </p>
             <p
                 className="mono small"

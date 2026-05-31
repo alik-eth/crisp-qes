@@ -491,6 +491,33 @@ export async function v3Register(args: {
     return (await res.json()) as V3RegisterResponse;
 }
 
+export interface V3RecoverResponse {
+    leafIndex: number;
+    merklePath: `0x${string}`[];
+    merklePathIndices: (0 | 1)[];
+    root: `0x${string}`;
+}
+
+// GET the existing enrollment path for an ALREADY-enrolled commitment. Because
+// the commitment = pedersen(OPRF(RNOKPP)) is deterministic per identity, a
+// "subsequent enrollment" with the same Diia identity is a RECOVERY: there is
+// no new leaf to append, so we just fetch the existing leaf + Merkle path and
+// re-wrap the vault locally (e.g. on a new device). No on-chain change happens.
+export async function v3RecoverPath(
+    commitment: `0x${string}`,
+): Promise<V3RecoverResponse> {
+    const res = await fetch(
+        `${OPRF_SERVICE_URL}/v3/enrollment/${commitment}/path`,
+    );
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(
+            `v3 recover-path HTTP ${res.status}: ${text.slice(0, 200)}`,
+        );
+    }
+    return (await res.json()) as V3RecoverResponse;
+}
+
 export interface RealRunStage {
     key:
         | "parseWitness"
@@ -515,8 +542,10 @@ export interface RealEnrollResult {
     leafIndex: number;
     merklePath: `0x${string}`[];
     merklePathIndices: (0 | 1)[];
-    /** On-chain enrollment tx (relayer-submitted updateRoot). */
-    txHash: `0x${string}`;
+    /** On-chain enrollment tx (relayer-submitted updateRoot); null on recovery. */
+    txHash: `0x${string}` | null;
+    /** True when this re-enrolled/recovered an existing leaf (no new on-chain tx). */
+    recovered: boolean;
     totalMs: number;
 }
 
@@ -648,10 +677,13 @@ export async function runRealEnrollment(
         );
     }
 
-    // 5. POST /v3/register (BOTH proofs) — service appends the leaf + signs.
+    // 5. POST /v3/register (BOTH proofs). If this identity is ALREADY enrolled
+    //    (deterministic commitment per RNOKPP), treat it as RECOVERY: fetch the
+    //    existing leaf + path instead of erroring, and skip the on-chain submit.
     t = performance.now();
     stage("register", "Register leaf (operator-blind)", "running");
-    let reg: V3RegisterResponse;
+    let reg: V3RegisterResponse | null = null;
+    let recovery: V3RecoverResponse | null = null;
     try {
         reg = await v3Register({
             commitment: commitmentHex,
@@ -661,40 +693,57 @@ export async function runRealEnrollment(
             nullifierPublicInputs: nullifier.publicInputs,
         });
     } catch (err) {
-        stage("register", "Register leaf (operator-blind)", "error", {
-            detail: String(err),
-        });
-        throw err;
+        const e = err as Error & { status?: number; bodyText?: string };
+        if (e.status === 409 && (e.bodyText ?? "").includes("AlreadyEnrolled")) {
+            recovery = await v3RecoverPath(commitmentHex);
+        } else {
+            stage("register", "Register leaf (operator-blind)", "error", {
+                detail: String(err),
+            });
+            throw err;
+        }
     }
-    stage("register", "Register leaf (operator-blind)", "done", {
-        ms: performance.now() - t,
-    });
+    stage(
+        "register",
+        recovery ? "Recover existing enrollment" : "Register leaf (operator-blind)",
+        "done",
+        { ms: performance.now() - t },
+    );
 
-    // 6. Land it on-chain via the relayer (reuses /v2/enroll unchanged).
-    t = performance.now();
-    stage("chain", "Submit on-chain (relayer)", "running");
-    const tx = await submitEnrollment({
-        newRoot: reg.newRoot,
-        newCommitments: reg.newCommitments,
-        signature: reg.attesterSig,
-    });
-    if (!tx.ok) {
-        stage("chain", "Submit on-chain (relayer)", "error", {
-            detail: tx.detail ?? tx.code ?? "chain submit failed",
+    // 6. Land it on-chain via the relayer — only for a FRESH enrollment. A
+    //    recovery's leaf is already on-chain, so there is no new updateRoot.
+    let txHash: `0x${string}` | null = null;
+    if (reg) {
+        t = performance.now();
+        stage("chain", "Submit on-chain (relayer)", "running");
+        const tx = await submitEnrollment({
+            newRoot: reg.newRoot,
+            newCommitments: reg.newCommitments,
+            signature: reg.attesterSig,
         });
-        throw new Error(tx.detail ?? tx.code ?? "chain submit failed");
+        if (!tx.ok) {
+            stage("chain", "Submit on-chain (relayer)", "error", {
+                detail: tx.detail ?? tx.code ?? "chain submit failed",
+            });
+            throw new Error(tx.detail ?? tx.code ?? "chain submit failed");
+        }
+        txHash = tx.txHash;
+        stage("chain", "Submit on-chain (relayer)", "done", {
+            ms: performance.now() - t,
+        });
+    } else {
+        stage("chain", "Already on-chain (recovery)", "done", { ms: 0 });
     }
-    stage("chain", "Submit on-chain (relayer)", "done", {
-        ms: performance.now() - t,
-    });
 
+    const path = reg ?? recovery!;
     return {
         commitment: commitmentHex,
         oprfOutputN: pointToOutputHex(Npt),
-        leafIndex: reg.leafIndex,
-        merklePath: reg.merklePath,
-        merklePathIndices: reg.merklePathIndices,
-        txHash: tx.txHash,
+        leafIndex: path.leafIndex,
+        merklePath: path.merklePath,
+        merklePathIndices: path.merklePathIndices,
+        txHash,
+        recovered: reg === null,
         totalMs: performance.now() - t0,
     };
 }
