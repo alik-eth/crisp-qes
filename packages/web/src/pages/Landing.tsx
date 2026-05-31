@@ -136,6 +136,38 @@ export function Landing({ state, onSignIn }: Props) {
                 </div>
             </div>
 
+            {/* Transparency */}
+            <div className="transparency-section">
+                <p className="transparency-section__label">— {t("landing.transparencyLabel")} —</p>
+                <h2 className="transparency-section__title">{t("landing.transparencyTitle")}</h2>
+                <div className="transparency-grid">
+                    <div className="transparency-col">
+                        <h3 className="transparency-col__head">
+                            <span className="transparency-icon transparency-icon--check">✓</span>
+                            {t("landing.registryCol")}
+                        </h3>
+                        {(t("landing.registryItems", { returnObjects: true }) as string[]).map((item, i) => (
+                            <div key={i} className="transparency-row">
+                                <span className="transparency-icon transparency-icon--check">✓</span>
+                                {item}
+                            </div>
+                        ))}
+                    </div>
+                    <div className="transparency-col">
+                        <h3 className="transparency-col__head">
+                            <span className="transparency-icon transparency-icon--cross">✕</span>
+                            {t("landing.deviceCol")}
+                        </h3>
+                        {(t("landing.deviceItems", { returnObjects: true }) as string[]).map((item, i) => (
+                            <div key={i} className="transparency-row">
+                                <span className="transparency-icon transparency-icon--cross">✕</span>
+                                {item}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
         </section>
     );
 }

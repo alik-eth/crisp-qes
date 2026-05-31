@@ -558,6 +558,82 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
     }
 }
 
+/* ─── transparency section ─── */
+.transparency-section {
+    margin-top: 80px;
+    text-align: center;
+}
+.transparency-section__label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted-2);
+    margin-bottom: 16px;
+}
+.transparency-section__title {
+    font-family: var(--display);
+    font-weight: 300;
+    font-size: clamp(28px, 3.6vw, 40px);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin-bottom: 40px;
+}
+.transparency-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border: 1px solid var(--line);
+    text-align: left;
+}
+.transparency-col {
+    padding: 24px;
+}
+.transparency-col + .transparency-col {
+    border-left: 1px solid var(--line);
+}
+.transparency-col__head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin: 0 0 20px;
+}
+.transparency-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    font-size: 15px;
+    color: var(--ink);
+    border-top: 1px solid var(--line);
+}
+.transparency-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: 1px solid var(--ink);
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.transparency-icon--check {
+    color: var(--ink);
+}
+.transparency-icon--cross {
+    color: var(--ink);
+}
+@media (max-width: 640px) {
+    .transparency-grid { grid-template-columns: 1fr; }
+    .transparency-col + .transparency-col { border-left: 0; border-top: 1px solid var(--line); }
+}
+
 /* ─── about page ─── */
 .about-page { max-width: 760px; }
 .about-page h1 { font-family: var(--display); font-weight: 300; font-size: clamp(28px, 3.6vw, 40px); letter-spacing: -0.02em; }
