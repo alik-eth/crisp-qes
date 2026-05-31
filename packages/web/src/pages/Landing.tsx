@@ -157,24 +157,6 @@ export function Landing({ state, onSignIn }: Props) {
                             ? "Оскільки ІПН має низьку ентропію (10 цифр — можна перебрати за секунди), для безпечного використання в публічному блокчейні застосовується OPRF — протокол, що додає криптографічну сіль до ІПН без розкриття його серверу. Це робить nullifier стійким до перебору й безпечним для реєстру. OPRF також забезпечує unlinkability: ні платформа, ні блокчейн не можуть пов'язати голос з конкретною особою. FHE (CRISP) шифрує самі голоси, розкриваючи лише загальний результат."
                             : "Because the tax ID has low entropy (10 digits — brute-forceable in seconds), it is protected with OPRF — a protocol that adds a cryptographic salt to the tax ID without revealing it to the server. This makes the nullifier brute-force-resistant and safe for the registry. OPRF also provides unlinkability: neither the platform nor the blockchain can link a vote to a specific person. FHE (CRISP) encrypts the votes themselves, revealing only the aggregate result."}</p>
                     </div>
-                    <div style={{ marginTop: 20 }}>
-                    </div>
-                </div>
-                <div className="mech-grid-3" style={{ marginTop: 56 }}>
-                    <div className="how-card">
-                        <span className="how-card__n mono">{i18n.language === "uk" ? "ІПН" : "TAX ID"}</span>
-                        <h3 className="how-card__title">{i18n.language === "uk" ? "Незмінний якір" : "An immutable anchor"}</h3>
-                        <p className="how-card__body">{i18n.language === "uk" ? "Податковий номер не змінюється все життя. Один громадянин — один nullifier, який не обнулити перевипуском документів." : "A tax ID doesn't change for a lifetime. One citizen — one nullifier that can't be reset by reissuing documents."}</p>
-                    </div>
-                    <div className="how-card">
-                        <span className="how-card__n mono">OPRF</span>
-                        <h3 className="how-card__title">{i18n.language === "uk" ? "Сіль без розкриття" : "Salt without disclosure"}</h3>
-                        <p className="how-card__body">{i18n.language === "uk" ? "Oblivious PRF додає криптографічну сіль до ІПН, не показуючи його ані платформі, ані блокчейну. Перебрати 10 цифр стає неможливо, а голос — не пов'язати з особою." : "An Oblivious PRF adds a cryptographic salt to the tax ID without showing it to the platform or the blockchain. Brute-forcing 10 digits becomes impossible, and a vote can't be linked to a person."}</p>
-                    </div>
-                    <div className="how-card">
-                        <span className="how-card__n mono">FHE</span>
-                        <h3 className="how-card__title">{i18n.language === "uk" ? "Зашифрований підрахунок" : "Encrypted tally"}</h3>
-                        <p className="how-card__body">{i18n.language === "uk" ? "Гомоморфне шифрування (CRISP) шифрує самі голоси й розкриває лише загальний результат — окремий голос не побачить ніхто." : "Homomorphic encryption (CRISP) encrypts the votes themselves and reveals only the aggregate result — no one sees an individual vote."}</p>
                     </div>
                 </div>
                 <div style={{ marginTop: 56 }}>
@@ -208,6 +190,23 @@ export function Landing({ state, onSignIn }: Props) {
                         ))}
                     </tbody>
                 </table>
+                <div className="mech-grid-3" style={{ marginTop: 56 }}>
+                    <div className="how-card">
+                        <span className="how-card__n mono">{i18n.language === "uk" ? "ІПН" : "TAX ID"}</span>
+                        <h3 className="how-card__title">{i18n.language === "uk" ? "Незмінний якір" : "An immutable anchor"}</h3>
+                        <p className="how-card__body">{i18n.language === "uk" ? "Податковий номер не змінюється все життя. Один громадянин — один nullifier, який не обнулити перевипуском документів." : "A tax ID doesn't change for a lifetime. One citizen — one nullifier that can't be reset by reissuing documents."}</p>
+                    </div>
+                    <div className="how-card">
+                        <span className="how-card__n mono">OPRF</span>
+                        <h3 className="how-card__title">{i18n.language === "uk" ? "Сіль без розкриття" : "Salt without disclosure"}</h3>
+                        <p className="how-card__body">{i18n.language === "uk" ? "Oblivious PRF додає криптографічну сіль до ІПН, не показуючи його ані платформі, ані блокчейну. Перебрати 10 цифр стає неможливо, а голос — не пов'язати з особою." : "An Oblivious PRF adds a cryptographic salt to the tax ID without showing it to the platform or the blockchain. Brute-forcing 10 digits becomes impossible, and a vote can't be linked to a person."}</p>
+                    </div>
+                    <div className="how-card">
+                        <span className="how-card__n mono">FHE</span>
+                        <h3 className="how-card__title">{i18n.language === "uk" ? "Зашифрований підрахунок" : "Encrypted tally"}</h3>
+                        <p className="how-card__body">{i18n.language === "uk" ? "Гомоморфне шифрування (CRISP) шифрує самі голоси й розкриває лише загальний результат — окремий голос не побачить ніхто." : "Homomorphic encryption (CRISP) encrypts the votes themselves and reveals only the aggregate result — no one sees an individual vote."}</p>
+                    </div>
+                </div>
             </div>
 
             {/* Transparency */}
