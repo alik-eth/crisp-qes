@@ -72,6 +72,21 @@ export function About() {
                 </div>
             </div>
 
+            {/* ── Наш стек ── */}
+            <div className="about-section-block">
+                <span className="micro" style={{ marginBottom: 12, display: "block" }}>{uk ? "Наш стек" : "Our stack"}</span>
+                <div className="sol-stack-grid">
+                    <div>
+                        <span className="sol-stack-label">{uk ? "Авторизація" : "Authorization"}</span>
+                        <p className="sol-stack mono">КЕП (eIDAS) · CAdES-BES .p7s · ECDSA P-256 · Longfellow (ZK, Sumcheck+Ligero, WASM)</p>
+                    </div>
+                    <div>
+                        <span className="sol-stack-label">{uk ? "Голосування" : "Voting"}</span>
+                        <p className="sol-stack mono">Interfold (CRISP) · FHE · Noirlang (Aztec) · Barretenberg UltraHonk · Solidity</p>
+                    </div>
+                </div>
+            </div>
+
             {/* ── Дорожня карта ── */}
             <div className="about-section-block">
                 <span className="eyebrow">{uk ? "Дорожня карта" : "Roadmap"}</span>

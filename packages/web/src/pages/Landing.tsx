@@ -158,17 +158,6 @@ export function Landing({ state, onSignIn }: Props) {
                             : "Because the tax ID has low entropy (10 digits — brute-forceable in seconds), it is protected with OPRF — a protocol that adds a cryptographic salt to the tax ID without revealing it to the server. This makes the nullifier brute-force-resistant and safe for the registry. OPRF also provides unlinkability: neither the platform nor the blockchain can link a vote to a specific person. FHE (CRISP) encrypts the votes themselves, revealing only the aggregate result."}</p>
                     </div>
                     <div style={{ marginTop: 20 }}>
-                        <span className="micro" style={{ marginBottom: 6, display: "block" }}>{i18n.language === "uk" ? "Наш стек" : "Our stack"}</span>
-                        <div className="sol-stack-grid">
-                            <div>
-                                <span className="sol-stack-label">{i18n.language === "uk" ? "Авторизація" : "Authorization"}</span>
-                                <p className="sol-stack mono">КЕП (eIDAS) · CAdES-BES .p7s · ECDSA P-256 · Longfellow (ZK, Sumcheck+Ligero, WASM)</p>
-                            </div>
-                            <div>
-                                <span className="sol-stack-label">{i18n.language === "uk" ? "Голосування" : "Voting"}</span>
-                                <p className="sol-stack mono">Interfold (CRISP) · FHE · Noirlang (Aztec) · Barretenberg UltraHonk · Solidity</p>
-                            </div>
-                        </div>
                     </div>
                 </div>
                 <div className="mech-grid-3" style={{ marginTop: 56 }}>
