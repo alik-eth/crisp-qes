@@ -605,6 +605,19 @@ export async function buildApp(opts = {}) {
                 detail: "commitment must be 0x-prefixed 32-byte hex",
             });
         }
+        // Reconcile to chain BEFORE lookup. Recovery must see on-chain truth
+        // regardless of which (possibly cold/other) machine serves this request;
+        // otherwise a leaf that /v3/register reported AlreadyEnrolled (after its
+        // own resync) would 404 here on an unsynced machine.
+        try {
+            await resyncIfStale();
+        } catch (e) {
+            req.log.error({ err: e.message }, "v3 path: chain re-sync failed");
+            return reply.code(503).send({
+                error: "ChainSyncUnavailable",
+                detail: "could not reconcile the enrollment tree with chain; try again",
+            });
+        }
         const idx = leafIndexOf.get(commitment);
         if (idx === undefined) {
             return reply.code(404).send({ error: "NotEnrolled", commitment });
