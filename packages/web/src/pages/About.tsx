@@ -34,7 +34,7 @@ export function About() {
                         </span>
                         <p className="cov-body">
                             {uk
-                                ? "Платформа доступна кожному, хто має кваліфікований електронний підпис (КЕП / QES) — це громадяни України та 27 країн Європейського Союзу відповідно до регламенту eIDAS."
+                                ? "Платформа доступна кожному, хто має кваліфікований електронний підпис (КЕП) — це громадяни України та 27 країн Європейського Союзу відповідно до регламенту eIDAS."
                                 : "The platform is open to anyone holding a qualified electronic signature (QES) — citizens of Ukraine and the 27 European Union countries under the eIDAS regulation."}
                         </p>
                         <div className="cov-legend">
@@ -61,13 +61,6 @@ export function About() {
             {/* ── Чим ми відрізняємось ── */}
             <div className="about-section-block about-section-block--paper">
                 <span className="eyebrow">{uk ? "Чим ми відрізняємось" : "How we're different"}</span>
-                <h2 className="about-h2">{uk ? "Не таке, як інші рішення для голосувань." : "Unlike any existing voting tool."}</h2>
-                <p className="about-lede">
-                    {uk
-                        ? "Громадську думку сьогодні збирають двома шляхами — опитування в соцмережах та криптографічні рішення для голосувань. Обидва ламаються там, де треба одночасно довести унікальність голосу, зберегти приватність і дати змогу перевірити результат. Ось чим відрізняється Civic Voice."
-                        : "Public opinion is gathered in two ways today — social-media polls and cryptographic voting tools. Both break exactly where you must simultaneously prove a vote's uniqueness, preserve privacy, and let anyone verify the result. Here is how Civic Voice differs."}
-                </p>
-
                 <div className="split-cols">
                     <div className="split-col">
                         <span className="split-tag">
@@ -76,10 +69,10 @@ export function About() {
                         </span>
                         <p>
                             {uk
-                                ? "Існуючі рішення для приватного голосування спираються на паспорт як якір ідентичності. Але паспорт перевипускується — отримавши новий номер документа, людина генерує новий nullifier і голосує повторно. Це фундаментальна вразливість, яку неможливо закрити на рівні протоколу."
-                                : "Existing private-voting solutions rely on the passport as an identity anchor. But a passport gets reissued — with a new document number, a person generates a new nullifier and votes again. It is a fundamental vulnerability that cannot be closed at the protocol level."}
+                                ? "Існуючі рішення для приватного голосування з верифікацією особи спираються на паспорт як якір ідентичності (Rarimo Freedom Tool, zkPassport). Однак паспорт перевипускується, а значить людина може отримати новий номер документа, згенерувати новий nullifier і проголосувати повторно. Це фундаментальна вразливість, яку неможливо закрити на рівні протоколу. zkID фокусується на unlinkability через anonymous credentials, але не гарантує унікальність."
+                                : "Existing private-voting solutions with identity verification rely on the passport as an identity anchor (Rarimo Freedom Tool, zkPassport). However, a passport gets reissued — meaning a person can get a new document number, generate a new nullifier and vote again. This is a fundamental vulnerability that cannot be closed at the protocol level. zkID focuses on unlinkability via anonymous credentials, but does not guarantee uniqueness."}
                         </p>
-                        <span className="split-ref">Rarimo Freedom Tool · zkPassport · PSE zkID</span>
+                        <span className="split-ref">Rarimo Freedom Tool · zkPassport · zkID</span>
                     </div>
                     <div className="split-col">
                         <span className="split-tag">
@@ -88,8 +81,8 @@ export function About() {
                         </span>
                         <p>
                             {uk
-                                ? "Опитування в соцмережах і месенджерах (Telegram-боти, Instagram Stories, X / Twitter polls) не забезпечують жодної верифікації учасників. Захист від ботів ненадійний — масові накрутки залишаються нормою. Результати зберігаються на серверах платформи — їх можна змінити, видалити чи сфальсифікувати без сліду."
-                                : "Polls on social media and messengers (Telegram bots, Instagram Stories, X / Twitter polls) provide no verification of participants. Bot protection is unreliable — mass manipulation remains the norm. Results live on the platform's servers — they can be changed, deleted or forged without a trace."}
+                                ? "Опитування в соціальних мережах та месенджерах (Telegram, Instagram, X/Twitter) не забезпечують жодної верифікації учасників. Захист від ботів ненадійний — масові накрутки залишаються нормою. Неможливо достовірно встановити, що в голосуванні беруть участь саме повнолітні громадяни певної країни, а не боти, іноземці чи діти. Результати зберігаються на серверах платформи — їх можна змінити, видалити або сфальсифікувати без будь-якого сліду. Таким результатам можна лише довіряти, але неможливо їх перевірити."
+                                : "Polls on social media and messengers (Telegram, Instagram, X/Twitter) provide no verification of participants. Bot protection is unreliable — mass manipulation remains the norm. There is no way to reliably establish that voters are actually adult citizens of a given country, rather than bots, foreigners or children. Results are stored on the platform's servers — they can be changed, deleted or falsified without any trace. Such results can only be trusted, but never verified."}
                         </p>
                         <span className="split-ref">Telegram · Instagram · X / Twitter</span>
                     </div>
@@ -116,7 +109,7 @@ export function About() {
                 </div>
 
                 {/* Механізми */}
-                <div className="how-grid" style={{ marginTop: 56 }}>
+                <div className="mech-grid" style={{ marginTop: 56 }}>
                     <div className="how-card">
                         <span className="how-card__n mono">{uk ? "ІПН" : "TAX ID"}</span>
                         <h3 className="how-card__title">{uk ? "Незмінний якір" : "An immutable anchor"}</h3>
@@ -126,11 +119,6 @@ export function About() {
                         <span className="how-card__n mono">OPRF</span>
                         <h3 className="how-card__title">{uk ? "Сіль без розкриття" : "Salt without disclosure"}</h3>
                         <p className="how-card__body">{uk ? "Oblivious PRF додає криптографічну сіль до ІПН, не показуючи його ані платформі, ані блокчейну. Перебрати 10 цифр стає неможливо, а голос — не пов'язати з особою." : "An Oblivious PRF adds a cryptographic salt to the tax ID without showing it to the platform or the blockchain. Brute-forcing 10 digits becomes impossible, and a vote can't be linked to a person."}</p>
-                    </div>
-                    <div className="how-card">
-                        <span className="how-card__n mono">FHE</span>
-                        <h3 className="how-card__title">{uk ? "Зашифрований підрахунок" : "Encrypted tally"}</h3>
-                        <p className="how-card__body">{uk ? "Гомоморфне шифрування (CRISP) шифрує самі голоси й розкриває лише загальний результат — окремий голос не побачить ніхто." : "Homomorphic encryption (CRISP) encrypts the votes themselves and reveals only the aggregate result — no one sees an individual vote."}</p>
                     </div>
                 </div>
 
