@@ -1,70 +1,170 @@
-import { useTranslation } from "react-i18next";
+import { useMemo } from "react";
+import { geoConicEqualArea, geoPath } from "d3-geo";
+import { feature } from "topojson-client";
+import type { Topology, GeometryCollection } from "topojson-specification";
+import type { Feature, MultiPolygon, Polygon } from "geojson";
+import worldTopo from "world-atlas/countries-110m.json";
 
-const COUNTRIES = [
-    { code: "UA", live: true },
-    { code: "AT" }, { code: "BE" }, { code: "BG" }, { code: "CY" },
-    { code: "CZ" }, { code: "DE" }, { code: "DK" }, { code: "EE" },
-    { code: "ES" }, { code: "FI" }, { code: "FR" }, { code: "GR" },
-    { code: "HR" }, { code: "HU" }, { code: "IE" }, { code: "IT" },
-    { code: "LT" }, { code: "LU" }, { code: "LV" }, { code: "MT" },
-    { code: "NL" }, { code: "PL" }, { code: "PT" }, { code: "RO" },
-    { code: "SE" }, { code: "SI" }, { code: "SK" },
-] as const;
-
-const NAMES: Record<string, { uk: string; en: string }> = {
-    UA: { uk: "Україна", en: "Ukraine" },
-    AT: { uk: "Австрія", en: "Austria" },
-    BE: { uk: "Бельгія", en: "Belgium" },
-    BG: { uk: "Болгарія", en: "Bulgaria" },
-    CY: { uk: "Кіпр", en: "Cyprus" },
-    CZ: { uk: "Чехія", en: "Czechia" },
-    DE: { uk: "Німеччина", en: "Germany" },
-    DK: { uk: "Данія", en: "Denmark" },
-    EE: { uk: "Естонія", en: "Estonia" },
-    ES: { uk: "Іспанія", en: "Spain" },
-    FI: { uk: "Фінляндія", en: "Finland" },
-    FR: { uk: "Франція", en: "France" },
-    GR: { uk: "Греція", en: "Greece" },
-    HR: { uk: "Хорватія", en: "Croatia" },
-    HU: { uk: "Угорщина", en: "Hungary" },
-    IE: { uk: "Ірландія", en: "Ireland" },
-    IT: { uk: "Італія", en: "Italy" },
-    LT: { uk: "Литва", en: "Lithuania" },
-    LU: { uk: "Люксембург", en: "Luxembourg" },
-    LV: { uk: "Латвія", en: "Latvia" },
-    MT: { uk: "Мальта", en: "Malta" },
-    NL: { uk: "Нідерланди", en: "Netherlands" },
-    PL: { uk: "Польща", en: "Poland" },
-    PT: { uk: "Португалія", en: "Portugal" },
-    RO: { uk: "Румунія", en: "Romania" },
-    SE: { uk: "Швеція", en: "Sweden" },
-    SI: { uk: "Словенія", en: "Slovenia" },
-    SK: { uk: "Словаччина", en: "Slovakia" },
+const NUMERIC_TO_ALPHA2: Record<string, string> = {
+    "040": "AT", "056": "BE", "100": "BG", "196": "CY", "203": "CZ",
+    "208": "DK", "233": "EE", "276": "DE", "300": "GR",
+    "352": "IS", "372": "IE", "380": "IT", "428": "LV", "438": "LI",
+    "440": "LT", "442": "LU", "470": "MT", "528": "NL", "578": "NO",
+    "616": "PL", "620": "PT", "642": "RO", "703": "SK", "705": "SI",
+    "724": "ES", "752": "SE", "246": "FI", "250": "FR", "191": "HR",
+    "348": "HU", "804": "UA",
 };
 
+const SUPPORTED = new Set(Object.values(NUMERIC_TO_ALPHA2));
+const LIVE = new Set(["UA"]);
+
+function normaliseId(id: string | number | undefined): string {
+    if (id === undefined) return "";
+    const s = String(id);
+    return s.length < 3 ? s.padStart(3, "0") : s;
+}
+
+// Clip France to mainland (exclude overseas territories)
+const FR_BBOX: [number, number, number, number] = [-5.5, 41, 10, 51.5];
+// Clip Norway to mainland (exclude Svalbard)
+const NO_BBOX: [number, number, number, number] = [3, 57, 32, 72];
+
+function clipToBbox(
+    geom: Polygon | MultiPolygon,
+    bbox: [number, number, number, number],
+): Polygon | MultiPolygon {
+    if (geom.type === "Polygon") {
+        const c = centroid(geom.coordinates[0] ?? []);
+        return inBbox(c, bbox) ? geom : { ...geom, coordinates: [] };
+    }
+    const kept = geom.coordinates.filter((poly: number[][][]) => {
+        const c = centroid(poly[0] ?? []);
+        return inBbox(c, bbox);
+    });
+    return { ...geom, coordinates: kept };
+}
+
+function centroid(ring: ReadonlyArray<readonly number[]>): [number, number] {
+    let lon = 0, lat = 0, n = 0;
+    for (const pt of ring) {
+        if (pt.length < 2) continue;
+        lon += pt[0]!; lat += pt[1]!; n++;
+    }
+    return n === 0 ? [NaN, NaN] : [lon / n, lat / n];
+}
+
+function inBbox(c: [number, number], b: [number, number, number, number]) {
+    return c[0] >= b[0] && c[0] <= b[2] && c[1] >= b[1] && c[1] <= b[3];
+}
+
+// Re-attribute Crimea from RU to UA
+const CRIMEA_BBOX: [number, number, number, number] = [32.0, 44.0, 37.0, 46.5];
+
+function ringFits(ring: ReadonlyArray<readonly number[]>, bbox: [number, number, number, number]) {
+    for (const pt of ring) {
+        if (pt.length < 2) continue;
+        if (pt[0]! < bbox[0] || pt[0]! > bbox[2] || pt[1]! < bbox[1] || pt[1]! > bbox[3]) return false;
+    }
+    return true;
+}
+
+function findCrimea(features: ReadonlyArray<Feature<Polygon | MultiPolygon>>): number[][][] | null {
+    for (const f of features) {
+        const polys = f.geometry.type === "MultiPolygon" ? f.geometry.coordinates : [f.geometry.coordinates];
+        for (const poly of polys) {
+            if (poly[0] && ringFits(poly[0], CRIMEA_BBOX)) return poly;
+        }
+    }
+    return null;
+}
+
 export function CoverageGrid() {
-    const { i18n } = useTranslation();
-    const lang = i18n.language === "uk" ? "uk" : "en";
+    const { features, pathGen, viewBox } = useMemo(() => {
+        const topo = worldTopo as unknown as Topology<{ countries: GeometryCollection }>;
+        const fc = feature(topo, topo.objects.countries) as unknown as {
+            features: Feature<Polygon | MultiPolygon>[];
+        };
+        const crimea = findCrimea(fc.features);
+
+        const mapped = fc.features
+            .map((f) => {
+                const cc = NUMERIC_TO_ALPHA2[normaliseId(f.id as string | number | undefined)];
+                if (!cc || !SUPPORTED.has(cc)) return null;
+                let geom = f.geometry;
+                if (cc === "FR") geom = clipToBbox(geom, FR_BBOX);
+                else if (cc === "NO") geom = clipToBbox(geom, NO_BBOX);
+                else if (cc === "UA" && crimea) {
+                    const polys = geom.type === "MultiPolygon"
+                        ? [...geom.coordinates] : [geom.coordinates];
+                    polys.push(crimea);
+                    geom = { type: "MultiPolygon", coordinates: polys };
+                }
+                return { feature: { ...f, geometry: geom }, cc };
+            })
+            .filter((x): x is { feature: Feature<Polygon | MultiPolygon>; cc: string } => x !== null);
+
+        const projection = geoConicEqualArea()
+            .parallels([40, 65])
+            .rotate([-15, 0]);
+        const collection: GeoJSON.FeatureCollection<Polygon | MultiPolygon> = {
+            type: "FeatureCollection",
+            features: mapped.map((x) => x.feature),
+        };
+        const pad = 8;
+        projection.fitExtent([[pad, pad], [600 - pad, 400 - pad]], collection);
+        const pg = geoPath(projection);
+        const [[minX, minY], [maxX, maxY]] = pg.bounds(collection);
+        const w = maxX - minX + pad * 2;
+        const h = maxY - minY + pad * 2;
+
+        return {
+            features: mapped,
+            pathGen: pg,
+            viewBox: `${minX - pad} ${minY - pad} ${w} ${h}`,
+        };
+    }, []);
 
     return (
-        <div className="coverage-grid">
-            {COUNTRIES.map(({ code, ...rest }) => {
-                const live = "live" in rest;
-                return (
-                    <div
-                        key={code}
-                        className={`coverage-tile${live ? " coverage-tile--live" : ""}`}
-                    >
-                        <span className="coverage-tile__code">{code}</span>
-                        <span className="coverage-tile__name">
-                            {NAMES[code]?.[lang] ?? code}
-                        </span>
-                        {live ? (
-                            <span className="coverage-tile__badge">LIVE</span>
-                        ) : null}
-                    </div>
-                );
-            })}
+        <div className="coverage-map">
+            <svg
+                viewBox={viewBox}
+                width="100%"
+                preserveAspectRatio="xMidYMid meet"
+                role="img"
+                aria-label="QES coverage map — EU + Ukraine"
+            >
+                {features.map(({ feature: f, cc }) => {
+                    const isLive = LIVE.has(cc);
+                    const d = pathGen(f) ?? "";
+                    const c = pathGen.centroid(f);
+                    return (
+                        <g key={cc}>
+                            <path
+                                d={d}
+                                fill={isLive ? "var(--ink)" : "var(--line)"}
+                                stroke="var(--bg)"
+                                strokeWidth={1}
+                            />
+                            {Number.isFinite(c[0]) && (
+                                <text
+                                    x={c[0]}
+                                    y={c[1]}
+                                    textAnchor="middle"
+                                    dominantBaseline="central"
+                                    fontFamily="var(--mono)"
+                                    fontSize="8"
+                                    fontWeight="700"
+                                    letterSpacing="0.04em"
+                                    fill={isLive ? "#fff" : "var(--ink)"}
+                                    style={{ pointerEvents: "none" }}
+                                >
+                                    {cc}
+                                </text>
+                            )}
+                        </g>
+                    );
+                })}
+            </svg>
         </div>
     );
 }
