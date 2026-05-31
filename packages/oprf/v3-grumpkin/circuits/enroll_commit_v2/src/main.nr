@@ -356,6 +356,11 @@ fn main(
         assert((b >= 0x30) & (b <= 0x39));
         today_int = today_int * 10 + (b - 0x30) as Field;
     }
+    // A future/forged DOB (dob_int > today_int) makes today_int - dob_int a
+    // negative field element (~254 bits); the `as u64` cast is a range-checked
+    // truncation that FAILS for any value >= 2^64, so it fails closed rather
+    // than wrapping to a small passing value. 180000 = the YYYYMMDD-difference
+    // threshold for age >= 18.
     let diff_u: u64 = (today_int - dob_int) as u64;
     assert(diff_u >= 180000);
 
