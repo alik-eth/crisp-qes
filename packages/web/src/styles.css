@@ -561,10 +561,10 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 /* ─── coverage map ─── */
 .coverage-map {
     margin-top: 32px;
-    max-width: 600px;
+    max-width: 100%;
     border: 1px solid var(--line);
     border-radius: var(--r);
-    padding: 16px;
+    padding: 24px;
     background: var(--paper-2);
 }
 .coverage-tooltip {

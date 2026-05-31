@@ -140,8 +140,8 @@ export function CoverageGrid() {
             type: "FeatureCollection",
             features: mapped.map((x) => x.feature),
         };
-        const pad = 8;
-        projection.fitExtent([[pad, pad], [600 - pad, 400 - pad]], collection);
+        const pad = 12;
+        projection.fitExtent([[pad, pad], [900 - pad, 600 - pad]], collection);
         const pg = geoPath(projection);
         const [[minX, minY], [maxX, maxY]] = pg.bounds(collection);
         const w = maxX - minX + pad * 2;
