@@ -7,7 +7,7 @@ export function Footer() {
                 <span>CRISP-QES · v3 · {config.chain.name}</span>
                 <span className="row">
                     <a
-                        href="https://github.com/0xalik/crisp-qes"
+                        href="https://github.com/alik-eth/crisp-qes"
                         target="_blank"
                         rel="noreferrer"
                     >
