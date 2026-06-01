@@ -78,12 +78,17 @@ else
   log "Bootstrap OK."
 fi
 
-# Ensure the CLI binary the driver shells out to is built (cli init -n 3).
-if [[ ! -x "$CRISP/target/debug/cli" ]]; then
-  log "Building the CLI binary (cargo build --bin cli)…"
-  ( cd "$CRISP/server" && cargo build --bin cli ) >"$LOG_DIR/cli-build.log" 2>&1 \
-    || die "cli build failed (see $LOG_DIR/cli-build.log)"
-fi
+# FORCE-rebuild the cli + coordination-server binaries from the CURRENT source.
+# Critical: dev_server.sh runs `cargo run --bin server`, but after a git checkout /
+# submodule bump the source mtime can be OLDER than a previously-built binary, so
+# cargo serves a STALE binary (this bit us: a pre-FIX-A server with the old 6-elem
+# publishInput tuple rejected the new 5-elem encoding → "Invalid QES publishInput
+# tuple"). Removing the binaries forces cargo to rebuild from the committed source.
+log "Force-rebuilding cli + server binaries from current source (cargo build)…"
+rm -f "$CRISP/target/debug/cli" "$CRISP/target/debug/server"
+( cd "$CRISP/server" && cargo build --bin cli --bin server ) >"$LOG_DIR/server-build.log" 2>&1 \
+  || die "cli/server build failed (see $LOG_DIR/server-build.log)"
+[[ -x "$CRISP/target/debug/server" ]] || die "server binary not produced (see $LOG_DIR/server-build.log)"
 
 # ── 2. bring up the QES stack (background, own process group) ─────────────────
 log "Bringing up the QES stack (dev_up_qes.sh) in the background… → $STACK_LOG"
