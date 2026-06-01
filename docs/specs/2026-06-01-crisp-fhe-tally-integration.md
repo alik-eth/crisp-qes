@@ -84,6 +84,8 @@ All via `@aztec/bb.js` `UltraHonkBackend.generateProof(..., 'noir-recursive-no-z
 
 **Revised verdict on encrypted tally:** it is a **desktop-only / native-app feature**, not a drop-in for the mobile-friendly flow. The transparent on-chain counter stays the default (and the mobile path); CRISP encrypted tally becomes an *opt-in, desktop-grade* mode per petition — or waits on the **iOS native-app track** (Rust prover, roadmap) to make heavy proving portable. Our eligibility swap (139k, cheap) is *not* the bottleneck; **CRISP's inherent recursive proving cost is**, and it's a client-device constraint, not something the integration can engineer away.
 
+**DECISION (2026-06-01, user):** desktop + iOS-native are acceptable targets for encrypted tally; mobile-web stays on the transparent counter. **The device constraint is accepted → encrypted tally is GO as a per-petition opt-in (desktop + iOS-native).** No feasibility blocker remains; the integration is the eligibility swap (cheap, ours) + standing up/consuming the CRISP E3 stack (engineering + ops). Per-petition `tallyMode` already anticipates exactly this opt-in split (transparent vs encrypted).
+
 ## Phasing
 1. **Spike (local):** clone `gnosisguild/enclave`, run the CRISP example on Hardhat (fake zkVM proofs) end-to-end — baseline understanding.
 2. **Eligibility swap (circuit):** fork the `crisp` circuit, replace eligibility/auth with our membership+nullifier, prove it compiles + measure gates/mem.
