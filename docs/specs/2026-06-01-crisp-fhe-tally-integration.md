@@ -65,6 +65,25 @@ Cloned `gnosisguild/enclave`, compiled the CRISP circuits on **our** toolchain (
 
 **Next unknown to close (supersedes earlier "open question 1"):** trace CRISP's proving placement — does the voter's browser generate the `fold`/`user_data_encryption` proofs, or only the `crisp` leaf proof (with aggregation done by the coordination server / ciphernodes)? That single fact decides browser/iOS viability of encrypted voting.
 
+### Proving-placement trace — answered 2026-06-01 (the decisive finding)
+
+Read `crisp-sdk/src/vote.ts` `generateProof` (called from the React client's `useVoteCasting`). **The entire proving stack runs CLIENT-SIDE, in the voter's browser**, per vote:
+1. prove `user_data_encryption_ct0` (BFV leaf)
+2. prove `user_data_encryption_ct1` (BFV leaf)
+3. prove `crisp` (eligibility, 139k)
+4. `generateRecursiveProofArtifacts` for each of the above
+5. prove `user_data_encryption` (recursively verifies ct0 + ct1)
+6. prove **`fold`** (recursively verifies `user_data_encryption` + `crisp`) — **~1.5M gates**
+
+All via `@aztec/bb.js` `UltraHonkBackend.generateProof(..., 'noir-recursive-no-zk')` in the browser. The **`fold` proof is the on-chain-submitted one** (its public inputs `[merkleRoot, slotAddress, …]` are what `publishInput` verifies).
+
+**Consequences (honest):**
+- **It cannot be moved server-side.** The proofs are over the voter's *private* inputs (the cleartext vote + signature). Delegating to a server would reveal the ballot → breaks the secret-ballot guarantee. Client-side proving is *inherent* to the privacy model.
+- **iOS-in-browser ≈ infeasible.** Our enroll circuit (457k) already sits at the 832 MiB iOS Safari floor with no headroom; a **1.5M-gate recursive `fold`** (plus the BFV recursion) is several× past it. Encrypted voting on mobile Safari is almost certainly out.
+- **Desktop = heavy but plausible.** Six sequential proofs incl. a 1.5M fold → multi-GB peak, likely minutes per vote. Fine for desktop, painful for UX.
+
+**Revised verdict on encrypted tally:** it is a **desktop-only / native-app feature**, not a drop-in for the mobile-friendly flow. The transparent on-chain counter stays the default (and the mobile path); CRISP encrypted tally becomes an *opt-in, desktop-grade* mode per petition — or waits on the **iOS native-app track** (Rust prover, roadmap) to make heavy proving portable. Our eligibility swap (139k, cheap) is *not* the bottleneck; **CRISP's inherent recursive proving cost is**, and it's a client-device constraint, not something the integration can engineer away.
+
 ## Phasing
 1. **Spike (local):** clone `gnosisguild/enclave`, run the CRISP example on Hardhat (fake zkVM proofs) end-to-end — baseline understanding.
 2. **Eligibility swap (circuit):** fork the `crisp` circuit, replace eligibility/auth with our membership+nullifier, prove it compiles + measure gates/mem.
