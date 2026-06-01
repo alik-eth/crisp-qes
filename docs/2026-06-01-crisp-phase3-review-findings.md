@@ -2,6 +2,26 @@
 
 > Multi-lens review (7 dimensions) with refute-by-default adversarial verification of every finding. **31 raw → 19 confirmed.** Experimental/unaudited; this is an internal self-review, not an external audit.
 
+## Remediation status (fix round, 2026-06-01)
+
+A fan-out fix round (FIX-A/B/C) closed all critical/high + the build-integration mediums. Fork commits `8768c9a` (A), `9976307` (C), `cad4cdd8` (E2E driver); monorepo `fd92c3e` (B). Each fix carries a regression test.
+
+| # | severity | finding | status |
+|---|---|---|---|
+| 1 | CRITICAL | petition_id caller-chosen → vote-stuffing | ✅ FIXED — bound `petition_id := e3Id` on-chain (`pub[6]=bytes32(e3Id)`, dropped from calldata); adversarial anti-stuffing test |
+| 2/4 | HIGH | is_mask_vote private, decoupled from contract isMask | ✅ FIXED — `is_mask_vote` now a bound public input (`pub[7]`), verifier regen (25 inputs); adversarial anti-overwrite test |
+| 3 | HIGH | malicious first broadcast poisons enrollment root | ✅ FIXED — added `getEnrollmentRoot` view getter; coordinator reads root from chain, not client |
+| 5 | MEDIUM | petition_id not validated vs e3Id | ✅ FIXED (same as #1) |
+| 6/9 | MEDIUM | verifier never regen/VK-validated in bootstrap | ✅ FIXED — bootstrap regenerates + byte-compares verifier, hard-fails on mismatch + key-hash mismatch |
+| 8 | LOW | off-chain bb.js 4.x vs circuit 3.x pedersen unpinned | ✅ FIXED — golden-vector test; **4.x and 3.x AGREE byte-for-byte** (no latent bug), now pinned |
+| 13 | LOW/MED | nullifier-index silent desync | ✅ FIXED — broadcast errors (not silent success) on index-write failure; routes reconcile vs on-chain `getSlotIndex` |
+| 14 | LOW | bb pin wildcard | ✅ FIXED — exact `3.0.0-nightly.20260102` |
+| 19 | INFO | nondeterministic bb select | ✅ FIXED — deterministic pnpm-path resolution |
+| 7,10,11,12,15,16,17,18 | LOW/INFO | hygiene (legacy pre-QES SDK path, encode default, daemon global numOptions, irreversible setEnrollmentRoot, dead branch, etc.) | ⏳ DEFERRED — not security-blocking; tracked for cleanup |
+
+**Re-verification:** circuit `nargo test` 7/7; QES contract tests 9/9; on-chain acceptance (real regenerated verifier) 6/6 incl. the 2 new adversarial tests; SDK real+mask proofs self-verify. Full live E2E (`scripts/crisp-fhe/e2e-local.sh`) re-run with the new ABI is the remaining end-to-end confirmation (driver updated for `petition_id:=e3Id`).
+
+
 
 **Run:** 38 agents, 2026-06-01. Confirmed: 19/31.
 
