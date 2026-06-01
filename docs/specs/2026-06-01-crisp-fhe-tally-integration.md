@@ -1,0 +1,55 @@
+# CRISP / Interfold FHE encrypted-tally integration — design
+
+**Status:** design (branch `feat/crisp-fhe-tally`). Grounded in the *actual* CRISP reference source (`gnosisguild/enclave/examples/CRISP`, read 2026-06-01), not the generic E3 mental model. **Not research — an integration of a testnet-ready stack.** The live demo's tally stays a transparent on-chain counter until this lands.
+
+## Goal
+
+Give petitions an **encrypted tally**: ballots stay encrypted, only the aggregate (or a "threshold reached" predicate) is revealed. Adopt CRISP (Interfold/Enclave E3) for the FHE machinery; keep **our** Diia-QES + Grumpkin-OPRF enrollment as the eligibility/Sybil layer.
+
+## CRISP as it actually is (reference impl)
+
+Per-vote Noir circuit (`circuits/bin/crisp/src/main.nr`) is **modular** — three separable concerns:
+1. **Eligibility** (STEP 2): `merkle_root` membership of `poseidon(slot_address, balance)` in a *census* tree (token holders). Admin-set root (`CRISPProgram.setMerkleRoot`).
+2. **Authentication** (ECDSA section): `validate_signature` over a message by an Ethereum key; `slot_address == derive_address(pubkey)`. One **slot per address**.
+3. **Ballot + FHE** (the rest): BFV ciphertext commitments (`ct0is/ct1is`, plaintext `k1`), `check_coefficient_values_with_balance` (vote ≤ balance, `num_options`), ciphertext-addition, and **mask votes**. Heavy BFV-encryption-correctness is a separate `user_data_encryption` circuit verified **recursively in the `fold` circuit**; RISC Zero zkVM does the homomorphic sum; `CRISPProgram.verify()` checks the RISC0 proof; `decodeTally()` writes the result on-chain.
+
+Contract (`CRISPProgram.sol`): `publishInput` decodes `(noirProof, slotAddress, encryptedVoteCommitment, encryptedVote)`, `_processVote` inserts/updates the slot's ciphertext in the votes Merkle tree keyed by `voteSlots[slotAddress]`, then `honkVerifier.verify(noirProof, [prevCommitment, merkleRoot, slotAddress, …])`.
+
+**Coercion-resistance mechanism = mask votes** (anyone adds a zero-vote to a slot → the slot's ciphertext changes but decrypts the same → no provable receipt). *This corrects our earlier "JCJ fake-credentials" framing: CRISP achieves receipt-freeness via mask votes + encrypted tally, out of the box — JCJ is a different, heavier scheme we do not need to adopt to get receipt-freeness.*
+
+## The reconciliation (the only real design knot)
+
+CRISP's eligibility is an **address+balance token census authenticated by an Ethereum ECDSA signature**. Ours is a **QES-backed, operator-blind, one-person enrollment** with a per-petition nullifier — and we're **walletless** (voters have no Ethereum key; they hold the vault secret `s`). The splice:
+
+| CRISP concept | Replace with (ours) |
+|---|---|
+| `slot_address` (one slot per ETH address) | **per-petition nullifier** `f(s, petition_id)` (one slot per enrolled person per petition; unlinkable across petitions) |
+| census `merkle_root` = poseidon(address, balance) tree | our **EnrollmentRegistry** root (membership of `s = pedersen(OPRF(RNOKPP))`) |
+| ECDSA-over-address auth + `slot==derive_address(pubkey)` | **proof-of-knowledge of `s`** + nullifier derivation (our existing sign circuit) — no wallet |
+| `balance` / weighted vote | `balance = 1` (one-person-one-vote); support = 1-bit, multi-option = one-hot |
+
+**What we keep from CRISP unchanged:** the entire BFV section — ciphertext commitments, `ciphertext_addition`, mask votes, the `user_data_encryption` + `fold` recursive encryption proof, RISC Zero tally, `decodeTally`. We only swap the *eligibility + auth + slot-key* sections. This is the same graft pattern as the OpenAC note in the roadmap: external system = the heavy privacy machinery; **we supply Sybil-resistance + operator-blindness; the nullifier is the splice point.** Crucially, our nullifier is **load-bearing for tally integrity** — it's the cleartext gate that admits exactly one ballot per person into the blind homomorphic sum.
+
+## Concrete change set
+
+- **Circuit** (`circuits/bin/crisp/src/main.nr`, forked into our tree): replace STEP 2 + ECDSA section with our pedersen-Merkle membership of `s` (against the EnrollmentRegistry root) + nullifier derivation; expose **nullifier** as the public "slot" input. Keep all BFV/commitment/mask-vote logic. Both ours and CRISP's are Noir/UltraHonk over BN254 → one circuit, no cross-curve recursion. (Verify `enclave_lib` BFV params + our pedersen/Grumpkin gadgets coexist.)
+- **Contract** (`CRISPProgram.sol`, forked): rekey `voteSlots` from `address` → `bytes32 nullifier`; reject reused nullifier (our anti-double-vote); set census root from our `EnrollmentRegistry.enrollmentRoot()` (or read it live). Keep `verify`/`decodeTally`/RISC0 path.
+- **Client/SDK**: alongside our enrollment proof, use the CRISP SDK (`crisp-sdk`) to BFV-encrypt the ballot + build circuit inputs; our worker emits the fused proof (membership + nullifier + ciphertext commitments).
+- **PetitionRegistry**: petitions that opt into encrypted tally route to the CRISP E3 program instead of the transparent counter (per-petition `tallyMode`, as in the multi-option design).
+- **Services / ops** (the real cost): run the E3 stack — Enclave + CRISPProgram + verifiers, a coordination server, a **ciphernode committee**, and RISC Zero proving (Boundless for prod; fake proofs in dev). Or rely on Interfold operating the committee.
+
+## On-chain answer (for the record)
+Encrypted ballots **are** on-chain (in the votes Merkle tree); the final tally is **on-chain and proven** — `verify()` checks a RISC Zero proof that the homomorphic aggregate of exactly those on-chain ciphertexts decodes to the published number, then `decodeTally()` writes it. Proven (zkVM, on-chain-verified) **and** threshold-decrypted (committee). Only individual ballots / running count stay encrypted.
+
+## Open questions to close before coding
+1. **`fold` / recursive structure** — confirm how the `user_data_encryption` proof composes with our modified `crisp` circuit (does swapping the eligibility section disturb the commitment linkage to `fold`?).
+2. **`enclave_lib` BFV params** (`N`, `L`, `QIS`, …) vs our BN254 field + pedersen/Grumpkin gadgets in one circuit — gate-count + memory (mind the iOS 832 MiB floor; this circuit is heavy).
+3. **Pluggability** — fork CRISP's `crisp` circuit, or author our own E3 *program* from the template? (E3 = "write your encrypted program" → likely our own program, CRISP as reference.)
+4. **Ops model** — do we run ciphernodes + RISC0/Boundless, or consume an Interfold-operated committee? Cost + liveness.
+
+## Phasing
+1. **Spike (local):** clone `gnosisguild/enclave`, run the CRISP example on Hardhat (fake zkVM proofs) end-to-end — baseline understanding.
+2. **Eligibility swap (circuit):** fork the `crisp` circuit, replace eligibility/auth with our membership+nullifier, prove it compiles + measure gates/mem.
+3. **Contract rekey:** `voteSlots` by nullifier; census = enrollment root; local E2E.
+4. **Client/SDK wiring + PetitionRegistry `tallyMode`.**
+5. **Sepolia/Base testnet** with real RISC0 proving; then committee/ops decision for production.
