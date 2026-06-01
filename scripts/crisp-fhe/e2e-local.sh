@@ -90,6 +90,18 @@ rm -f "$CRISP/target/debug/cli" "$CRISP/target/debug/server"
   || die "cli/server build failed (see $LOG_DIR/server-build.log)"
 [[ -x "$CRISP/target/debug/server" ]] || die "server binary not produced (see $LOG_DIR/server-build.log)"
 
+# FORCE-rebuild the crisp-sdk dist/ from current source, same staleness trap as
+# the server: the driver imports @crisp-e3/sdk from dist/index.js (not the TS
+# source), so a dist built before a vote.ts change silently emits the OLD
+# publishInput tuple (this caused "Invalid QES publishInput tuple" at broadcast —
+# stale 6-elem dist vs fixed 5-elem server). --no-dts skips the broken .d.ts emit.
+log "Force-rebuilding crisp-sdk dist from current source (tsup --no-dts)…"
+( cd "$CRISP/packages/crisp-sdk" && pnpm exec tsup --no-dts ) >"$LOG_DIR/sdk-build.log" 2>&1 \
+  || die "crisp-sdk dist build failed (see $LOG_DIR/sdk-build.log)"
+grep -q "bytes, bytes32, uint256, bool" "$CRISP/packages/crisp-sdk/dist/index.js" \
+  && die "crisp-sdk dist still has the STALE 6-element publishInput tuple (see $LOG_DIR/sdk-build.log)"
+[[ -f "$CRISP/packages/crisp-sdk/dist/index.js" ]] || die "crisp-sdk dist/index.js not produced (see $LOG_DIR/sdk-build.log)"
+
 # ── 2. bring up the QES stack (background, own process group) ─────────────────
 log "Bringing up the QES stack (dev_up_qes.sh) in the background… → $STACK_LOG"
 # setsid puts the stack in its own process group so teardown can kill the tree.

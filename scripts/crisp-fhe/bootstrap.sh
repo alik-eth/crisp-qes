@@ -45,6 +45,14 @@ echo "    building @enclave-e3/contracts (hardhat compile + tsc)..."
 pnpm -C "$FORK/packages/enclave-contracts" compile
 echo "    building @crisp-e3/zk-inputs..."
 pnpm -C "$CRISP/packages/crisp-zk-inputs" build
+# Build the crisp-sdk dist/ (tsup ESM bundle). The round driver imports
+# @crisp-e3/sdk from dist/index.js, NOT the TS source — so a stale dist silently
+# runs old code. This bit us: a pre-FIX-A dist still encoded the old 6-element
+# publishInput tuple (with uint256 petitionId) while the fixed server expected
+# 5 elements → "Invalid QES publishInput tuple" at broadcast. --no-dts skips the
+# (pre-existing-broken) .d.ts emit; the JS bundle is all the driver/tests need.
+echo "    building @crisp-e3/sdk (tsup --no-dts)..."
+pnpm -C "$CRISP/packages/crisp-sdk" exec tsup --no-dts
 
 # Locate the bundled bb (also validates the pin) and build a PATH shim dir whose
 # `bb` is the pinned 3.0.0-nightly binary, so the fork's own scripts (which call a
