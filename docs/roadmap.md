@@ -36,6 +36,10 @@ The deployed circuit takes `cert[]` and `pubkey` as free witnesses, so enrollmen
 
 - **External security audit** — hard gate for any "production" / high-stakes positioning. Currently self-audited only.
 - **iOS native-app track** — only if a future heavier circuit ever exceeds the browser WASM ceiling.
+- **Encrypted tally (Interfold / CRISP FHE)** — *the second half of the "two committees" architecture; not yet built.*
+  - **Why:** enrollment (OPRF + ZK) already makes signatures **unlinkable** — the registry never learns *who* you are. But the count is currently a **transparent on-chain counter**: an observer sees each anonymous nullifier's support and the running total. An encrypted tally adds the missing axis — **vote-content secrecy** (with multi-option ballots, hide *how* the votes split), **no running-count leak** (no bandwagon/strategic effects mid-vote), and **threshold-only disclosure** (decrypt just a "support > X?" predicate, revealing neither the exact count nor the distribution). It's what turns "anonymous voting on a public count" into a "secret ballot with programmable disclosure."
+  - **How:** consume **Interfold's** (formerly Enclave) **CRISP** threshold-FHE (BFV) **ciphernode committee** as a *downstream client* — we do **not** build the committee. Each support signature becomes a 1-bit encrypted flag; the committee homomorphically aggregates and threshold-decrypts per the petition's policy (`threshold-only` / `full-count` / `never`). Client-side, each vote needs a Greco-style proof that the ciphertext encrypts a valid ballot. This is the **tally committee** (Interfold) sitting alongside our **enrollment committee** (the Grumpkin OPRF) — same "no single operator sees the private input" guarantee, each using the production-ready primitive for its job.
+  - **Status:** designed (see v2-refined spec §4), **not implemented** — the live demo's tally is transparent. Gated on enrollment hardening + the Interfold integration. (Replacing FHE-PSI-at-enrollment with the OPRF was a deliberate split: FHE is the right tool for *tally*, not for the set-membership/uniqueness check at enrollment.)
 
 ---
 
