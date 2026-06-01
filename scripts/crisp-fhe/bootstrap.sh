@@ -99,32 +99,75 @@ else
   echo "    none found — no patch needed."
 fi
 
-echo "==> [5/6] regenerate gitignored circuit target/*.json + recursive VKs (PINNED bb)"
+echo "==> [5/6] regenerate circuit target/*.json + recursive VKs + REGEN-AND-VALIDATE on-chain verifier (PINNED bb)"
 # Prepend the shim dir so the fork's compile_circuits.sh picks up the pinned bb.
-# compile_circuits.sh writes the *non-QES* CRISPVerifier.sol (23 inputs); it does
-# NOT touch the committed CRISPQESVerifier.sol. We snapshot CRISPQESVerifier.sol
-# and assert it is byte-identical afterwards as a guardrail.
+# compile_circuits.sh REGENERATES the fold Solidity verifier FROM the fold circuit
+# (crisp_fold.json -> bb write_solidity_verifier) into
+#   circuits/bin/fold/target/CRISPVerifier.sol
+# and copies it to packages/crisp-contracts/contracts/CRISPVerifier.sol.
+#
+# FIX-B #6/#9: the on-chain verifier the contracts actually deploy is the COMMITTED
+# CRISPQESVerifier.sol. A clean checkout, a wrong/wildcard bb, or a stale commit
+# could ship a verifier that DOES NOT match the circuit, silently. So after the
+# regen we COMPARE the freshly-generated verifier against the committed
+# CRISPQESVerifier.sol and FAIL LOUDLY on any byte difference. This is ABI-agnostic:
+# whatever verifier ABI the fork currently ships, the committed copy must equal a
+# fresh regen-from-circuit with the pinned bb.
 QES_VERIFIER="$CRISP/packages/crisp-contracts/contracts/CRISPQESVerifier.sol"
-QES_SHA_BEFORE="$(sha256sum "$QES_VERIFIER" | cut -d' ' -f1)"
+[ -f "$QES_VERIFIER" ] || { echo "FATAL: committed CRISPQESVerifier.sol missing at $QES_VERIFIER"; exit 1; }
+
 ( cd "$CRISP" && PATH="$SHIM_DIR:$PATH" bash ./scripts/compile_circuits.sh )
-QES_SHA_AFTER="$(sha256sum "$QES_VERIFIER" | cut -d' ' -f1)"
-if [ "$QES_SHA_BEFORE" != "$QES_SHA_AFTER" ]; then
-  echo "FATAL: committed CRISPQESVerifier.sol was modified by compile_circuits.sh — aborting"
+
+# compile_circuits.sh emits the regenerated verifier to two places; prefer the
+# target/ copy (the raw write_solidity_verifier output it then license-headers +
+# copies). We compare the contracts-folder copy, which has the SAME license header
+# + prettier pass applied as the committed CRISPQESVerifier.sol, so a byte compare
+# is apples-to-apples.
+REGEN_VERIFIER="$CRISP/packages/crisp-contracts/contracts/CRISPVerifier.sol"
+[ -f "$REGEN_VERIFIER" ] || { echo "FATAL: compile_circuits.sh did not produce $REGEN_VERIFIER"; exit 1; }
+
+REGEN_SHA="$(sha256sum "$REGEN_VERIFIER" | cut -d' ' -f1)"
+COMMITTED_SHA="$(sha256sum "$QES_VERIFIER" | cut -d' ' -f1)"
+echo "    regen   verifier sha256: $REGEN_SHA  ($REGEN_VERIFIER)"
+echo "    commit  verifier sha256: $COMMITTED_SHA  ($QES_VERIFIER)"
+if [ "$REGEN_SHA" != "$COMMITTED_SHA" ]; then
+  echo "FATAL: regenerated fold verifier does NOT match the committed CRISPQESVerifier.sol."
+  echo "       The committed on-chain verifier is STALE or was built with a different bb."
+  echo "       Diff (regen vs committed):"
+  diff -u "$QES_VERIFIER" "$REGEN_VERIFIER" | head -40 || true
+  echo "       Refusing to proceed — a mismatched verifier must not ship silently."
   exit 1
 fi
-echo "    committed CRISPQESVerifier.sol unchanged (guardrail OK)"
+echo "    OK: regenerated fold verifier is byte-identical to committed CRISPQESVerifier.sol"
 
-echo "==> [6/6] verify fold key-hash consistency (PINNED bb)"
+echo "==> [6/6] VALIDATE fold key-hash consistency (PINNED bb) — FAIL on mismatch"
 # compute_vk_hash recomputes the fold's expected member key-hash from the recursive
-# VKs just regenerated. It must match one of the globals baked into fold/src/main.nr.
+# VKs just regenerated with the pinned bb. The fold circuit BINDS this value via the
+# globals in fold/src/main.nr (the default/insecure preset uses INSECURE). If the
+# computed hash matches NEITHER global, the deployed fold verifier is built against a
+# different inner-VK set than the circuit expects → proofs will be rejected on-chain.
+# FIX-B #6/#9: this is now a HARD FAILURE, not a warning.
 COMPUTED="$( cd "$CRISP" && PATH="$SHIM_DIR:$PATH" bash ./scripts/compute_vk_hash.sh | tr -d '[:space:]' )"
 echo "    compute_vk_hash -> $COMPUTED"
-if grep -q "${COMPUTED#0x}" "$CRISP/circuits/bin/fold/src/main.nr"; then
-  echo "    MATCH: computed key-hash is present in fold/src/main.nr globals."
+FOLD_MAIN="$CRISP/circuits/bin/fold/src/main.nr"
+EXP_INSECURE="$(grep -A1 'CRISP_FOLD_EXPECTED_KEY_HASH_INSECURE' "$FOLD_MAIN" | grep -oE '0x[0-9a-fA-F]+' | head -1)"
+EXP_SECURE="$(grep -A1 'CRISP_FOLD_EXPECTED_KEY_HASH_SECURE' "$FOLD_MAIN" | grep -oE '0x[0-9a-fA-F]+' | head -1)"
+echo "    fold/main.nr INSECURE expected: $EXP_INSECURE"
+echo "    fold/main.nr SECURE   expected: $EXP_SECURE"
+# Normalise (lowercase, strip 0x, drop leading zeros) for a robust compare.
+norm() { printf '%s' "${1#0x}" | tr 'A-F' 'a-f' | sed 's/^0*//'; }
+C_N="$(norm "$COMPUTED")"
+if [ "$C_N" = "$(norm "$EXP_INSECURE")" ]; then
+  echo "    MATCH: computed key-hash == CRISP_FOLD_EXPECTED_KEY_HASH_INSECURE (default preset)."
+elif [ "$C_N" = "$(norm "$EXP_SECURE")" ]; then
+  echo "    MATCH: computed key-hash == CRISP_FOLD_EXPECTED_KEY_HASH_SECURE."
 else
-  echo "    WARNING: computed key-hash $COMPUTED not found verbatim in fold/src/main.nr."
-  echo "    (Inspect CRISP_FOLD_EXPECTED_KEY_HASH_{INSECURE,SECURE}.) The SDK proving"
-  echo "    test is the authoritative gate — run it next."
+  echo "FATAL: computed fold key-hash $COMPUTED matches NEITHER global in fold/src/main.nr."
+  echo "       The recursive VKs (built with the pinned bb) are inconsistent with the"
+  echo "       fold circuit's expected inner-VK binding. A mismatched fold verifier must"
+  echo "       not ship. Regenerate fold globals (pnpm compute:vk-hash in examples/CRISP)"
+  echo "       or check the bb pin (scripts/crisp-fhe/bb-pinned.sh)."
+  exit 1
 fi
 
 echo
