@@ -36,7 +36,7 @@ CRISP's eligibility is an **address+balance token census authenticated by an Eth
 - **Contract** (`CRISPProgram.sol`, forked): rekey `voteSlots` from `address` → `bytes32 nullifier`; reject reused nullifier (our anti-double-vote); set census root from our `EnrollmentRegistry.enrollmentRoot()` (or read it live). Keep `verify`/`decodeTally`/RISC0 path.
 - **Client/SDK**: alongside our enrollment proof, use the CRISP SDK (`crisp-sdk`) to BFV-encrypt the ballot + build circuit inputs; our worker emits the fused proof (membership + nullifier + ciphertext commitments).
 - **PetitionRegistry**: petitions that opt into encrypted tally route to the CRISP E3 program instead of the transparent counter (per-petition `tallyMode`, as in the multi-option design).
-- **Services / ops** (the real cost): run the E3 stack — Enclave + CRISPProgram + verifiers, a coordination server, a **ciphernode committee**, and RISC Zero proving (Boundless for prod; fake proofs in dev). Or rely on Interfold operating the committee.
+- **Services / ops** (the real cost): run the E3 stack — Enclave + CRISPProgram + verifiers, a coordination server, a **ciphernode committee**, and RISC Zero proving (Boundless for prod; fake proofs in dev). Or rely on Interfold operating the committee. *Confirmed in Phase 1: dev mode needs **no** RISC Zero / Boundless / Docker — the program server runs as a native binary that fakes only the **zkVM tally proof**.*
 
 ## On-chain answer (for the record)
 Encrypted ballots **are** on-chain (in the votes Merkle tree); the final tally is **on-chain and proven** — `verify()` checks a RISC Zero proof that the homomorphic aggregate of exactly those on-chain ciphertexts decodes to the published number, then `decodeTally()` writes it. Proven (zkVM, on-chain-verified) **and** threshold-decrypted (committee). Only individual ballots / running count stay encrypted.
@@ -86,8 +86,28 @@ All via `@aztec/bb.js` `UltraHonkBackend.generateProof(..., 'noir-recursive-no-z
 
 **DECISION (2026-06-01, user):** desktop + iOS-native are acceptable targets for encrypted tally; mobile-web stays on the transparent counter. **The device constraint is accepted → encrypted tally is GO as a per-petition opt-in (desktop + iOS-native).** No feasibility blocker remains; the integration is the eligibility swap (cheap, ours) + standing up/consuming the CRISP E3 stack (engineering + ops). Per-petition `tallyMode` already anticipates exactly this opt-in split (transparent vs encrypted).
 
+## Phase 1 spike — RAN END-TO-END (2026-06-01)
+
+Cloned `gnosisguild/enclave`, brought the **entire CRISP reference stack up locally** on anvil/Hardhat and **verified the client vote-proving path headlessly in Node**. This supersedes the read-only source study above with running-system facts.
+
+**What came up (all confirmed running):** anvil (`:8545`, chainId 31337) · 5-node ciphernode committee (QUIC `:9201–9205`) · program server (dev/native, `:13151`) · coordination server (`:4000`) · client (Vite `:3000`). Contracts deployed (Enclave, CRISPProgram, CiphernodeRegistry, Honk + Mock-RISC0 verifiers, mock tokens). Round 0 created → DKG → **committee key published on-chain (~65 s)** → round live and queryable.
+
+**The decisive verification — vote proving works headlessly:** `crisp-sdk` `generateVoteProof` ran in **Node** (no browser needed): full 5-circuit recursive Honk chain (ct0/ct1/`crisp`/`user_data_encryption`/`fold`) generated, BFV ballot decrypted back to the cast vote, and the **EVM `fold` proof verified valid**. ~**176 s/vote**, SRS = 2²¹ (~128 MB BN254 G1). This confirms §"Proving-placement trace": the proving stack is the voter's, and it runs anywhere bb.js runs (browser *or* Node) — not delegable to a server.
+
+**Facts Phase 1 nailed down (load-bearing for Phase 2):**
+- **Dev "fake proofs" fake ONLY the zkVM *tally* proof.** The client *vote* proof is **always a real Honk proof, even in dev** → our eligibility swap cannot shortcut the vote-side ZK; the local dev loop genuinely exercises our integration target.
+- **Eligibility seam, located precisely.** Voter validity = the **`crisp` Noir circuit**: BFV-encryption correctness + **Merkle membership + ECDSA-over-address**. Census today = a Merkle tree of ERC-20 holders (`generateMerkleProof` in `crisp-sdk/src/utils.ts`; server builds `token_holders`). **Our swap = fork the `crisp` circuit's eligibility gadget + the SDK's `generateMerkleProof`/`circuitInputs`; leave the BFV sub-circuits, `fold`, and on-chain verifier untouched.** (Matches the change set above — now confirmed against the running code.)
+- **Vote payload shape** (`encodeSolidityProof`): `abi.encode(bytes proof, address slotAddress, bytes32 encryptedVoteCommitment, bytes encryptedVote)`; relayed via `POST /voting/broadcast {round_id, address, encoded_proof}` → `publishInput`. (This is what we rekey from `address` → `bytes32 nullifier`.)
+- **Mode A vs Mode B:** dev ran **Mode A** (`CRISP_PROOF_AGGREGATION_ENABLED=false`, `insecure-512` BFV, Micro N=3) — no RISC0/Docker. **Mode B** (proof aggregation + on-chain BFV verifiers) is a separate, slower DKG path we don't need for the eligibility spike.
+
+**Two one-time reproduce fixes (script these for Phase 2):**
+1. `git submodule update --init --recursive examples/CRISP/packages/crisp-contracts/lib/risc0-ethereum` (repo cloned without submodules → Hardhat compile fails on `RiscZeroGroth16Verifier.sol`).
+2. Pre-seed `~/.bb-crs` (or `NODE_TLS_REJECT_UNAUTHORIZED=0` for the run) — bb.js fetches the ~128 MB SRS over HTTPS and TLS validation fails on the public CDN. **Same `crs.aztec.network` cert-expiry we already hit in our repo → self-hosting CRS (done) is the right move here too.**
+
+**Only gap (not a CRISP issue):** browser vote-cast → on-chain tally is blocked by Playwright/Synpress (MetaMask-extension automation hangs under Node 24, headless). The Node proving test covers the same proving logic, so this is a tooling gap, not a stack gap.
+
 ## Phasing
-1. **Spike (local):** clone `gnosisguild/enclave`, run the CRISP example on Hardhat (fake zkVM proofs) end-to-end — baseline understanding.
+1. **Spike (local):** ✅ **DONE 2026-06-01** — full stack up, committee key on-chain, vote proof verified headlessly in Node (see "Phase 1 spike" above).
 2. **Eligibility swap (circuit):** fork the `crisp` circuit, replace eligibility/auth with our membership+nullifier, prove it compiles + measure gates/mem.
 3. **Contract rekey:** `voteSlots` by nullifier; census = enrollment root; local E2E.
 4. **Client/SDK wiring + PetitionRegistry `tallyMode`.**
