@@ -34,6 +34,19 @@ COPY packages/web packages/web
 RUN pnpm --filter @crisp-qes/sdk build
 RUN pnpm --filter @crisp-qes/web build
 
+# Mirror the Barretenberg CRS into the build output so we serve it same-origin
+# from /crs/ instead of crs.aztec.network (whose TLS cert expired 2026-06,
+# breaking all in-browser proving). bb.js range-fetches g1.dat (BN254, up to
+# 2^20 points = 64 MiB for the enroll circuit), grumpkin_g1.dat (Grumpkin,
+# 2^16+1 points), and the tiny g2.dat. -k bypasses the expired cert at build
+# time; the browser never touches the bad host. See src/worker/crsRedirect.ts.
+RUN apk add --no-cache curl \
+ && mkdir -p packages/web/dist/crs \
+ && curl -fkSL -o packages/web/dist/crs/g2.dat 'https://crs.aztec.network/g2.dat' \
+ && curl -fkSL -r 0-67108927 -o packages/web/dist/crs/g1.dat 'https://crs.aztec.network/g1.dat' \
+ && curl -fkSL -r 0-8388607 -o packages/web/dist/crs/grumpkin_g1.dat 'https://crs.aztec.network/grumpkin_g1.dat' \
+ && ls -l packages/web/dist/crs
+
 FROM caddy:2-alpine AS runtime
 COPY --from=build /repo/packages/web/dist /srv
 COPY packages/web/Caddyfile /etc/caddy/Caddyfile

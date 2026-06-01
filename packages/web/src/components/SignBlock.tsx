@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import type { PetitionView } from "../lib/registry.js";
 import { readHasNullifier } from "../lib/registry.js";
 import { pedersenNullifier } from "../lib/pedersen.js";
-import { v3RecoverPath } from "../lib/v3enroll.js";
+import { v3RecoverPath, NotEnrolledError } from "../lib/v3enroll.js";
 import {
     submitSignature,
     submitRevoke,
@@ -10,6 +10,7 @@ import {
 } from "../lib/relayer.js";
 import { unlockVault } from "../lib/unlock.js";
 import { getSessionVault } from "../lib/passkeySession.js";
+import { clearAll } from "../lib/encryptedStore.js";
 import { config } from "../config.js";
 
 interface Props {
@@ -39,6 +40,11 @@ export function SignBlock({ petition, onSigned }: Props) {
     const [errMsg, setErrMsg] = useState<string | null>(null);
     const [txHash, setTxHash] = useState<`0x${string}` | null>(null);
     const [revokedTx, setRevokedTx] = useState<`0x${string}` | null>(null);
+    // Set when the recover-path lookup reports the vault's commitment is not on
+    // the current registry (orphaned vault after a clean-slate redeploy). Drives
+    // a re-enroll prompt instead of a dead "Couldn't sign." error.
+    const [staleVault, setStaleVault] = useState(false);
+    const [resetting, setResetting] = useState(false);
     // The mode of whatever flow is currently busy. Used to label progress
     // and decide what to do on success.
     const [activeMode, setActiveMode] = useState<Mode>("sign");
@@ -221,6 +227,11 @@ export function SignBlock({ petition, onSigned }: Props) {
             setStage("done");
             onSigned(res.txHash);
         } catch (e) {
+            if (e instanceof NotEnrolledError) {
+                setStaleVault(true);
+                setStage("error");
+                return;
+            }
             setErrMsg(e instanceof Error ? e.message : String(e));
             setStage("error");
         }
@@ -313,10 +324,30 @@ export function SignBlock({ petition, onSigned }: Props) {
             setStage("done");
             onSigned(res.txHash);
         } catch (e) {
+            if (e instanceof NotEnrolledError) {
+                setStaleVault(true);
+                setStage("error");
+                return;
+            }
             setErrMsg(e instanceof Error ? e.message : String(e));
             setStage("error");
         }
     }, [petition.id, onSigned, generateProof]);
+
+    // Orphaned-vault recovery: wipe the stale local enrollment row and send the
+    // user through a fresh /verify enrollment. A hard navigation also drops the
+    // in-memory session vault (the stale enrollmentSecret) so nothing carries
+    // over. The Passkey (`accounts` row) is intentionally kept — re-enrollment
+    // re-wraps to it.
+    const onReEnroll = useCallback(async () => {
+        setResetting(true);
+        try {
+            await clearAll();
+        } catch {
+            // Even if the wipe fails, re-enrollment overwrites the row; proceed.
+        }
+        window.location.assign("/verify");
+    }, []);
 
     const busy = ["unlocking", "preparing", "proving", "submitting"].includes(
         stage,
@@ -366,6 +397,41 @@ export function SignBlock({ petition, onSigned }: Props) {
                         </div>
                     </div>
                 ) : null}
+            </div>
+        );
+    }
+
+    // --- orphaned-vault branch: re-enroll ---
+    // The recover-path lookup said this device's commitment isn't on the current
+    // registry (e.g. it was minted before a clean-slate redeploy). Signing can
+    // never succeed with it; guide the user to re-enroll instead of dead-ending.
+    if (staleVault) {
+        return (
+            <div className="detail__cta">
+                <div className="notice notice--bad">
+                    <div>
+                        <strong>Re-enrollment needed.</strong>
+                        <br />
+                        <span className="small">
+                            This device's enrollment isn't on the current
+                            registry — it was most likely reset. Re-enroll with
+                            your Diia QES to keep signing. Your identity stays
+                            private; this only refreshes the key stored on this
+                            device.
+                        </span>
+                    </div>
+                </div>
+
+                <div className="row" style={{ marginTop: 12 }}>
+                    <button
+                        type="button"
+                        className="btn btn--primary"
+                        onClick={() => void onReEnroll()}
+                        disabled={resetting}
+                    >
+                        {resetting ? "Resetting…" : "Re-enroll"}
+                    </button>
+                </div>
             </div>
         );
     }

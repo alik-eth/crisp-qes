@@ -503,6 +503,21 @@ export interface V3RecoverResponse {
     root: `0x${string}`;
 }
 
+// Thrown when the OPRF service has no leaf for this commitment (HTTP 404
+// `NotEnrolled`). This is NOT a transient failure: it means the local vault's
+// commitment isn't on the *current* enrollment registry — typically a stale
+// vault left behind after a clean-slate redeploy (the tree + OPRF key were
+// reset, so the old commitment can never reappear). The caller should prompt a
+// fresh re-enrollment rather than surface a raw error.
+export class NotEnrolledError extends Error {
+    readonly commitment: string;
+    constructor(commitment: string) {
+        super(`commitment ${commitment} is not enrolled on the current registry`);
+        this.name = "NotEnrolledError";
+        this.commitment = commitment;
+    }
+}
+
 // GET the existing enrollment path for an ALREADY-enrolled commitment. Because
 // the commitment = pedersen(OPRF(RNOKPP)) is deterministic per identity, a
 // "subsequent enrollment" with the same Diia identity is a RECOVERY: there is
@@ -516,6 +531,11 @@ export async function v3RecoverPath(
     );
     if (!res.ok) {
         const text = await res.text().catch(() => "");
+        // 404 NotEnrolled = orphaned vault (registry reset / wrong epoch).
+        // Surface as a typed error so the sign flow can offer re-enrollment.
+        if (res.status === 404 && text.includes("NotEnrolled")) {
+            throw new NotEnrolledError(commitment);
+        }
         throw new Error(
             `v3 recover-path HTTP ${res.status}: ${text.slice(0, 200)}`,
         );

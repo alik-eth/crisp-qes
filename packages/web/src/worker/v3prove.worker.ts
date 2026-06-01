@@ -15,6 +15,9 @@
 
 /// <reference lib="webworker" />
 
+// Redirect bb.js's CRS download off the (TLS-expired) crs.aztec.network host
+// to our same-origin /crs/ mirror. Side-effect import — load before bb.js.
+import "./crsRedirect.js";
 import type { CompiledCircuit, InputMap } from "@noir-lang/noir_js";
 import { Noir } from "@noir-lang/noir_js";
 import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
