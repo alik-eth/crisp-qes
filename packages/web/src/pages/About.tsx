@@ -87,6 +87,42 @@ export function About() {
                 </div>
             </div>
 
+            {/* ── Стійкість до примусу ── */}
+            <div className="about-section-block">
+                <span className="eyebrow">{uk ? "Стійкість до примусу" : "Coercion resistance"}</span>
+                <h2 className="about-h2">{uk ? "Чесно про найскладнішу властивість." : "Honest about the hardest property."}</h2>
+                <p className="about-hero__lede" style={{ marginTop: 16 }}>
+                    {uk
+                        ? "Система стійка до примусу, якщо виборець не може довести третій стороні, як він проголосував — навіть якщо хоче або його змушують. Це складніше за приватність чи анонімність, і сьогодні Civic Voice цього не стверджує: реєстрація незв'язна (OPRF приховує, хто ви), але per-petition nullifier детермінований, тож виборець усе ще володіє секретом, яким міг би довести свій голос. Ми підходимо до цього пошарово, а не декларуємо одразу:"
+                        : "A system is coercion-resistant if a voter cannot prove to a third party how they voted — even if they want to, or are forced to. This is harder than privacy or anonymity, and Civic Voice does not claim it today: enrollment is unlinkable (the OPRF hides who you are), but the per-petition nullifier is deterministic, so a voter still holds the secret that could demonstrate their vote. We approach it in layers rather than asserting it:"}
+                </p>
+                <div className="how-grid" style={{ marginTop: 32 }}>
+                    <div className="how-card">
+                        <span className="how-card__n mono">{uk ? "НЕЗВ'ЯЗНІСТЬ · ПРАЦЮЄ" : "UNLINKABILITY · LIVE"}</span>
+                        <h3 className="how-card__title">{uk ? "Хто — приховано" : "Who is hidden"}</h3>
+                        <p className="how-card__body">{uk ? "Операторно-сліпий OPRF + ZK не дають ні платформі, ні блокчейну, ні оператору пов'язати підпис з особою. Це зупиняє масове стеження, але не виборця, який сам розкриває свій секрет." : "The operator-blind OPRF + ZK stop the platform, chain, and operator from linking a signature to a person. This defeats bulk surveillance — but not a voter who reveals their own secret."}</p>
+                    </div>
+                    <div className="how-card">
+                        <span className="how-card__n mono">{uk ? "FHE (CRISP) · У ПЛАНАХ" : "FHE (CRISP) · ROADMAP"}</span>
+                        <h3 className="how-card__title">{uk ? "Без квитанції" : "Receipt-freeness"}</h3>
+                        <p className="how-card__body">{uk ? "Зашифрований підрахунок через комітет Interfold розкриває лише підсумок (або тільки «поріг досягнуто»). У блокчейні немає запису, як проголосував кожен анонімний виборець — це прибирає публічну «квитанцію» й різко зменшує важелі для підкупу. Але не зупиняє виборця, який віддає власний ключ." : "An encrypted tally via Interfold's committee reveals only the aggregate (or just \"threshold reached\"). There is no on-chain record of how each anonymous voter voted — removing the public receipt and sharply cutting vote-buying leverage. It still can't stop a voter who hands over their own key."}</p>
+                    </div>
+                    <div className="how-card">
+                        <span className="how-card__n mono">{uk ? "ПЕРЕГОЛОСУВАННЯ · ПРАЦЮЄ" : "RE-VOTE · LIVE"}</span>
+                        <h3 className="how-card__title">{uk ? "Шлях відступу" : "An escape hatch"}</h3>
+                        <p className="how-card__body">{uk ? "Підпис можна відкликати чи змінити до дедлайну — слабке, але реальне пом'якшення для виборця під тиском." : "A signature can be withdrawn or changed until the deadline — a weak but real mitigation for a voter under pressure."}</p>
+                    </div>
+                    <div className="how-card">
+                        <span className="how-card__n mono">{uk ? "ФЕЙК-ПОСВІДЧЕННЯ (JCJ) · ДОСЛІДЖЕННЯ" : "FAKE CREDENTIALS (JCJ) · RESEARCH"}</span>
+                        <h3 className="how-card__title">{uk ? "Справжнє рішення" : "The real fix"}</h3>
+                        <p className="how-card__body">{uk ? "Виборець реєструє справжні та фейкові посвідчення; під примусом віддає фейкове, а комітет тихо відкидає голоси за фейковими посвідченнями на етапі підрахунку під FHE. Це дослідницький, ще не реалізований фінал." : "A voter registers genuine and decoy credentials; under coercion they surrender a decoy, and the committee silently discards fake-credential votes at tally time under FHE. The research-grade, not-yet-built endgame."}</p>
+                    </div>
+                </div>
+                <p className="muted small" style={{ marginTop: 16 }}>
+                    {uk ? "Коротко: CRISP/FHE дає відсутність квитанції, JCJ — справжню стійкість до примусу; обидва в дорожній карті. Сьогодні чесне твердження — незв'язність, а не стійкість до примусу." : "In short: CRISP/FHE buys receipt-freeness, JCJ buys true coercion resistance — both on the roadmap. Today the honest claim is unlinkability, not coercion resistance."}
+                </p>
+            </div>
+
             {/* ── Дорожня карта ── */}
             <div className="about-section-block">
                 <span className="eyebrow">{uk ? "Дорожня карта" : "Roadmap"}</span>
