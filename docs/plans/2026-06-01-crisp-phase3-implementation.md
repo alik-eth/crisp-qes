@@ -97,12 +97,15 @@ cd /tmp/enclave && git add examples/CRISP/circuits/bin/crisp_qes/src/main.nr && 
 
 ---
 
-## Task 1: Finalize the two-mode `crisp_qes` leaf circuit
+## Task 1: Finalize the two-mode `crisp_qes` leaf circuit **+ the `fold` aggregator**
+
+> **Task 0 finding (verified):** the ON-CHAIN proof is `bin/fold` (23 public inputs = 7 user + 16 pairing points), NOT the leaf. `fold` recursively verifies the `crisp_qes` leaf and exposes the on-chain public-input vector. So this task edits BOTH the leaf AND `bin/fold/src/main.nr` — the fold is where leaf-order is reconciled with the on-chain order. The pinned target on-chain vector (`bytes32[8]`, NUMBER_OF_PUBLIC_INPUTS 23→24): `[0]prev_ct_commitment [1]enrollment_root [2]nullifier [3]is_first_vote [4]num_options [5]final_ct_commitment [6]petition_id [7]pk_commitment(forwarded return)`. (committee pk is forwarded only — the leaf never consumes it.)
 
 **Files:**
-- Modify: `circuits/bin/crisp_qes/src/main.nr`
+- Modify: `circuits/bin/crisp_qes/src/main.nr` (leaf — public params already `[prev_ct_commitment, petition_id, enrollment_root, nullifier, is_first_vote, num_options]` + 3 returns)
+- Modify: `circuits/bin/fold/src/main.nr` (aggregator — (a) reassemble the crisp_qes leaf's public-input array in LEAF order when recursively verifying it; (b) expose `enrollment_root`/`nullifier`/`petition_id` in the on-chain ORDER above, replacing `merkle_root`/`slot_address` and adding `petition_id`)
 - Create: `circuits/bin/crisp_qes/Prover.real.toml`, `circuits/bin/crisp_qes/Prover.mask.toml`
-- Test: `nargo test` (in-circuit `#[test]` fns) + `bb gates`
+- Test: `nargo test` (in-circuit `#[test]` fns) + `bb gates` (leaf AND fold)
 
 - [ ] **Step 1: Splice the mask path to be credential-free.** In `main.nr`, change the `is_mask_vote` branch so it does NOT require membership or nullifier derivation, and add `petition_id` + the public-input order from Task 0. Apply this diff to the Phase 2 `main.nr`:
 
@@ -147,7 +150,7 @@ cd /tmp/enclave && git add examples/CRISP/circuits/bin/crisp_qes/src/main.nr && 
 Run: `nargo test`
 Expected: all tests PASS (the BFV polynomial tests may need representative constants; if BFV inputs are infeasible to hand-build in a unit test, keep the membership/nullifier tests and rely on Task 5's Node proving test for the BFV path — note this explicitly in a comment).
 
-- [ ] **Step 3: Compile + measure both modes.**
+- [ ] **Step 3: Compile + measure the leaf.**
 
 Run:
 ```bash
@@ -156,6 +159,14 @@ nargo compile
 NODE_TLS_REJECT_UNAUTHORIZED=0 bb gates -b ./target/crisp_qes.json
 ```
 Expected: compiles clean; `circuit_size` reported. Compare to Phase 2's 69,167 (real-vote). Record the number. The mask path moving membership into a branch should not increase it.
+
+- [ ] **Step 3b: Edit + compile the `fold` aggregator.** In `circuits/bin/fold/src/main.nr`: (a) where it recursively verifies the crisp leaf, build that leaf's public-input array in the LEAF order (`[prev_ct_commitment, petition_id, enrollment_root, nullifier, is_first_vote, num_options]` + the 3 returns) — read how CRISP's fold currently assembles the `crisp` leaf inputs and adapt the field names; (b) change fold's OWN `pub` signature from `(...merkle_root, slot_address...)` to expose `enrollment_root`, `nullifier`, and add `petition_id`, in the pinned on-chain order. Then:
+```bash
+cd /tmp/enclave/examples/CRISP/circuits/bin/fold
+nargo compile
+node -e "const a=require('./target/crisp_fold.json'); console.log('FOLD PUB:', JSON.stringify(a.abi.parameters.filter(x=>x.visibility==='public').map(x=>x.name)), 'ret:', a.abi.return_type&&a.abi.return_type.visibility);"
+```
+Expected: fold compiles; its public params now read `[prev_ct_commitment, enrollment_root, nullifier, is_first_vote, num_options, final_ct_commitment, petition_id]` (+ public return) → 8 user inputs, so the regenerated verifier (Task 2) will have NUMBER_OF_PUBLIC_INPUTS = 24. If fold proving is too slow to fully validate here, a clean `nargo compile` + correct ABI is sufficient for Task 1; the full recursive prove is validated in Task 5's Node test.
 
 - [ ] **Step 4: Decide one-circuit-vs-two.** If the unused mask-branch witnesses materially inflate gates or complicate the witness, split into `crisp_qes_vote` and `crisp_qes_mask` packages (each compiled separately, each with its own regenerated verifier). Otherwise keep one circuit with the `is_mask_vote` flag. **Document the decision** in `main.nr`'s header comment.
 
