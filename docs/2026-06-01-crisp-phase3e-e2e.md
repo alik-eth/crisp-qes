@@ -102,6 +102,26 @@ circuit / verifier / daemon LOGIC was touched.
 
 ## LIVE RUN
 
+> **Hardened-circuit re-run (1-of-N one-hot assert, 2026-06-02 00:00Z).** Added a
+> structural one-hot constraint to the `crisp_qes` leaf
+> (`check_at_most_one_nonzero_option`) so 1-of-N holds independent of `balance`
+> (the shared value-check only caps the vote *sum* at `balance` for num_options>2 —
+> upstream CRISP split-vote semantics). This shifts the recursive VK chain, so the
+> fold's INSECURE key-hash global and the on-chain verifier were regenerated with
+> the pinned bb (`scripts/crisp-fhe/regen-fold-keyhash.sh`):
+> `CRISP_FOLD_EXPECTED_KEY_HASH_INSECURE 0x22f0b7da → 0x25e7c875`, and
+> `CRISPQESVerifier.sol VK_HASH 0x0290872b → 0x123028bd` (25 inputs). **All 7 stages
+> passed** against the NEW verifier — i.e. the deployed Honk verifier accepted the
+> real-vote + mask fold proofs of the hardened circuit; `decodeTally == [1,0,0]`.
+> Fork `df64fc00`; run log `scripts/crisp-fhe/.e2e-logs/20260601T214642Z/`.
+> CAVEAT: the `_SECURE` key-hash is left STALE — the secure-8192 rebuild OOMs this
+> host (~29 GiB for one N=8192 leaf compile), so it must be regenerated on a
+> high-memory build host; a secure build fails the fold key-hash assert (fail-safe)
+> until then. The deployed + local-E2E preset is insecure-512.
+> NOTE: a prior "hardened" run was actually the OLD circuit — bootstrap's
+> `git submodule update` reverted the fork to the recorded pointer, orphaning the
+> hardening commit; fixed by bumping the monorepo submodule pointer.
+>
 > **Re-run confirmation (post security-fix ABI, 2026-06-01 20:09Z).** After the
 > Phase 3 security review + fix round (FIX-A: `petition_id` bound on-chain,
 > `is_mask_vote` made a public input, the publishInput tuple slimmed from the old
