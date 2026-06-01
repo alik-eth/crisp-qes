@@ -2,6 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> ## ✅ EXECUTED 2026-06-01 (subagent-driven) — Tasks 0–7 DONE; P3 live-stack deferred
+> The implementation lives in the **pinned CRISP clone at `/tmp/enclave/examples/CRISP`** (10 commits `48cdb23`…`f792b8c`, branch `main`). **This clone is ephemeral — not yet vendored/pushed** (Phase 3e/Task 8). Full run record: `docs/2026-06-01-crisp-phase3-e2e.md`.
+> - **Task 0** ✅ pinned ABI; verified the on-chain proof is `fold` (NUMBER_OF_PUBLIC_INPUTS 23=7+16). Expanded Task 1 to edit `bin/fold`.
+> - **Task 1** ✅ credential-free mask leaf (69,168 gates) + fold ABI reconciliation; 7 circuit tests pass.
+> - **Task 2** ✅ regenerated Honk verifier (24 inputs). *Initially generated with bb CLI 4.x → blocked Task 5; redone with the bb 3.x bundled in `@aztec/bb.js` to match the runtime (commit `6a464ee`).* See `reference_bb_cli_vs_bbjs_version` memory.
+> - **Task 3** ✅ `CRISPQESProgram` (nullifier slots, append-only `SlotAlreadyVoted`, credit-free mask, `bytes32[8]`).
+> - **Task 4** ✅ contract tests 9 passing (mock verifier).
+> - **Task 5** ✅ **integration gate:** real + mask fold proofs generate AND self-verify in bb.js (~130s each).
+> - **Task 6** ✅ masking daemon (credential-free); input-shape validated. Surfaced: high-level voter submit wrappers were still pre-QES.
+> - **Task 7** ✅ **final gate:** the DEPLOYED real verifier accepts a real proof on-chain via `publishInput` (no revert, `InputPublished`); double-vote reverts; mask accepted; `decodeTally(3)` works. 13 tests green. Fixed voter submit encoding. **P3 (live Rust ciphernode stack + fake-zkVM tally) deferred** — deploy scripts/servers are pre-QES (multi-hour Rust work); on-chain test covers the E2E intent on real EVM bytecode.
+> - **Two ABI catches** (both fixed, no logic change): (a) on-chain proof is fold not leaf; (b) mask proofs must carry the round census root as their *unconstrained* `enrollment_root` public input or the contract's `pub[1]` mismatches → `SumcheckFailed`.
+
 **Goal:** Stand up an opt-in **encrypted tally** for petitions — vote-once, multi-option (2…N, one-hot), with receipt-freeness via permissionless mask votes (Design A) + a masking-liveness daemon (Design C) — by forking CRISP's `crisp` leaf circuit + `CRISPProgram` contract + `crisp-sdk`, swapping CRISP's token-census/ECDSA eligibility for our pedersen-Merkle membership + per-petition nullifier.
 
 **Architecture:** Work against a **pinned clone of `gnosisguild/enclave`** (the CRISP example), not a full monorepo vendoring (that is Phase 3e+). We modify three layers — the `crisp_qes` Noir leaf (already spiked, 69,167 gates), `CRISPProgram.sol`, and `crisp-sdk` — so they agree on ONE public-input ABI, then prove a real vote + a mask vote end-to-end on local anvil with dev (fake-zkVM) proofs. The slot key becomes our `bytes32 nullifier`; the mask path is credential-free (the contract already knows a slot exists); multi-option rides CRISP's existing `num_options` BFV machinery unchanged.

@@ -127,6 +127,11 @@ Forked the `crisp` circuit into a sibling `crisp_qes` package in `/tmp/enclave` 
 ## Phasing
 1. **Spike (local):** ✅ **DONE 2026-06-01** — full stack up, committee key on-chain, vote proof verified headlessly in Node (see "Phase 1 spike" above).
 2. **Eligibility swap (circuit):** ✅ **DONE 2026-06-01** — spliced `crisp_qes` leaf compiles, **69,167 gates (−50% vs baseline)**, fold linkage intact; surfaced the mask-vote/nullifier reconciliation as the one open design item (see "Phase 2 spike" above).
+3. **Contract rekey:** ✅ **DONE 2026-06-01** — `CRISPQESProgram` (nullifier-keyed slots, append-only dedup, credit-free mask, multi-option `decodeTally`); contract tests + **on-chain acceptance of a real fold proof** pass.
+4. **Client/SDK wiring:** ✅ **DONE (SDK)** — `crisp-sdk` QES inputs + submit encoding + masking daemon; real + mask proofs verify in bb.js AND on-chain. ⏳ **PetitionRegistry `tallyMode` + monorepo vendoring remain** (Phase 3e).
+5. **Testnet:** ⏳ pending (Phase 3e — real RISC0 + live ciphernode stack; the local fake-zkVM stack E2E was deferred, on-chain EVM test covers the intent).
+
+> **Phase 3 masking design + implementation:** see `docs/specs/2026-06-01-crisp-phase3-masking-multioption-design.md` and `docs/plans/2026-06-01-crisp-phase3-implementation.md` (executed 2026-06-01; results in `docs/2026-06-01-crisp-phase3-e2e.md`). Built in the ephemeral clone `/tmp/enclave/examples/CRISP` — **not yet vendored/pushed.**
 3. **Contract rekey:** `voteSlots` by nullifier; census = enrollment root; local E2E.
 4. **Client/SDK wiring + PetitionRegistry `tallyMode`.**
 5. **Sepolia/Base testnet** with real RISC0 proving; then committee/ops decision for production.
