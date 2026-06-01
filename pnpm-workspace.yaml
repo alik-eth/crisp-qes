@@ -1,2 +1,5 @@
 packages:
   - 'packages/*'
+  # The vendored fork (vendor/crisp-qes-enclave) is its own pnpm workspace with
+  # its own lockfile; never absorb it into the monorepo workspace.
+  - '!vendor/**'
