@@ -47,6 +47,24 @@ Encrypted ballots **are** on-chain (in the votes Merkle tree); the final tally i
 3. **Pluggability** — fork CRISP's `crisp` circuit, or author our own E3 *program* from the template? (E3 = "write your encrypted program" → likely our own program, CRISP as reference.)
 4. **Ops model** — do we run ciphernodes + RISC0/Boundless, or consume an Interfold-operated committee? Cost + liveness.
 
+## Spike results — measured 2026-06-01 (beta.19, UltraHonk `bb gates`)
+
+Cloned `gnosisguild/enclave`, compiled the CRISP circuits on **our** toolchain (nargo 1.0.0-beta.19, bb 4.0.0-nightly). Toolchain compatibility was **easy** — the only fix was a test-only patch in `circuits/lib` (`Vec::from_slice` → `Vec::new` in 4 `#[test]` fns; removed in beta.19). Far friendlier than the noir-bignum/RSA situation.
+
+| Circuit | Gates (`circuit_size`) | Notes |
+|---|---|---|
+| **`crisp` vote circuit** | **139,125** | eligibility (secp256k1 ECDSA + poseidon-Merkle) + BFV ciphertext commitments/addition + mask-vote logic. **This is where our eligibility swap lives.** |
+| `crisp_fold` (recursive aggregation) | **1,508,638** | recursion: verifies the leaf proofs. Heavy by nature. |
+| `user_data_encryption` (BFV leaf) | TBD | didn't cleanly build in the time-box; the BFV-encryption-correctness proof. |
+| *(ours, for comparison)* membership+nullifier | ~28,000 | our existing sign circuit |
+| *(ours)* `enroll_commit_v2` | ~457,000 | for scale |
+
+**De-risk verdict on the question I set out to answer ("does the fused circuit fit?"):**
+- ✅ **The part we modify fits.** The `crisp` circuit is **139k** — *lighter than our enroll circuit*. Swapping CRISP's secp256k1-ECDSA + poseidon-Merkle eligibility (~heavy) for our pedersen-Merkle membership + nullifier (~28k) keeps it the same order (~120–150k est.). It compiles on our toolchain today.
+- ⚠️ **New, bigger risk surfaced: the recursion.** `crisp_fold` is **~1.5M gates**. The per-vote *on-chain* proof (`publishInput` → `honkVerifier.verify`) carries the **`crisp` circuit's** public inputs (merkleRoot, slotAddress, prevCommitment) — so the light 139k proof is plausibly the on-chain one — but the BFV-correctness path (`user_data_encryption` + the ~1.5M `fold`) is additional. **Whether that recursion runs client-side (in-browser) or server-side (coordinator/ciphernodes) is now the decisive feasibility question** — 1.5M gates in-browser would blow past our iOS 832 MiB floor; server-side keeps the client light.
+
+**Next unknown to close (supersedes earlier "open question 1"):** trace CRISP's proving placement — does the voter's browser generate the `fold`/`user_data_encryption` proofs, or only the `crisp` leaf proof (with aggregation done by the coordination server / ciphernodes)? That single fact decides browser/iOS viability of encrypted voting.
+
 ## Phasing
 1. **Spike (local):** clone `gnosisguild/enclave`, run the CRISP example on Hardhat (fake zkVM proofs) end-to-end — baseline understanding.
 2. **Eligibility swap (circuit):** fork the `crisp` circuit, replace eligibility/auth with our membership+nullifier, prove it compiles + measure gates/mem.
