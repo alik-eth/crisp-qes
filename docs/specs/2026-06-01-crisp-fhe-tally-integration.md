@@ -15,7 +15,7 @@ Per-vote Noir circuit (`circuits/bin/crisp/src/main.nr`) is **modular** — thre
 
 Contract (`CRISPProgram.sol`): `publishInput` decodes `(noirProof, slotAddress, encryptedVoteCommitment, encryptedVote)`, `_processVote` inserts/updates the slot's ciphertext in the votes Merkle tree keyed by `voteSlots[slotAddress]`, then `honkVerifier.verify(noirProof, [prevCommitment, merkleRoot, slotAddress, …])`.
 
-**Coercion-resistance mechanism = mask votes** (anyone adds a zero-vote to a slot → the slot's ciphertext changes but decrypts the same → no provable receipt). *This corrects our earlier "JCJ fake-credentials" framing: CRISP achieves receipt-freeness via mask votes + encrypted tally, out of the box — JCJ is a different, heavier scheme we do not need to adopt to get receipt-freeness.*
+**Coercion-resistance mechanism = mask votes** (anyone adds a zero-vote to a slot → the slot's ciphertext changes but decrypts the same → no provable receipt). *This corrects our earlier "JCJ fake-credentials" framing: CRISP achieves receipt-freeness via mask votes + encrypted tally, out of the box — JCJ is a different, heavier scheme we do not need to adopt to get receipt-freeness.* **⚠️ Caveat discovered in Phase 2 (2026-06-01): the "anyone can mask any slot" property does NOT survive our nullifier-as-slot swap** — CRISP masks address a *public* `slot_address`, but our slot key `nullifier = pedersen([s, petition_id, DOMAIN])` is derivable only by the owner of `s`, so a third party can no longer re-randomize someone else's slot. Receipt-freeness via masking is therefore **not free in our model** and needs a Phase-3 redesign (see Phase 2 §"design flags"). This does not block the gate-count/fit result, but it reopens *how* we get receipt-freeness.
 
 ## The reconciliation (the only real design knot)
 
@@ -106,9 +106,27 @@ Cloned `gnosisguild/enclave`, brought the **entire CRISP reference stack up loca
 
 **Only gap (not a CRISP issue):** browser vote-cast → on-chain tally is blocked by Playwright/Synpress (MetaMask-extension automation hangs under Node 24, headless). The Node proving test covers the same proving logic, so this is a tooling gap, not a stack gap.
 
+## Phase 2 spike — eligibility swap COMPILES + HALVES the leaf (2026-06-01)
+
+Forked the `crisp` circuit into a sibling `crisp_qes` package in `/tmp/enclave` and **spliced out** CRISP's eligibility (poseidon-Merkle over `(slot_address, balance)`) + authentication (secp256k1 ECDSA, `slot_address == derive_address(pubkey)`), **replacing them** with our pedersen-Merkle membership of `enrollment_secret` against `enrollment_root` + nullifier derivation (`nullifier = pedersen([s, petition_id, DOMAIN_PETITION_V2])`, replacing `slot_address` as the public slot key). BFV commitments (STEP 1), ciphertext-addition, mask-vote logic, and the `-> pub (Field, Field, Field)` return tuple kept **verbatim**.
+
+**Results:**
+- **Compiles clean on our toolchain** (nargo 1.0.0-beta.19, bb 4.0.0-nightly) — **zero patches** beyond the splice. Our `merkle.nr` (`pedersen_hash_with_separator`, pure stdlib) dropped in verbatim; `balance` hard-set to `1` (one-person-one-vote); CRISP's variable-depth `merkle_proof_length` collapsed to our fixed depth-20 (strict simplification).
+- **Gate count: 69,167** (`circuit_size`) vs the **139,125** baseline → **−50.3%, the leaf roughly halves.** As predicted: secp256k1-ECDSA + poseidon-Merkle ≫ pedersen-Merkle + one pedersen hash.
+- **Memory:** ~126 MiB est. for the leaf prove (≈1.82 KiB/gate from our 457k→832 MiB reference) — well under the iOS floor; the bb.js fixed shared-mem reservation (~192 MiB, per the iOS-OOM note) dominates a circuit this small. **The leaf is not the constraint** — the `fold` recursion (~1.5M gates, Phase 1) is, and this swap leaves it untouched.
+- **`fold`/`user_data_encryption` linkage confirmed intact** — STEP 1 commitments + the return tuple in all three branches are byte-identical (verified via the ABI return type).
+
+**Design flags (surfaced, NOT solved — carry to Phase 3):**
+1. **⚠️ Mask votes break in the nullifier model.** CRISP's receipt-freeness relies on *anyone* being able to add a zero-vote to a *public* `slot_address`. Our slot key is `nullifier = pedersen([s, petition_id, DOMAIN])` — derivable only by the owner of `s` — so a third party can't address (re-randomize) someone else's slot. As spliced, the mask path proves the *masker's own* membership but never binds to the target slot's nullifier. **Receipt-freeness via masking is at risk** and needs a Phase-3 redesign (e.g., a separate "mask authorization" that lets others add to a nullifier-keyed slot without knowing `s`; or split into a public slot id + a separate nullifier-for-dedup). This is the one substantive open question; it is *not* a compile/fit blocker.
+2. **fold linkage** — confirmed unaffected (above).
+
+**Artifact:** the spliced `crisp_qes` package (full `main.nr` + copied `merkle.nr`) lives at `/tmp/enclave/examples/CRISP/circuits/bin/crisp_qes/` — the portable fork for when we move it into our tree. Full spliced `main.nr` is captured in the Phase 2 agent report (this session).
+
+**Verdict:** ✅ **PASS** — the eligibility/auth swap compiles cleanly and *halves* the leaf (69k); the leaf was never the bottleneck and is now even cheaper. The remaining work is protocol design (mask-vote reconciliation), contract rekey, and SDK/ops — not circuit feasibility.
+
 ## Phasing
 1. **Spike (local):** ✅ **DONE 2026-06-01** — full stack up, committee key on-chain, vote proof verified headlessly in Node (see "Phase 1 spike" above).
-2. **Eligibility swap (circuit):** fork the `crisp` circuit, replace eligibility/auth with our membership+nullifier, prove it compiles + measure gates/mem.
+2. **Eligibility swap (circuit):** ✅ **DONE 2026-06-01** — spliced `crisp_qes` leaf compiles, **69,167 gates (−50% vs baseline)**, fold linkage intact; surfaced the mask-vote/nullifier reconciliation as the one open design item (see "Phase 2 spike" above).
 3. **Contract rekey:** `voteSlots` by nullifier; census = enrollment root; local E2E.
 4. **Client/SDK wiring + PetitionRegistry `tallyMode`.**
 5. **Sepolia/Base testnet** with real RISC0 proving; then committee/ops decision for production.
