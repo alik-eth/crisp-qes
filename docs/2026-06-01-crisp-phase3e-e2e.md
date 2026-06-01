@@ -102,6 +102,24 @@ circuit / verifier / daemon LOGIC was touched.
 
 ## LIVE RUN
 
+> **Re-run confirmation (post security-fix ABI, 2026-06-01 20:09Z).** After the
+> Phase 3 security review + fix round (FIX-A: `petition_id` bound on-chain,
+> `is_mask_vote` made a public input, the publishInput tuple slimmed from the old
+> 6-element `(bytes,bytes32,uint256,bool,bytes32,bytes)` to the 5-element
+> `(bytes,bytes32,bool,bytes32,bytes)`), the full E2E was re-run and **all 7 stages
+> passed again** against the new ABI — leaf proof now `9 public inputs`, fold
+> `9 public inputs and 342 fields` on-chain, `decodeTally(e3Id=0) == [1,0,0]`.
+> Run log: `scripts/crisp-fhe/.e2e-logs/20260601T195641Z/`.
+>
+> **Third bug the re-run surfaced (build-freshness, fixed):** the round driver
+> imports `@crisp-e3/sdk` from the compiled `dist/index.js`, **not** the TS source.
+> The dist built before FIX-A still emitted the old 6-element tuple, so the fixed
+> 5-element server rejected every broadcast with "Invalid QES publishInput tuple" —
+> identical symptom to a stale server binary, different artifact. Fix: `bootstrap.sh`
+> now builds the crisp-sdk dist (`tsup --no-dts`) alongside zk-inputs, and
+> `e2e-local.sh` force-rebuilds it (and asserts the stale 6-elem tuple is absent)
+> before the driver runs. Commit `ba1cde7`.
+
 <!-- FILLED IN FROM THE ACTUAL RUN BELOW -->
 
 Stack (fresh clean-slate localhost deploy, 5-ciphernode Micro committee, real
