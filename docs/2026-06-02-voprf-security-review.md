@@ -116,6 +116,21 @@ Net: C-1 is a real, complete fix. C-3 is incomplete (rinv/r limbs unchecked), bu
 
 ---
 
+### 2026-06-02 — F2 deploy (two-proof + shared-`r` commitment) landed on `feat/voprf-security-fixes`
+
+The confirmed-CRITICAL set **F1, F2, F3 is now CLOSED in the deployed (off-chain-gated) path.** The fix extracts the VOPRF primitives into a reusable `grumpkin_voprf` Noir library and rewires the deployed two-proof enrollment flow to compose it. The deployed path stays **two proofs** (enroll gates `/v3/blind-eval`; nullifier runs at `/v3/register`) deliberately — a fused single proof would have to move after blind-eval, opening the OPRF to an oracle (RNOKPP-guessing deanonymization), so F2 is closed by **binding the same `r` across the two proofs** rather than by fusion.
+
+- **F1 (DLEQ generator substitution) — CLOSED BY CONSTRUCTION.** `oprf_nullifier` no longer takes `gx,gy` as inputs; the DLEQ base is `grumpkin_voprf::params::GEN_X/GEN_Y`, a pinned in-circuit global. The attacker has no witness slot for a substituted `G' = (k')⁻¹·Kpub`, so the attack is unexpressible. Asserted by `test-pinned-constants.mjs` ("oprf_nullifier ABI has no [gx, gy] input").
+- **F2 (free `rinv`/`r` → unbounded Sybil nullifiers) — CLOSED, LIVE-VERIFIED.** The enroll proof publishes `C_r = commit_r(r) = pedersen([CR_DOMAIN, r_lo, r_hi])`; the register proof (`oprf_nullifier`) takes `C_r` as a public input and asserts `commit_r(r) == C_r` (Pedersen-binds its `r` to the enroll blind) **and** `r·N == Y` (forces `rinv = r⁻¹`), yielding the canonical `N = k·H2C(id)`. The service additionally hard-checks **(a)** `nullifier.M == enroll.M` (identity binding, non-skippable) and **(d)** `nullifier.C_r == enroll.C_r`. Live-verified: `forge-f2-nullifier-witness.mjs` reproduces the exact forgery the **pre-fix standalone accepted** (rinv = 2·r⁻¹, free `r`) and shows the two-proof circuit now REJECTS it at `"F2: r*N != Y"`; a wrong-`r` commitment (`C_r+1`) is rejected at `"c_r mismatch (r != enroll r)"`; and `e2e-test.mjs` independently shows the tampered-`c_r` reject + determinism/distinctness.
+- **F3 (non-canonical SvdW suite) — CLOSED BY CONSTRUCTION.** `c1..c4` (+ `SVDW_Z`, `ZETA`, `BCURVE`, `DST`) are `grumpkin_voprf::params` globals consumed by `h2c`; `enroll_commit_v2` no longer takes them as inputs, so hash-to-curve cannot be redefined. The standalone `oprf_commitment` circuit (and its `forge-f3-*` probes) were retired. Asserted by `test-pinned-constants.mjs` ("enroll_commit_v2 ABI has no [c1, c2, c3, c4] input").
+- **C-1 / C-3** are carried into the library: `dleq::verify_dleq` keeps the limb-bound Fiat-Shamir challenge (C-1), and `oprf`/`dleq` range-check the `r`/`rinv`/`c`/`z` limbs to 128 bits (closes the C-3 residual called out above).
+
+**Caveat (not overclaiming):** the deployed `enroll_commit_v2` bb-proof is **not** run end-to-end locally — its `assert_ca_pinned` requires a PRODUCTION Diia CA that a synthetic cert cannot satisfy (and we must not add a test CA to the pinned set nor use real PII). The enroll circuit is covered by its own `#[test]`s + the lib `h2c`/`M` tests; the locally-runnable e2e exercises node-eval + the nullifier register proof + C_r + determinism. **F4 is unchanged** (operator rainbow-table deanonymization of the deterministic enrollment leaf) — it is only mitigated once `k` is genuinely threshold/multi-operator distributed (checklist #7/#8, the next workstream). The scheme remains **EXPERIMENTAL / UNAUDITED** pending external audit (checklist #10).
+
+Commits (branch `feat/voprf-security-fixes`): `c9d3b51`/`4f712a9` (grumpkin_voprf lib: `commit_r` + `oprf_nullify_bound`, domain-separated `C_r`), `0197f06` (enroll_commit_v2 → two-proof gate + `C_r` output), `39345a0` (oprf_nullifier rewrite over the lib + `C_r`), `affb252` (service: `C_r` cross-check + 13/8-word layouts), `ae7c0e0` (web client), `1e4fec8` (e2e). The earlier F1/F3 pin + lib extraction landed in `8da263b` / `2bc0a3a` / `a7c9131`.
+
+---
+
 ## 5. Path to Production-Grade — Checklist
 
 | # | Task | Effort |

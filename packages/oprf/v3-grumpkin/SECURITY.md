@@ -56,7 +56,7 @@ challenge = Noir `pedersen_hash` of the transcript
 | `qes_frontend` | `rnokpp_field` | A valid P-256 QES signature over `signedAttrs`; a 10-digit RNOKPP at a witnessed DER offset behind OID 2.5.4.5; DOB proves age ≥ 18 vs a public `today`. |
 | `enroll_commit` (Phase 1) | `(M, rnokpp_commit)` | Same as front-end **plus** `M = r·H2C(RNOKPP)` (SvdW in-circuit), with witnessed `(u0,u1)` *bound* to the extracted RNOKPP via an in-circuit `pedersen([rnokpp_field])`. The RNOKPP→(u0,u1) `expand_message_xmd` step is **witnessed, not proven** here. |
 | `enroll_commit_v2` (Phase 2) | `M` | Same as Phase 1 but `expand_message_xmd(SHA-256)` (the 3 SHA blocks → `u0,u1`) is computed **fully in-circuit**; no Pedersen binding needed. |
-| `oprf_commitment` | — (asserts `M`) | Standalone SvdW + blinded MSM check: `M = r·(P0+P1)`. |
+| `oprf_commitment` | _RETIRED_ | Was a standalone SvdW + blinded-MSM check (`M = r·(P0+P1)`). Retired; its hash-to-curve is now the pinned `grumpkin_voprf::h2c` library module (SvdW constants are lib globals, so the F3 non-canonical-suite forgery is unexpressible). |
 | `oprf_nullifier` | `pedersen([N.x,N.y])` | Verifies the DLEQ for the node response `Y`, unblinds `N = rinv·Y` bound to `r` via the group equation `r·N == Y`, outputs the nullifier commitment. |
 
 The threshold OPRF prototype (`threshold/threshold-oprf.mjs`) shows that `k` can
@@ -171,7 +171,7 @@ bytes. Recommend asserting `s ≤ N/2` (low-`s`) for defense in depth.
 ### Constraints checked and found PASS
 
 - **(a) `is_square` / ZETA binding** — `assert_is_square`
-  (`oprf_commitment/src/main.nr:15–19`, `enroll_commit*/src/main.nr`):
+  (`lib-noir/grumpkin_voprf/src/h2c.nr`, used by `enroll_commit_v2`):
   `e ∈ {0,1}` enforced; `e=1 ⇒ w²=gx`, `e=0 ⇒ w²=gx·ZETA`. Since `ZETA = 5` is a
   verified quadratic **non-residue** mod `P`, a square `gx` cannot satisfy the
   `e=0` branch (`gx·ZETA` is a non-residue → no `w`) and a non-square cannot
@@ -186,7 +186,7 @@ bytes. Recommend asserting `s ≤ N/2` (low-`s`) for defense in depth.
 - **(c) `r^-1` group-equation inverse binding** — `oprf_nullifier/src/main.nr:55–57`:
   sound as described in C-2 (forces `N = rinv·Y` consistently).
 - **(d) `sgn0` well-constrained** — `sgn0(x) = x.to_le_bits()[0]`
-  (`oprf_commitment/src/main.nr:21`, etc.). The final `y` is forced: `assert(sqrt_x²
+  (`lib-noir/grumpkin_voprf/src/h2c.nr`, etc.). The final `y` is forced: `assert(sqrt_x²
   == gx)` pins `|y|`, and `y_final` is `cmov`-selected so `sgn0(y_final) ==
   sgn0(u)` **regardless of which square root the prover supplies** for `sqrt_x`.
   So `y` is fully determined by `(gx, sgn0(u))`. **PASS** (assuming Noir's
