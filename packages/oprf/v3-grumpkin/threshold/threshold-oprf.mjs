@@ -23,7 +23,7 @@
 //   - picks any t responders S, computes Lagrange coeffs lambda_i(0) mod N,
 //     Y = sum_{i in S} lambda_i * B_i = (sum lambda_i k_i) * M = f(0)*M = k*M.
 
-import { Point, G, N, Fn, oprfEval } from "../lib.mjs";
+import { Point, G, N, Fn, oprfEval, dleqProveShare, verifyDleqShare } from "../lib.mjs";
 
 // ----------------------------------------------------------------------------
 // Field helpers over the SCALAR field N (= BN254 base field). All polynomial
@@ -103,11 +103,25 @@ export function groupPublicKey(k) {
 }
 
 // ----------------------------------------------------------------------------
-// (2) Per-node partial evaluation: B_i = k_i * M.
-// Identical operation to the single-key oprfEval, just with the node's share.
+// (2) Per-node partial evaluation: B_i = k_i * M, WITH a per-share epoch-bound
+// DLEQ (review #7: per-share verification). Returns { i, B_i, dleq, Kpub_i }:
+//   B_i    = k_i * M (the partial)
+//   Kpub_i = k_i * G (the node's published share public key)
+//   dleq   = { c, z } proving log_G(Kpub_i) == log_M(B_i) for THIS epoch
+// The combiner/service rejects a faulty/malicious node via verifyPartialDleq.
 // ----------------------------------------------------------------------------
-export function partialEval(share, Mpoint) {
-    return { i: BigInt(share.i), B_i: oprfEval(share.k_i, Mpoint) };
+export async function partialEval(share, Mpoint, epoch) {
+    const B_i = oprfEval(share.k_i, Mpoint);
+    const Kpub_i = G.multiply(Fn.create(share.k_i));
+    const dleq = await dleqProveShare(Kpub_i, share.k_i, Mpoint, B_i, epoch);
+    return { i: BigInt(share.i), B_i, dleq, Kpub_i };
+}
+
+// Recompute-and-check a node's per-share DLEQ (client/service side; mirrors the
+// circuit's verify_dleq_share). True iff the partial is a valid k_i-evaluation
+// of M under this epoch. Use to fail-fast on a cheating/faulty node.
+export async function verifyPartialDleq(Kpub_i, Mpoint, B_i, epoch, dleq) {
+    return verifyDleqShare(Kpub_i, Mpoint, B_i, epoch, dleq);
 }
 
 // ----------------------------------------------------------------------------
@@ -135,6 +149,14 @@ export function lagrangeCoeff(i, indices) {
 // ----------------------------------------------------------------------------
 export function combine(partials) {
     const indices = partials.map((p) => BigInt(p.i));
+    // review #7: reject duplicate responder indices (combine() dedup). Lagrange
+    // interpolation requires DISTINCT indices; a dup would mis-weight the sum.
+    const seen = new Set();
+    for (const i of indices) {
+        const key = i.toString();
+        if (seen.has(key)) throw new Error("duplicate responder index");
+        seen.add(key);
+    }
     let Y = null;
     for (const { i, B_i } of partials) {
         const lambda = lagrangeCoeff(BigInt(i), indices);
