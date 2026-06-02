@@ -262,60 +262,87 @@ pub fn select_lagrange_2of3(idx1: Field, idx2: Field) -> (Scalar, Scalar) {
     (Scalar { lo: l1_lo, hi: l1_hi }, Scalar { lo: l2_lo, hi: l2_hi })
 }
 
+// select_kpub_3 -- bind a responder index to its PUBLISHED Kpub by selecting
+// from the full 3-node set {k1, k2, k3} for idx in {1,2,3} (in-circuit cmov).
+// This closes the idx<->kpub decoupling: a responder's partial B is verified
+// against published[idx], so a prover cannot mislabel (e.g. submit node 3's
+// Kpub/B under idx=1) to land an off-canonical (still-deterministic) nullifier.
+fn select_kpub_3(idx: Field, k1: Pt, k2: Pt, k3: Pt) -> Pt {
+    let is1 = (idx == 1);
+    let is2 = (idx == 2);
+    let is3 = (idx == 3);
+    assert((is1 as Field) + (is2 as Field) + (is3 as Field) == 1, "responder index not in {1,2,3}");
+    let s1 = is1 as Field;
+    let s2 = is2 as Field;
+    let s3 = is3 as Field;
+    Pt {
+        x: s1 * k1.x + s2 * k2.x + s3 * k3.x,
+        y: s1 * k1.y + s2 * k2.y + s3 * k3.y,
+        is_infinite: false,
+    }
+}
+
 // oprf_nullify_threshold -- the t-of-n (t=2) register entry point.
 //
 // Verifies t per-share epoch-bound DLEQs, asserts a valid distinct responder set,
-// Lagrange-combines Y = l1*B_1 + l2*B_2 IN-CIRCUIT (pinned mod-N coefficients),
+// Lagrange-combines Y = l1*B_a + l2*B_b IN-CIRCUIT (pinned mod-N coefficients),
 // then applies the F2 tail (C_r binding + r*N==Y + is_infinite guards) exactly
 // like oprf_nullify_bound. For the SAME effective group key k (= f(0) of the
 // sharing polynomial) the resulting nullifier == the single-key path's
 // pedersen(k*H2C(id)) for that epoch -- and is identical across responder
 // subsets (determinism/recovery preserved within the threshold epoch).
 //
-// kpub1/kpub2/m are caller-supplied (the SERVICE binds them to the published
-// Kpub set + the enroll proof's M); Y is NOT an input -- it is computed here, so
-// the proof self-attests the threshold evaluation.
+// idx -> kpub is BOUND IN-CIRCUIT: each responder's Kpub is selected from the
+// FULL published 3-node set by its index (select_kpub_3), and its partial B is
+// verified against that published[idx] via verify_dleq_share. So a mislabeled
+// (kpub, idx, B) triple cannot pass -- a prover cannot mix node j's partial under
+// index i. The SERVICE's only Kpub duty is to check the 3 published Kpub publics
+// equal the canonical set BY VALUE.
 //
 // Arguments:
-//   m                 PUBLIC blinded element M = r*H2C(id) (service: == enroll's M)
-//   kpub1, b1         node 1's PUBLIC key Kpub_1=k_1*GEN and PRIVATE partial B_1=k_1*M
-//   kpub2, b2         node 2's PUBLIC key Kpub_2=k_2*GEN and PRIVATE partial B_2=k_2*M
-//   idx1, idx2        PUBLIC node indices (service: the t distinct responders)
-//   epoch             PUBLIC session tag (service: == current enrollEpoch)
-//   c1_*/c2_*         per-share DLEQ_1 / DLEQ_2 (c,z) as 128-bit limbs (PRIVATE)
-//   r, rinv, c_r      blind scalar bound to enroll via c_r (F2), its inverse, the
-//                     enroll proof's cross-proof commitment (PUBLIC c_r)
+//   m                    PUBLIC blinded element M = r*H2C(id) (service: == enroll's M)
+//   kpub1, kpub2, kpub3  the PUBLISHED 3-node key set (service: == canonical set)
+//   idx1, idx2           PUBLIC responder indices (the t distinct responders, a<b)
+//   b_a, b_b             PRIVATE partials B_a = k_{idx1}*M, B_b = k_{idx2}*M
+//   epoch                PUBLIC session tag (service: == current enrollEpoch)
+//   ca_*/cb_*            per-share DLEQ for responder a / b (c,z) limbs (PRIVATE)
+//   r, rinv, c_r         blind scalar bound to enroll via c_r (F2), its inverse,
+//                        the enroll proof's cross-proof commitment (PUBLIC c_r)
 // Returns the nullifier = pedersen([N.x, N.y]).
 pub fn oprf_nullify_threshold(
     m: Pt,
     kpub1: Pt,
-    b1: Pt,
     kpub2: Pt,
-    b2: Pt,
+    kpub3: Pt,
     idx1: Field,
     idx2: Field,
+    b_a: Pt,
+    b_b: Pt,
     epoch: Field,
-    c1_lo: Field,
-    c1_hi: Field,
-    z1_lo: Field,
-    z1_hi: Field,
-    c2_lo: Field,
-    c2_hi: Field,
-    z2_lo: Field,
-    z2_hi: Field,
+    ca_lo: Field,
+    ca_hi: Field,
+    za_lo: Field,
+    za_hi: Field,
+    cb_lo: Field,
+    cb_hi: Field,
+    zb_lo: Field,
+    zb_hi: Field,
     r: Scalar,
     rinv: Scalar,
     c_r: Field,
 ) -> Field {
-    // 1. Per-share epoch-bound DLEQs vs the pinned GEN (F1 + C-1 + session).
-    //    A cheating/faulty node whose B_i != k_i*M fails its DLEQ here.
-    dleq::verify_dleq_share(kpub1, m, b1, epoch, c1_lo, c1_hi, z1_lo, z1_hi);
-    dleq::verify_dleq_share(kpub2, m, b2, epoch, c2_lo, c2_hi, z2_lo, z2_hi);
+    // 1. Bind each responder index to its PUBLISHED Kpub (in-circuit), then
+    //    verify the responder's partial against THAT key. A cheating/faulty node
+    //    (B != k_idx*M) OR a mislabeled (kpub,idx,B) triple fails the DLEQ here.
+    let kpub_a = select_kpub_3(idx1, kpub1, kpub2, kpub3);
+    let kpub_b = select_kpub_3(idx2, kpub1, kpub2, kpub3);
+    dleq::verify_dleq_share(kpub_a, m, b_a, epoch, ca_lo, ca_hi, za_lo, za_hi);
+    dleq::verify_dleq_share(kpub_b, m, b_b, epoch, cb_lo, cb_hi, zb_lo, zb_hi);
 
     // 2. Lagrange combine IN-CIRCUIT with pinned mod-N coefficients (no free Y).
     //    select_lagrange_2of3 also enforces distinct, valid, canonical indices.
     let (l1, l2) = select_lagrange_2of3(idx1, idx2);
-    let y = multi_scalar_mul([b1, b2], [l1, l2]);
+    let y = multi_scalar_mul([b_a, b_b], [l1, l2]);
 
     // 3. F2 tail (same as oprf_nullify_bound, with the in-circuit-combined Y).
     rinv.lo.assert_max_bit_size::<128>();

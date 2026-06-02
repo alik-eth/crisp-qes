@@ -291,11 +291,12 @@ mod tests {
     }
 
     // HONEST threshold register, responder set {1,2}: yields the threshold-epoch
-    // nullifier (the recovery anchor for this epoch).
+    // nullifier (the recovery anchor for this epoch). The full published 3-Kpub
+    // set is passed; responders' partials (B_1, B_2) are passed by index.
     #[test]
     fn test_nullify_threshold_honest() {
         let nullifier = oprf_nullify_threshold(
-            m_pt(), kp1(), b1(), kp2(), b2(), 1, 2, THR_EPOCH,
+            m_pt(), kp1(), kp2(), kp3(), 1, 2, b1(), b2(), THR_EPOCH,
             C1_LO, C1_HI, Z1_LO, Z1_HI, C2_LO, C2_HI, Z2_LO, Z2_HI,
             r(), rinv(), EXPECTED_CR,
         );
@@ -307,7 +308,7 @@ mod tests {
     #[test]
     fn test_nullify_threshold_subset_invariance() {
         let nullifier = oprf_nullify_threshold(
-            m_pt(), kp1(), b1(), kp3(), b3(), 1, 3, THR_EPOCH,
+            m_pt(), kp1(), kp2(), kp3(), 1, 3, b1(), b3(), THR_EPOCH,
             C1_LO, C1_HI, Z1_LO, Z1_HI, C3_LO, C3_HI, Z3_LO, Z3_HI,
             r(), rinv(), EXPECTED_CR,
         );
@@ -318,7 +319,7 @@ mod tests {
     #[test]
     fn test_nullify_threshold_subset_2_3() {
         let nullifier = oprf_nullify_threshold(
-            m_pt(), kp2(), b2(), kp3(), b3(), 2, 3, THR_EPOCH,
+            m_pt(), kp1(), kp2(), kp3(), 2, 3, b2(), b3(), THR_EPOCH,
             C2_LO, C2_HI, Z2_LO, Z2_HI, C3_LO, C3_HI, Z3_LO, Z3_HI,
             r(), rinv(), EXPECTED_CR,
         );
@@ -331,12 +332,25 @@ mod tests {
         verify_dleq_share(kp1(), m_pt(), b1(), THR_EPOCH, C1_LO, C1_HI, Z1_LO, Z1_HI);
     }
 
-    // REJECT: tampered B_1 -> the per-share DLEQ C-1 limb binding fails.
+    // REJECT (the review hazard, now CLOSED in-circuit): MISLABELED kpub<->idx.
+    // Responders are labeled {1,2}, but b_a is node 3's partial (k_3*M) under
+    // idx1=1. select_kpub_3(1) picks the PUBLISHED Kpub_1, so verify_dleq_share
+    // checks (Kpub_1, M, k_3*M) -> B != k_1*M -> the C-1 limb binding fails.
+    #[test(should_fail)]
+    fn test_threshold_mislabeled_kpub_rejected() {
+        let _ = oprf_nullify_threshold(
+            m_pt(), kp1(), kp2(), kp3(), 1, 2, b3(), b2(), THR_EPOCH,
+            C3_LO, C3_HI, Z3_LO, Z3_HI, C2_LO, C2_HI, Z2_LO, Z2_HI,
+            r(), rinv(), EXPECTED_CR,
+        );
+    }
+
+    // REJECT: tampered B_a -> the per-share DLEQ C-1 limb binding fails.
     #[test(should_fail)]
     fn test_threshold_tampered_b1_rejected() {
         let bad_b1 = Pt { x: B1X + 1, y: B1Y, is_infinite: false };
         let _ = oprf_nullify_threshold(
-            m_pt(), kp1(), bad_b1, kp2(), b2(), 1, 2, THR_EPOCH,
+            m_pt(), kp1(), kp2(), kp3(), 1, 2, bad_b1, b2(), THR_EPOCH,
             C1_LO, C1_HI, Z1_LO, Z1_HI, C2_LO, C2_HI, Z2_LO, Z2_HI,
             r(), rinv(), EXPECTED_CR,
         );
@@ -346,7 +360,7 @@ mod tests {
     #[test(should_fail_with = "invalid 2-of-3 responder set")]
     fn test_threshold_dup_index_rejected() {
         let _ = oprf_nullify_threshold(
-            m_pt(), kp1(), b1(), kp1(), b1(), 1, 1, THR_EPOCH,
+            m_pt(), kp1(), kp2(), kp3(), 1, 1, b1(), b1(), THR_EPOCH,
             C1_LO, C1_HI, Z1_LO, Z1_HI, C1_LO, C1_HI, Z1_LO, Z1_HI,
             r(), rinv(), EXPECTED_CR,
         );
@@ -356,7 +370,7 @@ mod tests {
     #[test(should_fail_with = "invalid 2-of-3 responder set")]
     fn test_threshold_noncanonical_index_rejected() {
         let _ = oprf_nullify_threshold(
-            m_pt(), kp2(), b2(), kp1(), b1(), 2, 1, THR_EPOCH,
+            m_pt(), kp1(), kp2(), kp3(), 2, 1, b2(), b1(), THR_EPOCH,
             C2_LO, C2_HI, Z2_LO, Z2_HI, C1_LO, C1_HI, Z1_LO, Z1_HI,
             r(), rinv(), EXPECTED_CR,
         );
@@ -366,7 +380,7 @@ mod tests {
     #[test(should_fail_with = "c_r mismatch (r != enroll r)")]
     fn test_threshold_wrong_cr_rejected() {
         let _ = oprf_nullify_threshold(
-            m_pt(), kp1(), b1(), kp2(), b2(), 1, 2, THR_EPOCH,
+            m_pt(), kp1(), kp2(), kp3(), 1, 2, b1(), b2(), THR_EPOCH,
             C1_LO, C1_HI, Z1_LO, Z1_HI, C2_LO, C2_HI, Z2_LO, Z2_HI,
             r(), rinv(), EXPECTED_CR + 1,
         );
@@ -377,7 +391,7 @@ mod tests {
     fn test_threshold_wrong_rinv_rejected() {
         let bad_rinv = Scalar { lo: RINV2_LO, hi: RINV2_HI };
         let _ = oprf_nullify_threshold(
-            m_pt(), kp1(), b1(), kp2(), b2(), 1, 2, THR_EPOCH,
+            m_pt(), kp1(), kp2(), kp3(), 1, 2, b1(), b2(), THR_EPOCH,
             C1_LO, C1_HI, Z1_LO, Z1_HI, C2_LO, C2_HI, Z2_LO, Z2_HI,
             r(), bad_rinv, EXPECTED_CR,
         );
@@ -388,7 +402,7 @@ mod tests {
     #[test(should_fail)]
     fn test_threshold_wrong_epoch_rejected() {
         let _ = oprf_nullify_threshold(
-            m_pt(), kp1(), b1(), kp2(), b2(), 1, 2, THR_EPOCH + 1,
+            m_pt(), kp1(), kp2(), kp3(), 1, 2, b1(), b2(), THR_EPOCH + 1,
             C1_LO, C1_HI, Z1_LO, Z1_HI, C2_LO, C2_HI, Z2_LO, Z2_HI,
             r(), rinv(), EXPECTED_CR,
         );
