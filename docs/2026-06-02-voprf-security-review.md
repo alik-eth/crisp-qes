@@ -131,6 +131,24 @@ Commits (branch `feat/voprf-security-fixes`): `c9d3b51`/`4f712a9` (grumpkin_vopr
 
 ---
 
+### 2026-06-02 — Threshold OPRF (2-of-3) landed on `feat/voprf-security-fixes`
+
+The OPRF key is now Shamir-shared across a **2-of-3 threshold**: no single party holds or reconstructs `k`. Each node `i` computes only `B_i = k_i·M` on the blinded `M`, and the register proof forms `Y = Σ λ_i·B_i` by an **in-circuit** Lagrange combine (the key is never assembled). This closes review **#7** and changes **F4**'s status.
+
+- **#7 (threshold-hardening soundness gaps) — CLOSED.**
+  - **Per-share DLEQ verification is now IN-CIRCUIT.** For each of the t=2 responders, `grumpkin_voprf::dleq::verify_dleq_share` proves `B_i = k_i·M` vs the responder's published `Kpub_i` against the **pinned GEN** (F1), with the C-1 limb binding. A faulty/malicious node whose `B_i ≠ k_i·M` is caught — live-verified by the e2e cheating-node case and the `forge-threshold-witness.mjs` `(F-share)` rejection.
+  - **`combine()` index dedup enforced.** In-circuit, `select_lagrange_2of3` asserts a canonical distinct 2-of-3 responder set (`"invalid 2-of-3 responder set"` on a dup/non-canonical pair); in JS, `combine()` throws on duplicate indices. (`(F-dup)` rejection.)
+  - **Session/epoch binding.** `epoch` is appended to every per-share DLEQ transcript (the 13-element `pedersen([GEN,Kpub_i,M,B_i,a1,a2,epoch])`), and the service cross-checks **(f)** `epoch == current enrollEpoch`. A stale-epoch partial fails the limb binding (`(F-epoch)` rejection).
+  - **idx→Kpub bound in-circuit + self-attested combine.** `select_kpub_3` selects each responder's `Kpub` from the PUBLISHED 3-node set by index (no mislabel — `(F-kpubswap)` rejection), and `Y` is computed in-circuit with **pinned mod-N Lagrange coefficients** (no free `Y` input). The register proof self-attests the t-of-n eval; the service pins only `M`/`C_r`/the published `Kpub` set/`epoch`/the commitment (cross-checks (a)/(c)/(d)/(e)/(f)). Live-verified by the e2e **subset-determinism** (same identity → same leaf for responder subsets {1,2}, {1,3}, {2,3}) and **distinctness**, plus all four `forge-threshold-witness.mjs` rejections.
+
+- **F4 (operator deanonymization of the deterministic leaf) — MITIGATED BY DESIGN, pending independent operators + verifiable DKG.** With 2-of-3, no single party can compute `k·H2C(id)`, so the offline rainbow-table deanonymization now requires **≥2 colluding keyholders**. **CAVEAT (operational, not a code property):** real mitigation requires the 3 nodes to be run by **INDEPENDENT operators**; the demo may co-host all 3 under one operator (which does NOT yet achieve independence — F4 is not mitigated in that configuration). Keygen is **demo-grade**: a seed-derived dealer/DKG-lite (`dkgKeygen`, restart-stable via `V3_THRESHOLD_SEED`), **not** a production verifiable DKG. So F4 is *"mitigated by design / pending independent-operator deployment + verifiable DKG,"* not fully closed.
+
+**Still EXPERIMENTAL / UNAUDITED — out of scope here:** production **verifiable DKG** (Feldman/Pedersen commitments + complaint round) replacing the demo dealer; **independent-operator deployment** of the 3 nodes (the real F4 mitigation); **redeploy** (web + Fly: 3 node services) + an **on-device iOS** prove test; **external audit** (checklist #10). The single-key path remains only as legacy `OprfNode` (roundtrip/gating tests).
+
+Commits (branch `feat/voprf-security-fixes`): `b33ae7a`/`8d9028d` (grumpkin_voprf lib: `verify_dleq_share` epoch-bound + pinned 2-of-3 Lagrange + `oprf_nullify_threshold` + in-circuit idx→kpub), `0a7e6f4` (oprf_nullifier → threshold 13-word ABI), `6b59ff7` (JS `dleqProveShare`/`verifyDleqShare` + combine dedup + threshold witness generator), `5964dc2` (service `ShareNode` + `makeNodes`), `735897d`/`a7b9d5a` (service: threshold register verify + published-Kpub/epoch cross-checks + seed-derived stable share set), `4a1997d`/`4f5dfd3` (web client: blind-eval fan-out + 13-word threshold witness, canonical responder order), `7330873` (e2e: fan-out + in-circuit combine + subset-determinism + cheating-node reject).
+
+---
+
 ## 5. Path to Production-Grade — Checklist
 
 | # | Task | Effort |
