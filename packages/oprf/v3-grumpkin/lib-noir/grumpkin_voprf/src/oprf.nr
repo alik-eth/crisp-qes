@@ -29,6 +29,13 @@ use crate::dleq;
 //   m         = r*H2C(id)              (the blinded element; app exposes it as M
 //                                       for the node / its public output)
 //
+// CALLER RESPONSIBILITY: the library CANNOT enforce that the supplied `h2c`/`r`
+// are the genuine enrollment ones for the claimed identity -- it only enforces
+// the blind<->unblind single-`r` binding (rinv = r^-1) and the DLEQ. The caller
+// MUST bind `m`/`h2c` to the committed identity upstream (e.g. derive h2c from an
+// authenticated identity in-circuit and reuse the SAME `r` that formed the
+// committed/signed M). Otherwise a prover could run the OPRF on an arbitrary h2c.
+//
 // Arguments:
 //   h2c        H2C(identity) point (from h2c::h2c_grumpkin or the app's H2C)
 //   r          blinding scalar (the SAME witness used to derive M upstream)
@@ -53,6 +60,15 @@ pub fn oprf_verify_and_nullify(
     rinv.lo.assert_max_bit_size::<128>();
     rinv.hi.assert_max_bit_size::<128>();
 
+    // Defense-in-depth: make the degenerate-point exclusion EXPLICIT. The F2
+    // group equation below compares only affine (x,y), not is_infinite, so a
+    // degenerate y could in principle collapse the unblind to a single fixed
+    // pedersen([0,0]). Reject the point at infinity as an unblind input here,
+    // BEFORE verify_dleq, so this guard is what rejects a degenerate y (not an
+    // incidental transcript mismatch) and the property is robust to future Noir
+    // codegen changes in how multi_scalar_mul normalizes infinity.
+    assert(!y.is_infinite, "y is the point at infinity");
+
     // Blind: M = r * H2C(id). The SAME r is reused for the unblind binding below.
     let m = multi_scalar_mul([h2c], [r]);
 
@@ -61,6 +77,9 @@ pub fn oprf_verify_and_nullify(
 
     // Unblind: N = rinv * Y.
     let n = multi_scalar_mul([y], [rinv]);
+    // Defense-in-depth: N must not be the point at infinity either (explicit
+    // degenerate-nullifier exclusion; the F2 group-eq compares only affine coords).
+    assert(!n.is_infinite, "n is the point at infinity");
 
     // F2 binding: r * N == Y with the SAME r that blinded H2C(id). Forces
     // rinv = r^-1 (Y prime-order) => N = k*H2C(id). Without this (or with an

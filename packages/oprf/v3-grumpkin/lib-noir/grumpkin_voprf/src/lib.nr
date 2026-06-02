@@ -132,4 +132,21 @@ mod tests {
         let m = std::embedded_curve_ops::multi_scalar_mul([h], [r()]);
         verify_dleq(kpub(), m, wrong_y, C_LO, C_HI, Z_LO, Z_HI);
     }
+
+    // DEGENERATE-Y guard (defense-in-depth): the point at infinity must be
+    // rejected as an unblind input BEFORE anything else runs. Non-vacuous: the
+    // y-guard `assert(!y.is_infinite)` is the FIRST assert in
+    // oprf_verify_and_nullify (placed ahead of verify_dleq precisely so a
+    // degenerate y trips this guard, not an incidental DLEQ/transcript mismatch).
+    // The pinned `should_fail_with` message confirms it is THIS assert that fires.
+    #[test(should_fail_with = "y is the point at infinity")]
+    fn test_degenerate_y_infinity_rejected() {
+        let inf = Pt { x: 0, y: 0, is_infinite: true };
+        // rinv chosen so that, WITHOUT the guard, the affine group-eq
+        // (ycheck.x==y.x)&(ycheck.y==y.y) would compare (0,0)==(0,0) and pass;
+        // the ONLY rejecter is the explicit is_infinite guard.
+        let _ = oprf_verify_and_nullify(
+            h2c_grumpkin(U0, U1, H0, H1), r(), rinv(), kpub(), inf, C_LO, C_HI, Z_LO, Z_HI,
+        );
+    }
 }

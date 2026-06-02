@@ -2,18 +2,25 @@
 //
 // Ported VERBATIM from oprf_nullifier's DLEQ verify. Proves Y = k*M for the same
 // k as Kpub = k*GEN, where GEN is the PINNED canonical generator (F1) -- not an
-// attacker-suppliable base. The Fiat-Shamir challenge is bound to the recomputed
-// transcript hash (C-1): the MSM scalar limbs (c_lo,c_hi) themselves must equal
-// pedersen(transcript), so a prover cannot pick z + free limbs and then set the
-// challenge to whatever makes the equation hold.
+// attacker-suppliable base.
+//
+// The challenge ACTUALLY fed to the MSM is the 128-bit-limb scalar
+// c = (c_lo, c_hi). Soundness (C-1) comes SOLELY from the limb binding
+//   assert(c_lo + c_hi*2^128 == ch)
+// which fully constrains that exact MSM scalar to equal the recomputed transcript
+// hash ch. So a prover cannot pick z + free limbs and then set the challenge to
+// whatever makes the equation hold -- the limbs feeding the MSM are themselves
+// pinned to ch.
 //
 //   a1 = z*GEN - c*Kpub,  a2 = z*M - c*Y
 //   ch = pedersen([GEN.x,GEN.y, Kpub.x,Kpub.y, M.x,M.y, Y.x,Y.y, a1.x,a1.y, a2.x,a2.y])
-//   assert(c_lo + c_hi*2^128 == ch)     // C-1 limb binding
+//   assert(c_lo + c_hi*2^128 == ch)     // C-1 limb binding (the sole challenge constraint)
 // c is supplied as 128-bit limbs (c_lo,c_hi); z as (z_lo,z_hi). Both are
 // range-checked to 128 bits so the (lo,hi) decomposition is the unique integer
-// the MSM blackbox interprets. A pedersen output is a Field < P < N, hence a
-// valid embedded-curve scalar.
+// the MSM blackbox interprets. Separately, a pedersen output (ch) is a Field
+// < P < N, hence a valid embedded-curve scalar -- this is about ch's validity as
+// a scalar, NOT a claim that ch is the value fed to the MSM (that value is the
+// limb scalar c, pinned to ch by the assert above).
 
 use std::embedded_curve_ops::{EmbeddedCurvePoint as Pt, EmbeddedCurveScalar as Scalar, multi_scalar_mul};
 use crate::params::{GEN_X, GEN_Y};
