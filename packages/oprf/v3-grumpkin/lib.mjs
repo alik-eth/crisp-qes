@@ -161,3 +161,18 @@ export async function dleqProveBase(base, k, Kpub, Mpoint, Ypoint, t) {
     const z = Fn.add(Fn.create(t), Fn.mul(Fn.create(c), Fn.create(k)));
     return { c, z };
 }
+
+// ---- cross-proof shared-r commitment (F2) ----
+// Domain-separation tag for commit_r: ASCII "CRISP-QES-V3-Cr". MUST match the
+// grumpkin_voprf params CR_DOMAIN byte-for-byte (lib-noir/.../src/oprf.nr), or
+// the JS-computed C_r won't match the circuit's commit_r(r) and the register
+// proof's cross-proof binding will reject.
+export const CR_DOMAIN = 0x43524953502d5145532d56332d4372n;
+
+// commit_r(r) = pedersen([CR_DOMAIN, r_lo, r_hi]). Mirrors
+// grumpkin_voprf::oprf::commit_r exactly (same domain prefix + 128-bit limb
+// split + Noir-compatible pedersen). `r` may be a bigint scalar or {lo,hi}.
+export async function commitR(r) {
+    const { lo, hi } = typeof r === "bigint" ? scalarLimbs(r) : r;
+    return pedersenHashFields([CR_DOMAIN, lo, hi]);
+}
