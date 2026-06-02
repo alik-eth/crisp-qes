@@ -85,7 +85,7 @@ pub fn oprf_verify_and_nullify(
     // rinv = r^-1 (Y prime-order) => N = k*H2C(id). Without this (or with an
     // unrelated r), `rinv` is free and the nullifier is attacker-chosen.
     let ycheck = multi_scalar_mul([n], [r]);
-    assert((ycheck.x == y.x) & (ycheck.y == y.y));
+    assert((ycheck.x == y.x) & (ycheck.y == y.y), "F2: r*N != Y");
 
     let nullifier = std::hash::pedersen_hash([n.x, n.y]);
     (nullifier, m)
@@ -108,24 +108,41 @@ pub fn oprf_verify_and_nullify(
 // stage (CRISP/Interfold).
 // ===========================================================================
 
+// Domain-separation tag for commit_r: ASCII "CRISP-QES-V3-Cr".
+// MIRRORING REQUIREMENT: this tag must be reproduced BYTE-FOR-BYTE by every
+// committer of C_r -- the JS lib.mjs commitR (Task 4) and the enroll_commit_v2
+// circuit -- or the register proof's commit_r(r) will not match the enroll
+// proof's published C_r and the cross-proof binding will (correctly) reject.
+pub global CR_DOMAIN: Field = 0x43524953502d5145532d56332d4372;
+
 // commit_r -- the cross-proof binding commitment over the blind scalar r.
-// C_r = pedersen([r.lo, r.hi]). Pedersen is binding, so two proofs that both
-// assert commit_r(r) == C_r for the SAME public C_r necessarily used the SAME r.
-// Range-checks the limbs so (lo,hi) is the unique integer (C-3) and the
-// commitment is well-defined.
+// C_r = pedersen([CR_DOMAIN, r.lo, r.hi]). Pedersen is binding, so two proofs
+// that both assert commit_r(r) == C_r for the SAME public C_r necessarily used
+// the SAME r. The CR_DOMAIN prefix domain-separates C_r so it cannot collide
+// with any other 2-element Pedersen commitment in the protocol (e.g. the
+// enrollment leaf pedersen([N.x,N.y])). Range-checks the limbs so (lo,hi) is the
+// unique integer (C-3) and the commitment is well-defined.
 pub fn commit_r(r: Scalar) -> Field {
     r.lo.assert_max_bit_size::<128>();
     r.hi.assert_max_bit_size::<128>();
-    std::hash::pedersen_hash([r.lo, r.hi])
+    std::hash::pedersen_hash([CR_DOMAIN, r.lo, r.hi])
 }
 
 // oprf_nullify_bound -- the two-proof REGISTER entry point.
 //
 // Unlike the fused entry point, `m` is a PUBLIC INPUT here (NOT recomputed from
 // r*H2C): the register proof never sees H2C(id) (that lives in the separate
-// enroll proof). The service binds m == the enroll proof's M and c_r == the
-// enroll proof's C_r out-of-circuit; in-circuit we bind THIS proof's r to that
-// shared C_r and verify the node's DLEQ over the public (m, y, kpub).
+// enroll proof). In-circuit we bind THIS proof's r to the shared C_r and verify
+// the node's DLEQ over the public (m, y, kpub).
+//
+// SERVICE FAILURE MODE (non-skippable cross-check): the service MUST hard-check
+// m == the enroll proof's M (identity binding). c_r binds r but NOT the identity:
+// if the m cross-check is omitted, a prover holding the honest r could submit
+// m' = r*H2C(id') for an ARBITRARY identity id' and -- if it could obtain
+// Y' = k*m' -- mint a nullifier for id'. In the deployed flow the gated
+// blind-eval (only evaluates a cert-proven M) plus the in-circuit DLEQ already
+// prevent obtaining Y', so this is defense-in-depth; but the m == M check is
+// non-skippable. Likewise the service binds c_r == the enroll proof's C_r.
 //
 // Math (why this yields the canonical nullifier):
 //   commit_r(r) == c_r  =>  r == r_enroll  (Pedersen binding; same r as enroll)

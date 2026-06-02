@@ -8,7 +8,14 @@
 //   F2  single-`r` blind<->unblind     (oprf::oprf_verify_and_nullify)
 //   C-3 range-checked scalar limbs      (dleq, oprf)
 //
-// Entry point: oprf::oprf_verify_and_nullify(h2c, r, rinv, kpub, y, dleq...).
+// Entry points:
+//   * Fused (single proof): oprf::oprf_verify_and_nullify(h2c, r, rinv, kpub, y,
+//     dleq...) -- for consumers WITHOUT a gated-oracle stage (CRISP/Interfold).
+//   * Two-proof (DEPLOYED v3): oprf::commit_r(r) in the ENROLL proof (publishes
+//     C_r) + oprf::oprf_nullify_bound(m, y, kpub, r, rinv, c_r, dleq...) in the
+//     REGISTER proof -- the two-proof shared-`r` binding. Used because the
+//     deployed enroll proof must GATE blind-eval (keeping the OPRF a closed
+//     oracle), which the fused proof cannot do.
 
 pub mod params;
 pub mod h2c;
@@ -73,10 +80,10 @@ mod tests {
     global MX: Field = 12740386612938090927079547681734239410028477805108087007172264989097450666954;
     global MY: Field = 7157360252618170453902251378396272710129452917231230593436182484546167046936;
 
-    // C_r = commit_r(r()) = pedersen([R_LO, R_HI]). Pinned (captured on first
-    // compile from the test_commit_r_deterministic failure, then hardcoded).
+    // C_r = commit_r(r()) = pedersen([CR_DOMAIN, R_LO, R_HI]). Pinned (captured
+    // on first compile from the test_commit_r_deterministic failure, hardcoded).
     global EXPECTED_CR: Field =
-        0x1795c499b393f14a229a1c2f2fe5fdf8bfaad3c4c04b0e13f1dcba7bdc3f22c5;
+        0x2dc4e70bdf48c031a3cc6cd54a75361de20ced244c10b98c824ab6a5d659c2ac;
 
     fn kpub() -> Pt {
         Pt { x: KPX, y: KPY, is_infinite: false }
@@ -118,8 +125,10 @@ mod tests {
 
     // F2 FORGERY (the bug F2 closes): same honest inputs but rinv = 2*r^-1 != r^-1.
     // The standalone oprf_nullifier ACCEPTS this (free rinv); here the single-`r`
-    // group equation r*N == Y must FAIL.
-    #[test(should_fail)]
+    // group equation r*N == Y must FAIL. Pinned to the F2 assert (non-vacuous):
+    // RINV2 limbs are < 2^128 so the range checks pass, leaving r*N==Y the sole
+    // rejecter.
+    #[test(should_fail_with = "F2: r*N != Y")]
     fn test_f2_wrong_rinv_rejected() {
         let h = h2c_grumpkin(U0, U1, H0, H1);
         let bad_rinv = Scalar { lo: RINV2_LO, hi: RINV2_HI };
