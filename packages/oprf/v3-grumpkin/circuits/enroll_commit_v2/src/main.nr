@@ -94,6 +94,30 @@ global ZETA: Field = 5;
 global BCURVE: Field = -17;
 global SVDW_Z: Field = 1;
 
+// Canonical RFC-9380 SvdW suite constants for Grumpkin (== lib.mjs SVDW_CONSTS,
+// == oprf_commitment SVDW_C1..C4). F3 SECURITY FIX: c1..c4 remain public inputs
+// (ABI-preserving, no VK/redeploy churn) but are now PINNED to these canonical
+// values in main(). Without this, a prover supplies a different valid
+// (c1..c4 + matching hints) to redefine hash-to-curve, mapping one identity to
+// arbitrarily many on-curve points => unbounded distinct commitments/nullifiers
+// per identity -- live in this DEPLOYED enrollment circuit.
+global SVDW_C1: Field = 21888242871839275222246405745257275088548364400416034343698204186575808495601;
+global SVDW_C2: Field = 10944121435919637611123202872628637544274182200208017171849102093287904247808;
+global SVDW_C3: Field = 17631683881184975371348829942606096167675058198229016842588;
+global SVDW_C4: Field = 14592161914559516814830937163504850059032242933610689562465469457717205663766;
+
+// Assert the passed SvdW suite constants equal the canonical pinned values.
+// Factored so a #[test] can drive the canonical (accept) and forged (reject)
+// cases directly -- the deployed circuit's main() is unreachable via
+// `nargo execute` here (it requires a real Diia-pinned-CA signature / PII cert),
+// so this helper is the committed regression surface for the F3 fix.
+fn assert_canonical_svdw(c1: Field, c2: Field, c3: Field, c4: Field) {
+    assert(c1 == SVDW_C1);
+    assert(c2 == SVDW_C2);
+    assert(c3 == SVDW_C3);
+    assert(c4 == SVDW_C4);
+}
+
 // DST = "CRISP-QES-V3-Grumpkin_XMD:SHA-256_SVDW_RO_" (42 bytes).
 global DST_LEN: u32 = 42;
 global DST: [u8; 42] = [
@@ -437,6 +461,8 @@ fn main(
     let u1 = be_bytes_to_field(u1_bytes);
 
     // ---- (5) M = r * H2C(RNOKPP) = r*(P0 + P1) via SvdW + blackbox MSM. ----
+    // F3 SECURITY FIX: pin the SvdW suite constants to the canonical values.
+    assert_canonical_svdw(c1, c2, c3, c4);
     let p0 = svdw_map(u0, c1, c2, c3, c4, h0[0], h0[1], h0[2], h0[3], h0[4], h0[5]);
     let p1 = svdw_map(u1, c1, c2, c3, c4, h1[0], h1[1], h1[2], h1[3], h1[4], h1[5]);
     let r = Scalar { lo: r_lo, hi: r_hi };
@@ -662,4 +688,35 @@ fn test_rnokpp_out_of_bounds_fails() {
         tbs[963 + k] = digits[k];
     }
     let _ = extract_rnokpp(tbs, 900, 950); // bound check must fail
+}
+
+// ===========================================================================
+// F3 REGRESSION TESTS: SvdW suite-constant pinning.
+//
+// main() is unreachable via `nargo execute` in this environment (it requires a
+// real Diia-pinned-CA signature over a PII leaf cert), so the F3 fix is exercised
+// here against assert_canonical_svdw -- the exact gate main() now calls before
+// svdw_map. The forged suite (c1=7,c2=3,c3=0,c4=3) is the SAME non-canonical
+// suite that the JS forger (forge-f3-lib.mjs) shows the UNFIXED svdw_map accepts
+// (lands one identity on a different on-curve point). Post-fix, that suite must
+// be REJECTED here.
+// ===========================================================================
+
+// HAPPY: the canonical SvdW constants pass the pinning gate.
+#[test]
+fn test_svdw_canonical_ok() {
+    assert_canonical_svdw(SVDW_C1, SVDW_C2, SVDW_C3, SVDW_C4);
+}
+
+// NEGATIVE (F3): a non-canonical suite (the JS-forged c1=7,c2=3,c3=0,c4=3 that
+// the UNFIXED svdw_map accepts) is now REJECTED by the pinning gate.
+#[test(should_fail)]
+fn test_svdw_forged_constants_fail() {
+    assert_canonical_svdw(7, 3, 0, 3);
+}
+
+// NEGATIVE (F3): tampering only ONE constant (c4) is still rejected.
+#[test(should_fail)]
+fn test_svdw_tampered_c4_fail() {
+    assert_canonical_svdw(SVDW_C1, SVDW_C2, SVDW_C3, SVDW_C4 + 1);
 }

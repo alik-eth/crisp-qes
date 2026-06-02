@@ -10,6 +10,17 @@ global ZETA: Field = 5;
 global BCURVE: Field = -17;
 global SVDW_Z: Field = 1;
 
+// Canonical RFC-9380 SvdW suite constants for Grumpkin (== lib.mjs SVDW_CONSTS).
+// F3 SECURITY FIX: c1..c4 remain public inputs (ABI-preserving) but are now
+// PINNED to these canonical values. Without this, a prover supplies a different
+// valid (c1..c4 + matching hints) to redefine hash-to-curve, mapping one
+// identity to arbitrarily many on-curve points => unbounded distinct
+// commitments/nullifiers per identity.
+global SVDW_C1: Field = 21888242871839275222246405745257275088548364400416034343698204186575808495601;
+global SVDW_C2: Field = 10944121435919637611123202872628637544274182200208017171849102093287904247808;
+global SVDW_C3: Field = 17631683881184975371348829942606096167675058198229016842588;
+global SVDW_C4: Field = 14592161914559516814830937163504850059032242933610689562465469457717205663766;
+
 fn g(x: Field) -> Field { x * x * x + BCURVE }
 
 fn assert_is_square(gx: Field, e: Field, w: Field) {
@@ -57,6 +68,11 @@ fn main(
     // public blinded commitment M = r*H2C(input)
     mx: pub Field, my: pub Field,
 ) {
+    // F3 SECURITY FIX: pin the SvdW suite constants to the canonical values.
+    assert(c1 == SVDW_C1);
+    assert(c2 == SVDW_C2);
+    assert(c3 == SVDW_C3);
+    assert(c4 == SVDW_C4);
     let p0 = svdw_map(u0, c1, c2, c3, c4, h0[0], h0[1], h0[2], h0[3], h0[4], h0[5]);
     let p1 = svdw_map(u1, c1, c2, c3, c4, h1[0], h1[1], h1[2], h1[3], h1[4], h1[5]);
     // M = r*(P0+P1) = r*P0 + r*P1 via blackbox MSM (avoids explicit point add)

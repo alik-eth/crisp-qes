@@ -131,6 +131,13 @@ async function pedersenHashFields(fields) {
 // c is the pedersen output (a base-field element < P < N) used directly as the
 // challenge scalar -- identical value feeds both z and the circuit's MSM.
 export async function dleqProve(k, Kpub, Mpoint, Ypoint, t) {
+    return dleqProveBase(G, k, Kpub, Mpoint, Ypoint, t);
+}
+
+// Like dleqProve but over an ARBITRARY base point `base` (the canonical
+// generator for honest proofs; an attacker-chosen G' for the F1 forgery probe).
+// Transcript uses `base` in slot 0 exactly as the circuit reads gx,gy.
+export async function dleqProveBase(base, k, Kpub, Mpoint, Ypoint, t) {
     // t: random nonce in [1, N). Caller may pass one (tests); else generated here.
     if (t === undefined) {
         t = (bytesToNumberBE(sha256(concatBytes(
@@ -139,9 +146,9 @@ export async function dleqProve(k, Kpub, Mpoint, Ypoint, t) {
             Ypoint.toRawBytes(true),
         ))) % (N - 1n)) + 1n;
     }
-    const a1 = G.multiply(Fn.create(t));
+    const a1 = base.multiply(Fn.create(t));
     const a2 = Mpoint.multiply(Fn.create(t));
-    const Ga = G.toAffine();
+    const Ga = base.toAffine();
     const Ka = Kpub.toAffine();
     const Ma = Mpoint.toAffine();
     const Ya = Ypoint.toAffine();

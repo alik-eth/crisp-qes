@@ -19,6 +19,16 @@
 
 use std::embedded_curve_ops::{EmbeddedCurvePoint as Pt, EmbeddedCurveScalar as Scalar, multi_scalar_mul};
 
+// Canonical Grumpkin generator (== Noir's embedded-curve generator, == lib.mjs
+// GEN_X/GEN_Y and packages/web grumpkin.ts). The DLEQ base MUST be this point.
+// F1 SECURITY FIX: gx,gy remain public inputs (ABI-preserving, transcript
+// symmetry with the JS dleqProve) but are now PINNED to the canonical generator.
+// Without this, a prover substitutes G' = (k')^-1 * Kpub and proves an HONEST
+// Chaum-Pedersen DLEQ over the attacker-chosen base, picking the effective key
+// k' with NO real OPRF evaluation => unbounded distinct nullifiers per identity.
+global GEN_X: Field = 1;
+global GEN_Y: Field = 17631683881184975370165255887551781615748388533673675138860;
+
 fn neg(p: Pt) -> Pt {
     Pt { x: p.x, y: -p.y, is_infinite: p.is_infinite }
 }
@@ -34,6 +44,9 @@ fn main(
     r_lo: Field, r_hi: Field,
     c_expected: pub Field,
 ) -> pub Field {
+    // F1 SECURITY FIX: pin the DLEQ generator to the canonical Grumpkin base.
+    assert(gx == GEN_X);
+    assert(gy == GEN_Y);
     let g = Pt { x: gx, y: gy, is_infinite: false };
     let kpub = Pt { x: kpx, y: kpy, is_infinite: false };
     let m = Pt { x: mx, y: my, is_infinite: false };
