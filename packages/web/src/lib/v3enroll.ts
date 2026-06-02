@@ -19,10 +19,8 @@ import { p256 } from "@noble/curves/p256";
 import { sha256 } from "@noble/hashes/sha2";
 import {
     Fn,
-    G,
     N,
     Point,
-    SVDW_CONSTS,
     hashToField2,
     mapToCurveSvdW,
     scalarLimbs,
@@ -137,7 +135,6 @@ export function buildEnrollWitness(): EnrollWitnessBundle {
     const r = randomScalar();
     const M = Hpt.multiply(r);
 
-    const { c1, c2, c3, c4 } = SVDW_CONSTS;
     const { lo, hi } = scalarLimbs(r);
 
     const u8arr = (u8: Uint8Array): string[] =>
@@ -153,10 +150,8 @@ export function buildEnrollWitness(): EnrollWitnessBundle {
         rnokpp_oid_off: rnokppOff.toString(),
         dob_off: dobOff.toString(),
         today: Array.from(today).map((c) => c.charCodeAt(0).toString()),
-        c1: dec(c1),
-        c2: dec(c2),
-        c3: dec(c3),
-        c4: dec(c4),
+        // SvdW suite constants c1..c4 are no longer circuit inputs (pinned inside
+        // grumpkin_voprf, F3); only the per-map hints h0/h1 are witnessed.
         h0: hintArr(m0.hints),
         h1: hintArr(m1.hints),
         r_lo: dec(lo),
@@ -209,13 +204,15 @@ export async function blindEval(
 
 // Build the oprf_nullifier witness from the service response (mirrors
 // gen-nullifier-witness.mjs). Unblind N = rinv*Y; the circuit re-derives the
-// DLEQ challenge and the commitment.
+// DLEQ challenge and the commitment, pins GEN internally (F1), and re-asserts
+// commit_r(r) == c_r to bind r to the enroll proof (F2). `cr` is the enroll
+// proof's PROVEN C_r (publicInputs[10]); gx/gy and c_expected are GONE.
 export function buildNullifierWitness(
     M: Pt,
     r: bigint,
     ev: BlindEvalResponse,
+    cr: bigint,
 ): InputMap {
-    const Ga = G.toAffine();
     const Ka = ev.Kpub.toAffine();
     const Ma = M.toAffine();
     const Ya = ev.Y.toAffine();
@@ -227,23 +224,21 @@ export function buildNullifierWitness(
     const rL = scalarLimbs(r);
 
     return {
-        gx: dec(Ga.x),
-        gy: dec(Ga.y),
         kpx: dec(Ka.x),
         kpy: dec(Ka.y),
-        mx: dec(Ma.x),
-        my: dec(Ma.y),
         yx: dec(Ya.x),
         yy: dec(Ya.y),
+        mx: dec(Ma.x),
+        my: dec(Ma.y),
+        c_r: dec(cr),
+        r_lo: dec(rL.lo),
+        r_hi: dec(rL.hi),
+        rinv_lo: dec(riL.lo),
+        rinv_hi: dec(riL.hi),
         c_lo: dec(cL.lo),
         c_hi: dec(cL.hi),
         z_lo: dec(zL.lo),
         z_hi: dec(zL.hi),
-        rinv_lo: dec(riL.lo),
-        rinv_hi: dec(riL.hi),
-        r_lo: dec(rL.lo),
-        r_hi: dec(rL.hi),
-        c_expected: dec(ev.c),
     };
 }
 
@@ -364,18 +359,24 @@ export async function runEnrollment(
         ms: performance.now() - t,
     });
 
-    // Sanity: public M is at publicInputs [12],[13] (after today[8], c1..c4).
+    // Sanity: public M is at publicInputs [8],[9] (after today[8]); C_r at [10].
     const Maff = M.toAffine();
-    const pubMxRaw = enroll.publicInputs[12];
-    const pubMyRaw = enroll.publicInputs[13];
-    if (pubMxRaw === undefined || pubMyRaw === undefined) {
-        throw new Error("enroll proof missing public M (publicInputs[12,13])");
+    const pubMxRaw = enroll.publicInputs[8];
+    const pubMyRaw = enroll.publicInputs[9];
+    const pubCrRaw = enroll.publicInputs[10];
+    if (pubMxRaw === undefined || pubMyRaw === undefined || pubCrRaw === undefined) {
+        throw new Error("enroll proof missing public M/C_r (publicInputs[8,9,10])");
     }
     const pubMx = BigInt(pubMxRaw);
     const pubMy = BigInt(pubMyRaw);
     if (pubMx !== Maff.x || pubMy !== Maff.y) {
-        throw new Error("public M mismatch (proof publicInputs[12,13] != local M)");
+        throw new Error("public M mismatch (proof publicInputs[8,9] != local M)");
     }
+    // C_r the enroll proof PROVED (commit_r(r)). Threading this exact value into
+    // the nullifier witness guarantees the nullifier's c_r == what the service
+    // cross-checks (extractCrFromEnroll). The nullifier circuit re-asserts
+    // commit_r(r) == c_r, so it fails closed if r and enrollCr disagree.
+    const enrollCr = BigInt(pubCrRaw);
 
     // 3. Round-trip the LIVE service.
     t = performance.now();
@@ -397,7 +398,7 @@ export async function runEnrollment(
     // 4. Prove oprf_nullifier.
     t = performance.now();
     onStage({ key: "nullifierProve", label: "Prove oprf_nullifier (DLEQ + unblind)", status: "running" });
-    const nullifierWitness = buildNullifierWitness(M, r, ev);
+    const nullifierWitness = buildNullifierWitness(M, r, ev, enrollCr);
     try {
         await runProof("nullifier", nullifierWitness, NULLIFIER_CIRCUIT_URL, () => {});
     } catch (err) {
@@ -642,16 +643,20 @@ export async function runRealEnrollment(
         ms: performance.now() - t,
     });
 
-    // Sanity: public M is at publicInputs [12],[13].
+    // Sanity: public M is at publicInputs [8],[9]; C_r at [10].
     const Maff = M.toAffine();
-    const pubMx = enroll.publicInputs[12];
-    const pubMy = enroll.publicInputs[13];
-    if (pubMx === undefined || pubMy === undefined) {
-        throw new Error("enroll proof missing public M (publicInputs[12,13])");
+    const pubMx = enroll.publicInputs[8];
+    const pubMy = enroll.publicInputs[9];
+    const pubCr = enroll.publicInputs[10];
+    if (pubMx === undefined || pubMy === undefined || pubCr === undefined) {
+        throw new Error("enroll proof missing public M/C_r (publicInputs[8,9,10])");
     }
     if (BigInt(pubMx) !== Maff.x || BigInt(pubMy) !== Maff.y) {
-        throw new Error("public M mismatch (proof publicInputs[12,13] != local M)");
+        throw new Error("public M mismatch (proof publicInputs[8,9] != local M)");
     }
+    // C_r the enroll proof PROVED; thread it into the nullifier witness so the
+    // nullifier's c_r equals what the service cross-checks (extractCrFromEnroll).
+    const enrollCr = BigInt(pubCr);
 
     // 3. Round-trip the LIVE service (proof-gated).
     t = performance.now();
@@ -672,7 +677,7 @@ export async function runRealEnrollment(
     // 4. Prove oprf_nullifier (unblind + DLEQ).
     t = performance.now();
     stage("nullifierProve", "Prove oprf_nullifier (DLEQ + unblind)", "running");
-    const nullifierWitness = buildNullifierWitness(M, r, ev);
+    const nullifierWitness = buildNullifierWitness(M, r, ev, enrollCr);
     let nullifier: ProveResult;
     try {
         nullifier = await runProof(

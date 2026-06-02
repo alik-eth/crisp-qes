@@ -264,3 +264,19 @@ export async function nullifierCommitment(Npt: Pt): Promise<bigint> {
     const a = Npt.toAffine();
     return pedersenHashFields([a.x, a.y]);
 }
+
+// Domain-separation tag for commit_r: ASCII "CRISP-QES-V3-Cr". MUST match the
+// grumpkin_voprf params CR_DOMAIN and lib.mjs CR_DOMAIN byte-for-byte.
+export const CR_DOMAIN = 0x43524953502d5145532d56332d4372n;
+
+// commit_r(r) = pedersen([CR_DOMAIN, r_lo, r_hi]). Mirrors
+// grumpkin_voprf::oprf::commit_r (and lib.mjs commitR) exactly: same domain
+// prefix + 128-bit limb split + Noir-compatible pedersen. This is the
+// cross-proof shared-r commitment (F2). In the deployed flow the enroll proof
+// PROVES this value (public output C_r); the client reads it from the enroll
+// proof's publicInputs rather than recomputing -- this helper is for fail-fast
+// sanity / tests.
+export async function commitR(r: bigint): Promise<bigint> {
+    const { lo, hi } = scalarLimbs(r);
+    return pedersenHashFields([CR_DOMAIN, lo, hi]);
+}
