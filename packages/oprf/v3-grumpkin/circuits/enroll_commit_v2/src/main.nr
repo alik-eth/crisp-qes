@@ -20,13 +20,14 @@
 //       from the AUTHENTICATED leaf_tbs.
 //   (4) u0, u1 = hash_to_field(RNOKPP) via expand_message_xmd(SHA-256),
 //       computed IN-CIRCUIT.
-//   (5) FUSED OPRF via the grumpkin_voprf library (F2 fusion): with the SAME
-//       blinding scalar r it both blinds M = r*H2C(RNOKPP) and unblinds the
-//       node's response N = rinv*Y (rinv forced to r^-1 by the group equation),
-//       verifies the node's Chaum-Pedersen DLEQ (pinned GEN, limb-bound
-//       challenge), and derives the deterministic nullifier = pedersen(k*H2C).
-//       This collapses the former enrollment-proof + nullifier-proof into ONE
-//       proof. PUBLIC outputs: M, nullifier, messageDigest (hi,lo).
+//   (5) BLIND + shared-r commitment (this is the /v3/blind-eval GATE, NOT the
+//       nullifier proof): M = r*H2C(RNOKPP) via the grumpkin_voprf library
+//       (pinned SvdW suite, F3), plus C_r = commit_r(r) = the cross-proof
+//       shared-r binding (F2). The DLEQ/unblind/nullifier are done by the
+//       SEPARATE oprf_nullifier register proof (it needs the node response Y,
+//       which only exists AFTER blind-eval). Keeping two proofs keeps the OPRF a
+//       closed oracle (a fused single proof could not gate blind-eval).
+//       PUBLIC outputs: M, C_r, messageDigest (hi,lo).
 //
 // CHAIN PROVEN: Diia CA -> leaf TBS (carries RNOKPP + DOB + leaf SPKI) -> leaf
 // key signs the challenge. RNOKPP/DOB are no longer read from a free cert[]
@@ -44,7 +45,7 @@
 // uniform_bytes = b1 || b2 || b3 (96 bytes). u0 = bytes[0..48],
 // u1 = bytes[48..96].
 
-use std::embedded_curve_ops::{EmbeddedCurvePoint as Pt, EmbeddedCurveScalar as Scalar};
+use std::embedded_curve_ops::EmbeddedCurveScalar as Scalar;
 
 // LEAF_TBS_LEN bounds the leaf certificate's signed TBS bytes. Real Diia leaf
 // TBS is ~1203 B (20 SHA-256 blocks); 1536 gives 24-block headroom. sha256_var
@@ -250,33 +251,32 @@ fn main(
     dob_off: u32,
     // --- public current date YYYYMMDD ---
     today: pub [u8; 8],
-    // --- node OPRF public key Kpub = k*GEN and response Y = k*M (PUBLIC) ---
-    kpx: pub Field,
-    kpy: pub Field,
-    yx: pub Field,
-    yy: pub Field,
     // --- per-map SvdW hints [inv_t, e1, w1, e2, w2, sqrt_x] ---
     h0: [Field; 6],
     h1: [Field; 6],
-    // --- blinding scalar r (private), the SAME r that blinds M and unblinds N ---
+    // --- blinding scalar r (private); the SAME r is reused (and bound via C_r)
+    //     by the separate oprf_nullifier register proof (Task 3) ---
     r_lo: Field,
     r_hi: Field,
-    // --- DLEQ proof (c, z) as 128-bit limbs (PRIVATE) ---
-    c_lo: Field,
-    c_hi: Field,
-    z_lo: Field,
-    z_hi: Field,
-    // --- claimed r^-1 (mod n) as 128-bit limbs (PRIVATE); the lib's group
-    //     equation r*N == Y forces it to be the exact inverse (F2) ---
-    rinv_lo: Field,
-    rinv_hi: Field,
 ) -> pub (Field, Field, Field, Field, Field) {
-    // PUBLIC OUTPUT TUPLE ORDER (Task 6 wires the service to this):
-    //   (M.x, M.y, nullifier, messageDigest_hi, messageDigest_lo)
-    // where M = r*H2C(RNOKPP) is the blinded commitment the node evaluated,
-    // nullifier = pedersen(k*H2C(RNOKPP)) is the deterministic anti-Sybil leaf,
-    // and messageDigest_(hi,lo) is the PKCS#9 messageDigest split into 16-byte
-    // halves (unchanged from the pre-fusion ABI).
+    // TWO-PROOF GATE: this circuit is the /v3/blind-eval gate. It proves the
+    // enrollment (Diia chain, age, M = r*H2C(cert)) and publishes C_r = commit_r(r)
+    // so the SEPARATE oprf_nullifier register proof can bind to the SAME r (F2).
+    // It does NOT do the DLEQ/unblind/nullifier -- those need the node response Y,
+    // which only exists AFTER blind-eval. Fusing them here would let blind-eval be
+    // run without gating, opening the OPRF to an oracle (deanonymization); so the
+    // deployed path keeps two proofs.
+    //
+    // PUBLIC OUTPUT TUPLE ORDER (service Task 5 + client Task 6 depend on this):
+    //   (M.x, M.y, C_r, messageDigest_hi, messageDigest_lo)
+    // where M = r*H2C(RNOKPP) is the blinded commitment sent to the node,
+    // C_r = commit_r(r) = pedersen([CR_DOMAIN, r_lo, r_hi]) is the cross-proof
+    // shared-r binding (F2), and messageDigest_(hi,lo) is the PKCS#9 messageDigest
+    // split into 16-byte halves.
+    //
+    // PUBLIC-INPUT LAYOUT (13 words): today occupies words [0..8); the returned
+    // tuple follows as M.x[8], M.y[9], C_r[10], messageDigest_hi[11],
+    // messageDigest_lo[12].
     // ---- (0) Diia CA -> leaf TBS chain + CA pinning. ----
     // sha256_var digests exactly leaf_tbs_len bytes; the CA signature must cover
     // that digest, and the CA must be in the PRODUCTION pinned Diia root set.
@@ -408,24 +408,19 @@ fn main(
     let u0 = be_bytes_to_field(u0_bytes);
     let u1 = be_bytes_to_field(u1_bytes);
 
-    // ---- (5) FUSED OPRF via grumpkin_voprf (F2 fusion: enrollment-proof +
-    // nullifier-proof collapse into THIS one proof). ----
+    // ---- (5) BLIND + shared-r commitment (two-proof gate; NO DLEQ here). ----
     // H2C(RNOKPP) = map(u0) + map(u1) with the lib's PINNED SvdW suite (F3).
     let h2c_point = grumpkin_voprf::h2c::h2c_grumpkin(u0, u1, h0, h1);
-    // The SAME r blinds H2C (-> M) and unblinds Y (-> N); rinv is forced to r^-1
-    // by the lib's group equation r*N == Y (F2). The lib pins GEN (F1), limb-binds
-    // the DLEQ challenge (C-1), range-checks r/rinv (C-3) and guards is_infinite.
     let r = Scalar { lo: r_lo, hi: r_hi };
-    let rinv = Scalar { lo: rinv_lo, hi: rinv_hi };
-    let kpub = Pt { x: kpx, y: kpy, is_infinite: false };
-    let y = Pt { x: yx, y: yy, is_infinite: false };
-    let (nullifier, m) = grumpkin_voprf::oprf::oprf_verify_and_nullify(
-        h2c_point, r, rinv, kpub, y, c_lo, c_hi, z_lo, z_hi,
-    );
-    // USE the lib's RETURNED m (= r*H2C): reusing it is what makes the single-r
-    // blind<->unblind binding structural (no separate re-derivation of M).
+    // M = r*H2C(id): the blinded commitment the node evaluates at /v3/blind-eval.
+    let m = std::embedded_curve_ops::multi_scalar_mul([h2c_point], [r]);
+    // C_r = commit_r(r): the cross-proof shared-r binding (F2). The separate
+    // oprf_nullifier register proof re-asserts commit_r(its r) == C_r, so Pedersen
+    // binding ties both proofs to the SAME r. commit_r domain-separates internally
+    // (CR_DOMAIN) and range-checks r's limbs.
+    let c_r = grumpkin_voprf::oprf::commit_r(r);
 
-    (m.x, m.y, nullifier, digest_hi, digest_lo)
+    (m.x, m.y, c_r, digest_hi, digest_lo)
 }
 
 // ===========================================================================
@@ -648,81 +643,33 @@ fn test_rnokpp_out_of_bounds_fails() {
 }
 
 // ===========================================================================
-// FUSED OPRF TESTS (Task 2).
+// TWO-PROOF GATE TESTS (Task 2).
 //
-// The former F3 SvdW-pinning regression tests (test_svdw_canonical_ok /
-// _forged_constants_fail / _tampered_c4_fail) were REMOVED: that coverage moved
-// into grumpkin_voprf (params.nr pins SVDW_C1..C4; the lib owns hash-to-curve),
-// so it is no longer expressible here (the constants are lib globals, not inputs).
+// This circuit reverted from the fused single proof back to the two-proof gate:
+// it publishes M and C_r (no DLEQ/nullifier here). The fused tests were removed;
+// the DLEQ/unblind/F2-binding coverage lives in grumpkin_voprf's test module and
+// (Task 3) in the separate oprf_nullifier register proof.
 //
-// These tests exercise the FUSED OPRF tail directly with the SAME honest vectors
-// the grumpkin_voprf lib test module uses (RNOKPP "1234567890"). main() itself is
-// unreachable via `nargo execute` (it needs a real Diia-pinned-CA signature over
-// a PII leaf cert), so the OPRF path is validated here at unit level.
+// The former F3 SvdW-pinning regression tests were already moved into the lib
+// (params.nr pins SVDW_C1..C4; the lib owns hash-to-curve).
+//
+// main() itself is unreachable via `nargo execute` (it needs a real
+// Diia-pinned-CA signature over a PII leaf cert), so the C_r mechanism is
+// validated here at unit level against the lib's pinned cross-proof value.
 // ===========================================================================
 
-// Honest vectors copied from grumpkin_voprf/src/lib.nr's test module.
-global U0: Field = 5600281009168003126016872261719506870450933036194097358717167907313473038919;
-global U1: Field = 4178060642807948022213458403913812830759150891595299840591361559216108877686;
-global H0: [Field; 6] = [
-    3502187239350298074426797392697268140910155110563023374154277681408828951967,
-    0,
-    6538104241053687948117038613344214156245774722392658032865076824465823914421,
-    1,
-    21074868467531733279055525030244639744255650171394108809251482097292547778710,
-    21074868467531733279055525030244639744255650171394108809251482097292547778710,
-];
-global H1: [Field; 6] = [
-    13952733417910081095236915071869166746590225851240974238426567512947024460131,
-    1,
-    5484262196703451433300045926697966699254169342921434423093178362243843012552,
-    1,
-    11555461321848564535481899765865468450189896547703463923274924881012285701717,
-    5484262196703451433300045926697966699254169342921434423093178362243843012552,
-];
-global KPX: Field = 21680878153996627047110511594586198142933615436402392951634841094838394348705;
-global KPY: Field = 5768854927033753403597579346491882648290914816448378003742355327237200160587;
-global YX: Field = 12476345395656711642620992735293567367458070599056337257466417650972388164663;
-global YY: Field = 2972811910358636669511417461429708565479143375845348032697173680828780266467;
-global C_LO: Field = 264488188236066331469174082695995530682;
-global C_HI: Field = 8829401345798501564672955112299690931;
-global Z_LO: Field = 193985113630717420977077115755925976670;
-global Z_HI: Field = 42596797190570500466227565250490620432;
-global R_LO: Field = 132187632223543972593629152660226846067;
-global R_HI: Field = 0;
-global RINV_LO: Field = 35339424528658019477618635888122168264;
-global RINV_HI: Field = 46782793592175440837056950131961871837;
-// rinv*2 mod n -- a valid invertible scalar that is NOT r^-1 (F2 forgery).
-global RINV2_LO: Field = 209575820864155655038273278429923379785;
-global RINV2_HI: Field = 29241822571167704632251842778697704284;
-
-// FUSED honest regression: the fused OPRF tail reproduces the SAME nullifier the
-// OLD two-proof path produced for this identity (== the audited standalone
-// oprf_nullifier output 0x06f3...fab227) => deterministic-commitment recovery is
-// intact and no on-chain migration is needed.
+// The enroll-side C_r == the lib's pinned cross-proof commitment for the test r
+// (det("crisp-qes-test-r") => R_LO/R_HI). This anchors enroll's C_r to the same
+// value the oprf_nullifier register proof will re-assert (Task 3), so the
+// shared-r binding matches end-to-end. EXPECTED_CR is from grumpkin_voprf Task 1.
 #[test]
-fn test_fused_honest_nullifier() {
-    let h2c_point = grumpkin_voprf::h2c::h2c_grumpkin(U0, U1, H0, H1);
-    let r = Scalar { lo: R_LO, hi: R_HI };
-    let rinv = Scalar { lo: RINV_LO, hi: RINV_HI };
-    let kpub = Pt { x: KPX, y: KPY, is_infinite: false };
-    let y = Pt { x: YX, y: YY, is_infinite: false };
-    let (nullifier, _m) = grumpkin_voprf::oprf::oprf_verify_and_nullify(
-        h2c_point, r, rinv, kpub, y, C_LO, C_HI, Z_LO, Z_HI,
-    );
-    assert(nullifier == 0x06f310b1dbbcdbb45604e11517493552d7577117ced0985984078cf754fab227);
-}
-
-// FUSED F2 forgery: same honest inputs but rinv = 2*r^-1 != r^-1. The single-r
-// group equation r*N == Y (inside the lib) must REJECT it.
-#[test(should_fail)]
-fn test_fused_f2_forgery_rejected() {
-    let h2c_point = grumpkin_voprf::h2c::h2c_grumpkin(U0, U1, H0, H1);
-    let r = Scalar { lo: R_LO, hi: R_HI };
-    let bad_rinv = Scalar { lo: RINV2_LO, hi: RINV2_HI };
-    let kpub = Pt { x: KPX, y: KPY, is_infinite: false };
-    let y = Pt { x: YX, y: YY, is_infinite: false };
-    let _ = grumpkin_voprf::oprf::oprf_verify_and_nullify(
-        h2c_point, r, bad_rinv, kpub, y, C_LO, C_HI, Z_LO, Z_HI,
+fn test_enroll_commit_r_matches_lib() {
+    let r = Scalar {
+        lo: 132187632223543972593629152660226846067,
+        hi: 0,
+    };
+    assert(
+        grumpkin_voprf::oprf::commit_r(r)
+            == 0x2dc4e70bdf48c031a3cc6cd54a75361de20ced244c10b98c824ab6a5d659c2ac,
     );
 }
