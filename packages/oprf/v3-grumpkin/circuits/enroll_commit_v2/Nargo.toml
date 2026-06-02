@@ -12,3 +12,7 @@ compiler_version = ">=1.0.0"
 # per-machine nargo cache needed at build time). v0.3.0 is the tag that builds
 # with nargo 1.0.0-beta.19.
 sha256 = { path = "../../vendor/sha256" }
+# Reusable Grumpkin VOPRF library: pins GEN (F1) + SvdW c1..c4 (F3), limb-binds
+# the DLEQ challenge (C-1), range-checks limbs (C-3), and enforces the single-r
+# F2 blind<->unblind binding. The OPRF tail of main() composes this lib.
+grumpkin_voprf = { path = "../../lib-noir/grumpkin_voprf" }

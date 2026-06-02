@@ -20,8 +20,13 @@
 //       from the AUTHENTICATED leaf_tbs.
 //   (4) u0, u1 = hash_to_field(RNOKPP) via expand_message_xmd(SHA-256),
 //       computed IN-CIRCUIT.
-//   (5) M = r * H2C(RNOKPP) where H2C = map(u0) + map(u1) (RFC-9380 SvdW),
-//       M is the PUBLIC output.
+//   (5) FUSED OPRF via the grumpkin_voprf library (F2 fusion): with the SAME
+//       blinding scalar r it both blinds M = r*H2C(RNOKPP) and unblinds the
+//       node's response N = rinv*Y (rinv forced to r^-1 by the group equation),
+//       verifies the node's Chaum-Pedersen DLEQ (pinned GEN, limb-bound
+//       challenge), and derives the deterministic nullifier = pedersen(k*H2C).
+//       This collapses the former enrollment-proof + nullifier-proof into ONE
+//       proof. PUBLIC outputs: M, nullifier, messageDigest (hi,lo).
 //
 // CHAIN PROVEN: Diia CA -> leaf TBS (carries RNOKPP + DOB + leaf SPKI) -> leaf
 // key signs the challenge. RNOKPP/DOB are no longer read from a free cert[]
@@ -39,7 +44,7 @@
 // uniform_bytes = b1 || b2 || b3 (96 bytes). u0 = bytes[0..48],
 // u1 = bytes[48..96].
 
-use std::embedded_curve_ops::{EmbeddedCurvePoint as Pt, EmbeddedCurveScalar as Scalar, multi_scalar_mul};
+use std::embedded_curve_ops::{EmbeddedCurvePoint as Pt, EmbeddedCurveScalar as Scalar};
 
 // LEAF_TBS_LEN bounds the leaf certificate's signed TBS bytes. Real Diia leaf
 // TBS is ~1203 B (20 SHA-256 blocks); 1536 gives 24-block headroom. sha256_var
@@ -90,33 +95,11 @@ global DIIA_PINNED_CA: [([u8; 32], [u8; 32]); 2] = [
     ),
 ];
 
-global ZETA: Field = 5;
-global BCURVE: Field = -17;
-global SVDW_Z: Field = 1;
-
-// Canonical RFC-9380 SvdW suite constants for Grumpkin (== lib.mjs SVDW_CONSTS,
-// == oprf_commitment SVDW_C1..C4). F3 SECURITY FIX: c1..c4 remain public inputs
-// (ABI-preserving, no VK/redeploy churn) but are now PINNED to these canonical
-// values in main(). Without this, a prover supplies a different valid
-// (c1..c4 + matching hints) to redefine hash-to-curve, mapping one identity to
-// arbitrarily many on-curve points => unbounded distinct commitments/nullifiers
-// per identity -- live in this DEPLOYED enrollment circuit.
-global SVDW_C1: Field = 21888242871839275222246405745257275088548364400416034343698204186575808495601;
-global SVDW_C2: Field = 10944121435919637611123202872628637544274182200208017171849102093287904247808;
-global SVDW_C3: Field = 17631683881184975371348829942606096167675058198229016842588;
-global SVDW_C4: Field = 14592161914559516814830937163504850059032242933610689562465469457717205663766;
-
-// Assert the passed SvdW suite constants equal the canonical pinned values.
-// Factored so a #[test] can drive the canonical (accept) and forged (reject)
-// cases directly -- the deployed circuit's main() is unreachable via
-// `nargo execute` here (it requires a real Diia-pinned-CA signature / PII cert),
-// so this helper is the committed regression surface for the F3 fix.
-fn assert_canonical_svdw(c1: Field, c2: Field, c3: Field, c4: Field) {
-    assert(c1 == SVDW_C1);
-    assert(c2 == SVDW_C2);
-    assert(c3 == SVDW_C3);
-    assert(c4 == SVDW_C4);
-}
+// SvdW curve/suite constants (ZETA, BCURVE, SVDW_Z, SVDW_C1..C4) and the
+// hash-to-curve gadget (svdw_map + helpers) now live in grumpkin_voprf
+// (params.nr / h2c.nr) -- F3 pinning is enforced there, ONE source of truth.
+// The app-side expand_message_xmd below still produces u0,u1 and the per-map
+// hints h0,h1, which it feeds into grumpkin_voprf::h2c::h2c_grumpkin.
 
 // DST = "CRISP-QES-V3-Grumpkin_XMD:SHA-256_SVDW_RO_" (42 bytes).
 global DST_LEN: u32 = 42;
@@ -124,56 +107,6 @@ global DST: [u8; 42] = [
     67, 82, 73, 83, 80, 45, 81, 69, 83, 45, 86, 51, 45, 71, 114, 117, 109, 112, 107, 105, 110, 95,
     88, 77, 68, 58, 83, 72, 65, 45, 50, 53, 54, 95, 83, 86, 68, 87, 95, 82, 79, 95,
 ];
-
-// --- SvdW hash-to-curve (mirrors oprf_commitment) ---
-fn g(x: Field) -> Field {
-    x * x * x + BCURVE
-}
-fn assert_is_square(gx: Field, e: Field, w: Field) {
-    assert(e * (e - 1) == 0);
-    let lhs = w * w;
-    assert(e * (lhs - gx) + (1 - e) * (lhs - gx * ZETA) == 0);
-}
-fn cmov(a: Field, b: Field, c: Field) -> Field {
-    a + c * (b - a)
-}
-fn sgn0(x: Field) -> Field {
-    let bits: [u1; 254] = x.to_le_bits();
-    bits[0] as Field
-}
-fn svdw_map(
-    u: Field,
-    c1: Field,
-    c2: Field,
-    c3: Field,
-    c4: Field,
-    inv_t: Field,
-    e1: Field,
-    w1: Field,
-    e2: Field,
-    w2: Field,
-    sqrt_x: Field,
-) -> Pt {
-    let mut tv1 = u * u * c1;
-    let tv2 = 1 + tv1;
-    tv1 = 1 - tv1;
-    assert(tv1 * tv2 * inv_t == 1);
-    let tv4 = u * tv1 * inv_t * c3;
-    let x1 = c2 - tv4;
-    assert_is_square(g(x1), e1, w1);
-    let x2 = c2 + tv4;
-    assert_is_square(g(x2), e2, w2);
-    let t = tv2 * tv2 * inv_t;
-    let x3 = t * t * c4 + SVDW_Z;
-    let mut x = cmov(x3, x1, e1);
-    x = cmov(x, x2, e2 * (1 - e1));
-    let gx = g(x);
-    assert(sqrt_x * sqrt_x == gx);
-    let y = sqrt_x;
-    let eq = 1 - (sgn0(u) - sgn0(y)) * (sgn0(u) - sgn0(y));
-    let y_final = cmov(-y, y, eq);
-    Pt { x, y: y_final, is_infinite: false }
-}
 
 fn read_at(buf: [u8; LEAF_TBS_LEN], base: u32, k: u32) -> u8 {
     buf[base + k]
@@ -317,18 +250,33 @@ fn main(
     dob_off: u32,
     // --- public current date YYYYMMDD ---
     today: pub [u8; 8],
-    // --- SvdW suite constants ---
-    c1: pub Field,
-    c2: pub Field,
-    c3: pub Field,
-    c4: pub Field,
+    // --- node OPRF public key Kpub = k*GEN and response Y = k*M (PUBLIC) ---
+    kpx: pub Field,
+    kpy: pub Field,
+    yx: pub Field,
+    yy: pub Field,
     // --- per-map SvdW hints [inv_t, e1, w1, e2, w2, sqrt_x] ---
     h0: [Field; 6],
     h1: [Field; 6],
-    // --- blinding scalar r (private) ---
+    // --- blinding scalar r (private), the SAME r that blinds M and unblinds N ---
     r_lo: Field,
     r_hi: Field,
-) -> pub (Field, Field, Field, Field) {
+    // --- DLEQ proof (c, z) as 128-bit limbs (PRIVATE) ---
+    c_lo: Field,
+    c_hi: Field,
+    z_lo: Field,
+    z_hi: Field,
+    // --- claimed r^-1 (mod n) as 128-bit limbs (PRIVATE); the lib's group
+    //     equation r*N == Y forces it to be the exact inverse (F2) ---
+    rinv_lo: Field,
+    rinv_hi: Field,
+) -> pub (Field, Field, Field, Field, Field) {
+    // PUBLIC OUTPUT TUPLE ORDER (Task 6 wires the service to this):
+    //   (M.x, M.y, nullifier, messageDigest_hi, messageDigest_lo)
+    // where M = r*H2C(RNOKPP) is the blinded commitment the node evaluated,
+    // nullifier = pedersen(k*H2C(RNOKPP)) is the deterministic anti-Sybil leaf,
+    // and messageDigest_(hi,lo) is the PKCS#9 messageDigest split into 16-byte
+    // halves (unchanged from the pre-fusion ABI).
     // ---- (0) Diia CA -> leaf TBS chain + CA pinning. ----
     // sha256_var digests exactly leaf_tbs_len bytes; the CA signature must cover
     // that digest, and the CA must be in the PRODUCTION pinned Diia root set.
@@ -460,15 +408,24 @@ fn main(
     let u0 = be_bytes_to_field(u0_bytes);
     let u1 = be_bytes_to_field(u1_bytes);
 
-    // ---- (5) M = r * H2C(RNOKPP) = r*(P0 + P1) via SvdW + blackbox MSM. ----
-    // F3 SECURITY FIX: pin the SvdW suite constants to the canonical values.
-    assert_canonical_svdw(c1, c2, c3, c4);
-    let p0 = svdw_map(u0, c1, c2, c3, c4, h0[0], h0[1], h0[2], h0[3], h0[4], h0[5]);
-    let p1 = svdw_map(u1, c1, c2, c3, c4, h1[0], h1[1], h1[2], h1[3], h1[4], h1[5]);
+    // ---- (5) FUSED OPRF via grumpkin_voprf (F2 fusion: enrollment-proof +
+    // nullifier-proof collapse into THIS one proof). ----
+    // H2C(RNOKPP) = map(u0) + map(u1) with the lib's PINNED SvdW suite (F3).
+    let h2c_point = grumpkin_voprf::h2c::h2c_grumpkin(u0, u1, h0, h1);
+    // The SAME r blinds H2C (-> M) and unblinds Y (-> N); rinv is forced to r^-1
+    // by the lib's group equation r*N == Y (F2). The lib pins GEN (F1), limb-binds
+    // the DLEQ challenge (C-1), range-checks r/rinv (C-3) and guards is_infinite.
     let r = Scalar { lo: r_lo, hi: r_hi };
-    let m = multi_scalar_mul([p0, p1], [r, r]);
+    let rinv = Scalar { lo: rinv_lo, hi: rinv_hi };
+    let kpub = Pt { x: kpx, y: kpy, is_infinite: false };
+    let y = Pt { x: yx, y: yy, is_infinite: false };
+    let (nullifier, m) = grumpkin_voprf::oprf::oprf_verify_and_nullify(
+        h2c_point, r, rinv, kpub, y, c_lo, c_hi, z_lo, z_hi,
+    );
+    // USE the lib's RETURNED m (= r*H2C): reusing it is what makes the single-r
+    // blind<->unblind binding structural (no separate re-derivation of M).
 
-    (m.x, m.y, digest_hi, digest_lo)
+    (m.x, m.y, nullifier, digest_hi, digest_lo)
 }
 
 // ===========================================================================
@@ -691,32 +648,81 @@ fn test_rnokpp_out_of_bounds_fails() {
 }
 
 // ===========================================================================
-// F3 REGRESSION TESTS: SvdW suite-constant pinning.
+// FUSED OPRF TESTS (Task 2).
 //
-// main() is unreachable via `nargo execute` in this environment (it requires a
-// real Diia-pinned-CA signature over a PII leaf cert), so the F3 fix is exercised
-// here against assert_canonical_svdw -- the exact gate main() now calls before
-// svdw_map. The forged suite (c1=7,c2=3,c3=0,c4=3) is the SAME non-canonical
-// suite that the JS forger (forge-f3-lib.mjs) shows the UNFIXED svdw_map accepts
-// (lands one identity on a different on-curve point). Post-fix, that suite must
-// be REJECTED here.
+// The former F3 SvdW-pinning regression tests (test_svdw_canonical_ok /
+// _forged_constants_fail / _tampered_c4_fail) were REMOVED: that coverage moved
+// into grumpkin_voprf (params.nr pins SVDW_C1..C4; the lib owns hash-to-curve),
+// so it is no longer expressible here (the constants are lib globals, not inputs).
+//
+// These tests exercise the FUSED OPRF tail directly with the SAME honest vectors
+// the grumpkin_voprf lib test module uses (RNOKPP "1234567890"). main() itself is
+// unreachable via `nargo execute` (it needs a real Diia-pinned-CA signature over
+// a PII leaf cert), so the OPRF path is validated here at unit level.
 // ===========================================================================
 
-// HAPPY: the canonical SvdW constants pass the pinning gate.
+// Honest vectors copied from grumpkin_voprf/src/lib.nr's test module.
+global U0: Field = 5600281009168003126016872261719506870450933036194097358717167907313473038919;
+global U1: Field = 4178060642807948022213458403913812830759150891595299840591361559216108877686;
+global H0: [Field; 6] = [
+    3502187239350298074426797392697268140910155110563023374154277681408828951967,
+    0,
+    6538104241053687948117038613344214156245774722392658032865076824465823914421,
+    1,
+    21074868467531733279055525030244639744255650171394108809251482097292547778710,
+    21074868467531733279055525030244639744255650171394108809251482097292547778710,
+];
+global H1: [Field; 6] = [
+    13952733417910081095236915071869166746590225851240974238426567512947024460131,
+    1,
+    5484262196703451433300045926697966699254169342921434423093178362243843012552,
+    1,
+    11555461321848564535481899765865468450189896547703463923274924881012285701717,
+    5484262196703451433300045926697966699254169342921434423093178362243843012552,
+];
+global KPX: Field = 21680878153996627047110511594586198142933615436402392951634841094838394348705;
+global KPY: Field = 5768854927033753403597579346491882648290914816448378003742355327237200160587;
+global YX: Field = 12476345395656711642620992735293567367458070599056337257466417650972388164663;
+global YY: Field = 2972811910358636669511417461429708565479143375845348032697173680828780266467;
+global C_LO: Field = 264488188236066331469174082695995530682;
+global C_HI: Field = 8829401345798501564672955112299690931;
+global Z_LO: Field = 193985113630717420977077115755925976670;
+global Z_HI: Field = 42596797190570500466227565250490620432;
+global R_LO: Field = 132187632223543972593629152660226846067;
+global R_HI: Field = 0;
+global RINV_LO: Field = 35339424528658019477618635888122168264;
+global RINV_HI: Field = 46782793592175440837056950131961871837;
+// rinv*2 mod n -- a valid invertible scalar that is NOT r^-1 (F2 forgery).
+global RINV2_LO: Field = 209575820864155655038273278429923379785;
+global RINV2_HI: Field = 29241822571167704632251842778697704284;
+
+// FUSED honest regression: the fused OPRF tail reproduces the SAME nullifier the
+// OLD two-proof path produced for this identity (== the audited standalone
+// oprf_nullifier output 0x06f3...fab227) => deterministic-commitment recovery is
+// intact and no on-chain migration is needed.
 #[test]
-fn test_svdw_canonical_ok() {
-    assert_canonical_svdw(SVDW_C1, SVDW_C2, SVDW_C3, SVDW_C4);
+fn test_fused_honest_nullifier() {
+    let h2c_point = grumpkin_voprf::h2c::h2c_grumpkin(U0, U1, H0, H1);
+    let r = Scalar { lo: R_LO, hi: R_HI };
+    let rinv = Scalar { lo: RINV_LO, hi: RINV_HI };
+    let kpub = Pt { x: KPX, y: KPY, is_infinite: false };
+    let y = Pt { x: YX, y: YY, is_infinite: false };
+    let (nullifier, _m) = grumpkin_voprf::oprf::oprf_verify_and_nullify(
+        h2c_point, r, rinv, kpub, y, C_LO, C_HI, Z_LO, Z_HI,
+    );
+    assert(nullifier == 0x06f310b1dbbcdbb45604e11517493552d7577117ced0985984078cf754fab227);
 }
 
-// NEGATIVE (F3): a non-canonical suite (the JS-forged c1=7,c2=3,c3=0,c4=3 that
-// the UNFIXED svdw_map accepts) is now REJECTED by the pinning gate.
+// FUSED F2 forgery: same honest inputs but rinv = 2*r^-1 != r^-1. The single-r
+// group equation r*N == Y (inside the lib) must REJECT it.
 #[test(should_fail)]
-fn test_svdw_forged_constants_fail() {
-    assert_canonical_svdw(7, 3, 0, 3);
-}
-
-// NEGATIVE (F3): tampering only ONE constant (c4) is still rejected.
-#[test(should_fail)]
-fn test_svdw_tampered_c4_fail() {
-    assert_canonical_svdw(SVDW_C1, SVDW_C2, SVDW_C3, SVDW_C4 + 1);
+fn test_fused_f2_forgery_rejected() {
+    let h2c_point = grumpkin_voprf::h2c::h2c_grumpkin(U0, U1, H0, H1);
+    let r = Scalar { lo: R_LO, hi: R_HI };
+    let bad_rinv = Scalar { lo: RINV2_LO, hi: RINV2_HI };
+    let kpub = Pt { x: KPX, y: KPY, is_infinite: false };
+    let y = Pt { x: YX, y: YY, is_infinite: false };
+    let _ = grumpkin_voprf::oprf::oprf_verify_and_nullify(
+        h2c_point, r, bad_rinv, kpub, y, C_LO, C_HI, Z_LO, Z_HI,
+    );
 }
