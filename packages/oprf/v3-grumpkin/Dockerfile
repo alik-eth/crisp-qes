@@ -33,6 +33,9 @@ FROM deps AS build
 WORKDIR /app
 COPY lib.mjs ./lib.mjs
 COPY service ./service
+# threshold/ holds the Shamir/DKG-lite keygen that oprf-node.mjs (ShareNode +
+# makeNodes) imports at startup — REQUIRED at runtime for the 2-of-3 threshold.
+COPY threshold ./threshold
 # enroll_commit_v2.json (compiled ACIR) is what the /v3/blind-eval gate loads at
 # runtime (its vk derives from this bytecode in proof-gate.mjs). No test
 # proof/public_inputs are copied for it: the enroll circuit needs a production
@@ -81,6 +84,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/lib.mjs ./lib.mjs
 COPY --from=build /app/service ./service
+COPY --from=build /app/threshold ./threshold
 # Runtime only needs the compiled ACIR; the test proof/public_inputs stay in the
 # build stage (used solely to pre-bake the CRS).
 COPY --from=build /app/circuits/enroll_commit_v2/target/enroll_commit_v2.json \
