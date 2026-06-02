@@ -17,6 +17,8 @@ contract BallotRegistry {
         bool exists;
     }
 
+    uint32 public constant MAX_OPTIONS = 16;
+
     address public immutable operator;
     mapping(uint256 => Round) private rounds; // e3Id => Round
     uint256[] public roundIds;
@@ -24,6 +26,7 @@ contract BallotRegistry {
     error NotOperator();
     error RoundExists();
     error TooFewOptions();
+    error TooManyOptions();
 
     event RoundCreated(uint256 indexed e3Id, uint32 numOptions, bytes32 enrollmentRoot, uint64 deadline);
 
@@ -45,6 +48,7 @@ contract BallotRegistry {
     ) external onlyOperator {
         if (rounds[e3Id].exists) revert RoundExists();
         if (optionLabels.length < 2) revert TooFewOptions();
+        if (optionLabels.length > MAX_OPTIONS) revert TooManyOptions();
         Round storage r = rounds[e3Id];
         r.question = question;
         for (uint256 i = 0; i < optionLabels.length; i++) r.optionLabels.push(optionLabels[i]);

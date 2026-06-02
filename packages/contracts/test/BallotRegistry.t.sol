@@ -21,6 +21,8 @@ contract BallotRegistryTest is Test {
 
     function test_createRound_storesMetadata() public {
         vm.prank(operator);
+        vm.expectEmit(true, false, false, true);
+        emit BallotRegistry.RoundCreated(7, 3, bytes32(uint256(0x1b49)), uint64(block.timestamp + 1 days));
         reg.createRound(7, "Cats or dogs?", _labels(), bytes32(uint256(0x1b49)), uint64(block.timestamp + 1 days));
         BallotRegistry.Round memory r = reg.getRound(7);
         assertEq(r.question, "Cats or dogs?");
@@ -29,6 +31,7 @@ contract BallotRegistryTest is Test {
         assertEq(r.enrollmentRoot, bytes32(uint256(0x1b49)));
         assertEq(r.numOptions, 3);
         assertTrue(r.exists);
+        assertEq(reg.roundCount(), 1);
     }
 
     function test_createRound_onlyOperator() public {
@@ -50,5 +53,17 @@ contract BallotRegistryTest is Test {
         vm.prank(operator);
         vm.expectRevert(BallotRegistry.TooFewOptions.selector);
         reg.createRound(7, "q", one, bytes32(0), uint64(block.timestamp + 1));
+    }
+
+    function test_createRound_rejectsTooManyOptions() public {
+        string[] memory many = new string[](17);
+        for (uint256 i = 0; i < 17; i++) many[i] = "opt";
+        vm.prank(operator);
+        vm.expectRevert(BallotRegistry.TooManyOptions.selector);
+        reg.createRound(7, "q", many, bytes32(0), uint64(block.timestamp + 1));
+    }
+
+    function test_getRound_nonexistentReturnsNotExists() public view {
+        assertFalse(reg.getRound(999).exists);
     }
 }
