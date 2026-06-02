@@ -9,8 +9,12 @@ primary_region = "fra"
   PORT = "8789"
   CHAIN_ID = "84532"
   RPC_URL = "https://base-sepolia-rpc.publicnode.com"
-  PETITION_REGISTRY_V2 = "0x4c6b7Da31dDb645A26F821f44DD44ecF3cd7000A"
-  ENROLLMENT_REGISTRY = "0x64f40F22033E0AdB0c1183c42135e5C29266b817"
+  # Repointed 2026-06-02 to the clean-slate full-stack redeploy (genesisLeafCount=0).
+  # The relayer submits updateRoot to ENROLLMENT_REGISTRY; the attester sig is
+  # bound to address(this), so this MUST match the service's signing address
+  # (0x5F46..) or updateRoot reverts BadSignature.
+  PETITION_REGISTRY_V2 = "0x1674afeb44d02d08cdbf909a39EA676b81642dCB"
+  ENROLLMENT_REGISTRY = "0x5F463C130DB79e70c3861879442857c45953505f"
   BLOCK_EXPLORER_BASE = "https://sepolia.basescan.org/tx/"
   RATE_LIMIT_WINDOW_MS = "10000"
   # Frontend renamed crisp-qes-web -> civicvoice; allow both origins for /v2/* CORS.
