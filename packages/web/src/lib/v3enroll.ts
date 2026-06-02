@@ -267,8 +267,12 @@ export function buildThresholdNullifierWitness(
     const kp2 = ev.publishedKpubSet[1]!.toAffine();
     const kp3 = ev.publishedKpubSet[2]!.toAffine();
 
-    const pa = ev.partials[0]!; // responder idx1 = 1
-    const pb = ev.partials[1]!; // responder idx2 = 2
+    // Sort responders ASCENDING by index so idx1 < idx2 (canonical order). The
+    // circuit's select_lagrange_2of3 requires the canonical pair; a non-ascending
+    // service response would otherwise fail proving.
+    const sorted = [...ev.partials].sort((a, b) => Number(BigInt(a.i) - BigInt(b.i)));
+    const pa = sorted[0]!; // responder idx1 (lower index)
+    const pb = sorted[1]!; // responder idx2 (higher index)
     const Ba = pa.B_i.toAffine();
     const Bb = pb.B_i.toAffine();
     const caL = scalarLimbs(pa.dleq.c);
