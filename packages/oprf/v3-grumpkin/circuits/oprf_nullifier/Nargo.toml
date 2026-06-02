@@ -5,3 +5,7 @@ authors = ["crisp-qes"]
 compiler_version = ">=1.0.0"
 
 [dependencies]
+# Reusable Grumpkin VOPRF library: pins GEN (F1), limb-binds the DLEQ challenge
+# (C-1), range-checks limbs (C-3), and provides the two-proof register entry
+# point oprf_nullify_bound (C_r shared-r binding, F2). This circuit composes it.
+grumpkin_voprf = { path = "../../lib-noir/grumpkin_voprf" }
