@@ -92,7 +92,8 @@ A consumer circuit adds `grumpkin_voprf = { path = "..." }` (or a git/registry d
 
 ## 10. Risks
 
-1. **iOS prover budget (gating).** `enroll_commit_v2` ~277k gates (~238 MB at the 384 MiB cap) + DLEQ/unblind (~+30k) → ~307k. Expected ~260 MB, but MUST be measured on-device — the spike was intentionally skipped, so this is verified during implementation; if it exceeds the cap, mitigations are SA_LEN reduction or, as a fallback, Approach A (cross-circuit commitment, keeping circuits separate).
+1. **iOS prover budget (gating).** `enroll_commit_v2` ~277k bb proving gates (~238 MB at the 384 MiB cap) + DLEQ/unblind (~+30k) → ~307k *estimated*. Expected ~260 MB, but MUST be measured on-device — the spike was intentionally skipped, so this is verified during implementation; if it exceeds the cap, mitigations are SA_LEN reduction or, as a fallback, Approach A (cross-circuit commitment, keeping circuits separate).
+   - **Measured (Task 2, commit 272eb31):** the fusion adds only **+382 ACIR opcodes (26,809 → 27,191, +1.4%)** — the dominant cost (ECDSA-P256 + 4× SHA-256 blocks) is unchanged, and h2c/DLEQ/unblind are cheap by comparison. NOTE the unit: `nargo info` reports **ACIR opcodes**, not bb proving gates — the ~307k figure above is bb gates. The tiny ACIR delta strongly implies the bb-gate delta (and thus the iOS memory delta) is also small, but the **true bb gate count and on-device bb.js prover memory against the 384 MiB cap remain a Task 6 measurement** (see §6 / out-of-scope). No iOS-budget concern at the ACIR level; on-device unconfirmed.
 2. **Library calling convention.** The single-`r` entry point makes same-`r` structural, but a consumer must still pass an `r` consistent with the `M` it commits/signs upstream; document this.
 3. **Client proof-ordering** change (prove after blind-eval).
 
