@@ -11,8 +11,10 @@
 //
 // This builds forged 13-word witnesses and asserts the circuit REJECTS each via
 // `nargo execute`. Exits NONZERO if any forgery is ACCEPTED (regression guard).
-// Mirrors forge-f2-nullifier-witness.mjs. All forgeries reuse the SAME honest
-// seed/epoch/identity as gen-threshold-nullifier-witness.mjs.
+// All forgeries reuse the SAME honest seed/epoch/identity as
+// gen-threshold-nullifier-witness.mjs. (Supersedes the retired single-key
+// forge-f2-nullifier-witness.mjs: the deployed oprf_nullifier is now the
+// threshold 13-word circuit, and its F2 rinv guard is the (F-rinv) case below.)
 
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
@@ -54,6 +56,7 @@ function writeToml(banner, o = {}) {
     const DaL = { c: scalarLimbs(Da.c), z: scalarLimbs(Da.z) };
     const DbL = { c: scalarLimbs(Db.c), z: scalarLimbs(Db.z) };
     const kp = o.kp ?? { 1: K1, 2: K2, 3: K3 };
+    const riOut = o.rinv === undefined ? riL : scalarLimbs(o.rinv);
     writeFileSync(PROVER_TOML, `# ${banner}
 mx = "${dec(Maff.x)}"
 my = "${dec(Maff.y)}"
@@ -81,8 +84,8 @@ zb_lo = "${dec(DbL.z.lo)}"
 zb_hi = "${dec(DbL.z.hi)}"
 r_lo = "${dec(rL.lo)}"
 r_hi = "${dec(rL.hi)}"
-rinv_lo = "${dec(riL.lo)}"
-rinv_hi = "${dec(riL.hi)}"
+rinv_lo = "${dec(riOut.lo)}"
+rinv_hi = "${dec(riOut.hi)}"
 `);
 }
 
@@ -137,8 +140,15 @@ expectReject("(F-epoch) stale epoch (DLEQ for E, verified at E+1)");
 writeToml("F-kpubswap: published Kpub_1 <-> Kpub_2 swapped", { kp: { 1: K2, 2: K1, 3: K3 } });
 expectReject("(F-kpubswap) idx->kpub bound to published set");
 
+// (F-rinv) F2 ON THE DEPLOYED CIRCUIT: honest {1,2} partials/DLEQs + honest c_r,
+// but rinv = 2*r^-1 != r^-1. The F2 group equation r*N == Y (inside the threshold
+// tail, with r bound to enroll via c_r) must REJECT it. This is the deployed
+// (threshold) analogue of the old single-key forge-f2 guard.
+writeToml("F-rinv: rinv = 2*r^-1 (honest c_r, honest partials)", { rinv: Fn.mul(rinv, 2n) });
+expectReject("(F-rinv) wrong rinv (2*r^-1)", "F2: r*N != Y");
+
 if (failures > 0) {
     console.error(`\n${failures} threshold forgery/forgeries NOT properly rejected.`);
     process.exit(1);
 }
-console.log("\nAll threshold forgeries REJECTED (#7 closed: per-share DLEQ + dedup + epoch + idx->kpub).");
+console.log("\nAll threshold forgeries REJECTED (#7: per-share DLEQ + dedup + epoch + idx->kpub; F2: r*N==Y).");
