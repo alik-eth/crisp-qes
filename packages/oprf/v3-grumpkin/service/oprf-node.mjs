@@ -13,7 +13,8 @@
 //
 // Wire encoding for Grumpkin points — see `pointToHex` / `pointFromHex` below.
 
-import { Point, G, Fn, N, oprfEval, dleqProve } from "../lib.mjs";
+import { Point, G, Fn, N, oprfEval, dleqProve, dleqProveShare } from "../lib.mjs";
+import { dkgKeygen } from "../threshold/threshold-oprf.mjs";
 
 // — Wire format ──────────────────────────────────────────────────────────────
 //
@@ -107,6 +108,90 @@ export class OprfNode {
             Kpub: this.publicKeyHex(),
         };
     }
+}
+
+// — Threshold share node ──────────────────────────────────────────────────────
+
+/**
+ * A single THRESHOLD (t-of-n) OPRF share node. Holds ONLY its Shamir share k_i
+ * (never the group key k) and publishes Kpub_i = k_i*G as a verifiable commitment
+ * to its share. On evaluate() it returns its partial B_i = k_i*M plus a per-share
+ * epoch-bound Chaum-Pedersen DLEQ proving log_G(Kpub_i) == log_M(B_i) -- so the
+ * combiner/circuit can reject a faulty/malicious node and a stale (wrong-epoch)
+ * partial. The group key k is never assembled at any single node (the F4 design).
+ */
+export class ShareNode {
+    /** @param {{ i: bigint, k_i: bigint }} args node index i (>=1) + Shamir share. */
+    constructor({ i, k_i }) {
+        if (typeof i !== "bigint") throw new Error("ShareNode: i must be a bigint");
+        if (typeof k_i !== "bigint") throw new Error("ShareNode: k_i must be a bigint");
+        const kk = Fn.create(k_i);
+        if (kk === 0n) throw new Error("ShareNode: k_i must be non-zero mod N");
+        this.i = i;
+        this.k_i = kk;
+        this.Kpub_i = G.multiply(this.k_i); // published share public key, k_i*G
+    }
+
+    /** This node's published share public key Kpub_i = k_i*G, as wire hex. */
+    publicKeyHexShare() {
+        return pointToHex(this.Kpub_i);
+    }
+
+    /** The node's published commitment { i, Kpub_i: hex } for the published set. */
+    publicShare() {
+        return { i: this.i, Kpub_i: this.publicKeyHexShare() };
+    }
+
+    /**
+     * Partial blind-evaluate: given M (wire hex) and the session `epoch`, compute
+     * B_i = k_i*M and a per-share epoch-bound DLEQ. `epoch` is REQUIRED (session
+     * binding) -- a partial is only valid for the epoch it was issued under.
+     *
+     * @param {string} Mhex  blinded point `0x{x}{y}`.
+     * @param {bigint} epoch session tag (bound into the DLEQ transcript).
+     * @param {bigint} [t]   optional DLEQ nonce override (tests); else derived.
+     * @returns {{ i: bigint, B_i: string, dleq: { c: bigint, z: bigint }, Kpub_i: string }}
+     */
+    async evaluate(Mhex, epoch, t) {
+        if (typeof epoch !== "bigint") {
+            throw new Error("ShareNode.evaluate: epoch (bigint) is required (session binding)");
+        }
+        const M = pointFromHex(Mhex);
+        const B_i = oprfEval(this.k_i, M); // B_i = k_i*M (via lib.mjs)
+        const { c, z } = await dleqProveShare(this.Kpub_i, this.k_i, M, B_i, epoch, t);
+        return {
+            i: this.i,
+            B_i: pointToHex(B_i),
+            dleq: { c, z },
+            Kpub_i: this.publicKeyHexShare(),
+        };
+    }
+}
+
+/**
+ * Spin up an n-node t-of-n share set via the prototype DKG-lite keygen. Returns:
+ *   nodes:     ShareNode[] (one per share, i = 1..n)
+ *   published: [{ i, Kpub_i: hex }] -- the published Kpub set (verifiable
+ *              commitments; the service pins these as the canonical set)
+ *   kImplied:  the effective group key k' -- TEST-ONLY (for cross-checking the
+ *              canonical nullifier == single-key pedersen(k'*H2C(id))). In
+ *              production NO party knows k'; a live DKG never reveals it.
+ *
+ * This is the helper the 3-node demo (Tasks 5/7) uses. epoch is carried by each
+ * evaluate() call, not stored on the node (a node serves multiple sessions).
+ *
+ * @param {number} n number of nodes.
+ * @param {number} t threshold (any t of n can evaluate).
+ * @param {bigint} [epoch] accepted for call-site symmetry; UNUSED at keygen
+ *        (epoch is a per-session value carried by each ShareNode.evaluate call,
+ *        not a property of the share set).
+ * @returns {{ nodes: ShareNode[], published: Array<{i: bigint, Kpub_i: string}>, kImplied: bigint }}
+ */
+export function makeNodes(n, t, _epoch) {
+    const { shares, kImplied } = dkgKeygen(n, t);
+    const nodes = shares.map((s) => new ShareNode({ i: BigInt(s.i), k_i: s.k_i }));
+    const published = nodes.map((node) => node.publicShare());
+    return { nodes, published, kImplied };
 }
 
 // Re-export curve order so callers can size scalars without reaching into lib.
