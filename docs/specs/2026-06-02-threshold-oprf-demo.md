@@ -50,33 +50,38 @@ z_i  = t_i + c_i·k_i   (mod N)
 ```
 fn main(
     mx: pub Field, my: pub Field,                 // M (service: == enroll's M)
-    kp1x: pub Field, kp1y: pub Field,             // Kpub_1 (service: in published set)
-    kp2x: pub Field, kp2y: pub Field,             // Kpub_2
-    idx1: pub Field, idx2: pub Field,             // node indices (service: the t responders)
+    // FULL published Kpub set (service: == the canonical 3-node set, by value):
+    kp1x: pub Field, kp1y: pub Field,             // Kpub_1 (node index 1)
+    kp2x: pub Field, kp2y: pub Field,             // Kpub_2 (node index 2)
+    kp3x: pub Field, kp3y: pub Field,             // Kpub_3 (node index 3)
+    idx1: pub Field, idx2: pub Field,             // the t=2 responder indices (canonical idx1<idx2)
     epoch: pub Field,                             // session (service: == current enrollEpoch)
     c_r: pub Field,                               // shared-r commitment (service: == enroll's C_r)
-    // private witness: the partials + per-share DLEQs + blind:
-    b1x, b1y, b2x, b2y,                           // B_1, B_2
-    c1_lo,c1_hi,z1_lo,z1_hi,                      // DLEQ_1
-    c2_lo,c2_hi,z2_lo,z2_hi,                      // DLEQ_2
+    // private witness: the two responders' partials + per-share DLEQs + blind:
+    bax, bay, bbx, bby,                           // B for responder idx1 (a) and idx2 (b)
+    ca_lo,ca_hi,za_lo,za_hi,                      // DLEQ for responder a
+    cb_lo,cb_hi,zb_lo,zb_hi,                      // DLEQ for responder b
     r_lo, r_hi, rinv_lo, rinv_hi,
 ) -> pub Field {
-    // 1. distinct indices (combine() dedup, in-circuit)
-    assert(idx1 != idx2);
-    // 2. per-share DLEQs vs pinned GEN, epoch-bound (F1 + C-1 + session)
-    verify_dleq_share(Kpub_1, M, B_1, epoch, c1..);
-    verify_dleq_share(Kpub_2, M, B_2, epoch, c2..);
+    // 1. SELECT each responder's Kpub from the published set BY INDEX (binds idx->kpub
+    //    in-circuit, closing the mislabel/determinism hazard). select_lagrange_2of3
+    //    already asserts idx1<idx2, both in {1,2,3}, distinct.
+    let kpub_a = select_kpub_3(idx1, Kpub_1, Kpub_2, Kpub_3);
+    let kpub_b = select_kpub_3(idx2, Kpub_1, Kpub_2, Kpub_3);
+    // 2. per-share DLEQs vs pinned GEN, epoch-bound (F1 + C-1 + session) — B bound to
+    //    the SELECTED kpub (= published[idx]), so a mislabeled (kpub,idx,B) can't pass.
+    verify_dleq_share(kpub_a, M, B_a, epoch, ca..);
+    verify_dleq_share(kpub_b, M, B_b, epoch, cb..);
     // 3. Lagrange combine via PINNED per-subset constants (mod N), selected by idx.
-    //    assert idx1<idx2, both in {1,2,3}; pick (lambda1,lambda2) Scalar consts for the pair.
     let (l1, l2) = select_lagrange_2of3(idx1, idx2);   // pinned mod-N Scalar constants
-    let Y = msm([B_1, B_2], [l1, l2]);
+    let Y = msm([B_a, B_b], [l1, l2]);
     // 4. unblind + F2 binding (C_r + r*N==Y), is_infinite guards, nullifier
-    //    (reuses oprf_nullify_bound's tail, with Y now the in-circuit combined point)
     nullifier = oprf_nullify_threshold_tail(Y, r, rinv, c_r);   // commit_r(r)==c_r; n=rinv*Y; r*N==Y; pedersen(N)
 }
 ```
+`select_kpub_3(idx, K1, K2, K3)` returns `K_idx` via in-circuit equality selection (idx ∈ {1,2,3}). Binding `idx → kpub` in-circuit means the responder's partial `B` is verified against the *published* key at that index — a prover cannot apply `λ_idx` to a different node's share (the prior Important review finding).
 
-**Public-input layout (11 words):** `mx[0] my[1] kp1x[2] kp1y[3] kp2x[4] kp2y[5] idx1[6] idx2[7] epoch[8] c_r[9]`, return `nullifier[10]`. (`B_i`, DLEQ limbs, `r`, `rinv` are private.)
+**Public-input layout (13 words):** `mx[0] my[1] kp1x[2] kp1y[3] kp2x[4] kp2y[5] kp3x[6] kp3y[7] idx1[8] idx2[9] epoch[10] c_r[11]`, return `nullifier[12]`. (12 public inputs = M(2) + 3·Kpub(6) + idx(2) + epoch(1) + c_r(1); plus the nullifier return. `B_a,B_b`, DLEQ limbs, `r`, `rinv` are private.)
 
 Inherits F1 (pinned GEN), F2 (`C_r` + `r·N==Y`), C-1 (limb-bound challenges), C-3 (range-checked limbs), is_infinite guards — all from the library. F3 lives in the enroll circuit (unchanged).
 
@@ -84,7 +89,7 @@ Inherits F1 (pinned GEN), F2 (`C_r` + `r·N==Y`), C-1 (limb-bound challenges), C
 
 - **`oprf-node.mjs` → share node:** holds `k_i` + its index `i`; `evaluate(M)` returns `{ i, B_i, dleq_i (epoch-bound), Kpub_i }`. Publishes `Kpub_i`. For the demo, run **3 node instances** (in-process for e2e; separate Fly services for the live demo) with the `dkgKeygen` shares.
 - **`/v3/blind-eval`:** still gated per node by the enroll proof (each of the t nodes independently verifies the enroll proof + M-binding before spending `k_i·M`). The client fans out to t nodes.
-- **`/v3/register` (`proof-gate.mjs`):** new 11-word threshold layout; cross-checks: (a) `M` == enroll's `M` [HARD], (d) `c_r` == enroll's `C_r`, (e) `Kpub_1, Kpub_2` ∈ the **published Kpub set** and `idx1, idx2` are their indices, (f) `epoch` == current `enrollEpoch`, (c) `nullifier` == submitted commitment. The proof self-attests the DLEQs + combine, so the service only pins the published keys/epoch.
+- **`/v3/register` (`proof-gate.mjs`):** new **13-word** threshold layout; cross-checks: (a) `M` == enroll's `M` [HARD], (d) `c_r` == enroll's `C_r`, (e) the three `Kpub_1,Kpub_2,Kpub_3` publics **== the canonical published set by value** (a single 3-point equality — the circuit already binds `idx→kpub` and verifies the responders' DLEQs against the selected keys, so the service needs only this by-value pin, not a permutation-sensitive mapping), (f) `epoch` == current `enrollEpoch`, (c) `nullifier` == submitted commitment. The proof self-attests the DLEQs + combine + idx→kpub selection.
 
 ## 8. Client (`v3enroll.ts`/`p7sWitness.ts`, `grumpkin.ts`, worker)
 
