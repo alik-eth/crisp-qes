@@ -54,3 +54,54 @@ pub fn verify_dleq(kpub: Pt, m: Pt, y: Pt, c_lo: Field, c_hi: Field, z_lo: Field
     let two_128: Field = 0x100000000000000000000000000000000;
     assert(c_lo + c_hi * two_128 == ch);
 }
+
+// verify_dleq_share -- per-share, epoch-bound Chaum-Pedersen DLEQ verification
+// for the threshold (t-of-n) OPRF. Identical in structure to verify_dleq, but:
+//   (a) it proves the PER-SHARE relation B_i = k_i*M vs Kpub_i = k_i*GEN (so the
+//       caller checks node i actually evaluated the shared M under its share k_i);
+//   (b) the session `epoch` is APPENDED to the Fiat-Shamir transcript, so a B_i
+//       from epoch E cannot be replayed in epoch E' (session binding, review #7).
+// Pins GEN (F1) and keeps the C-1 limb binding. The challenge fed to the MSM is
+// the limb scalar c = (c_lo,c_hi), pinned to the epoch-extended transcript hash.
+//
+//   a1 = z*GEN - c*Kpub_i,  a2 = z*M - c*B_i
+//   ch = pedersen([GEN.x,GEN.y, Kpub_i.x,Kpub_i.y, M.x,M.y, B_i.x,B_i.y,
+//                  a1.x,a1.y, a2.x,a2.y, epoch])   // 13 elements (12 + epoch)
+//   assert(c_lo + c_hi*2^128 == ch)
+//
+// MIRRORING REQUIREMENT: the transcript order/contents above (including the
+// trailing `epoch`) MUST be reproduced BYTE-FOR-BYTE by the JS dleqProveShare
+// (Task 3) or honest witnesses will not verify.
+pub fn verify_dleq_share(
+    kpub_i: Pt,
+    m: Pt,
+    b_i: Pt,
+    epoch: Field,
+    c_lo: Field,
+    c_hi: Field,
+    z_lo: Field,
+    z_hi: Field,
+) {
+    // F1: the DLEQ base is the pinned canonical Grumpkin generator.
+    let g = Pt { x: GEN_X, y: GEN_Y, is_infinite: false };
+
+    // Range-check the scalar limbs to 128 bits (unique decomposition; C-1/C-3).
+    c_lo.assert_max_bit_size::<128>();
+    c_hi.assert_max_bit_size::<128>();
+    z_lo.assert_max_bit_size::<128>();
+    z_hi.assert_max_bit_size::<128>();
+    let c = Scalar { lo: c_lo, hi: c_hi };
+    let z = Scalar { lo: z_lo, hi: z_hi };
+
+    // Recompute the per-share announcements: a1 = z*GEN - c*Kpub_i, a2 = z*M - c*B_i.
+    let a1 = multi_scalar_mul([g, neg(kpub_i)], [z, c]);
+    let a2 = multi_scalar_mul([m, neg(b_i)], [z, c]);
+
+    // C-1 + session binding: bind the MSM challenge limbs to the EPOCH-EXTENDED
+    // transcript hash.
+    let ch = std::hash::pedersen_hash([
+        g.x, g.y, kpub_i.x, kpub_i.y, m.x, m.y, b_i.x, b_i.y, a1.x, a1.y, a2.x, a2.y, epoch,
+    ]);
+    let two_128: Field = 0x100000000000000000000000000000000;
+    assert(c_lo + c_hi * two_128 == ch);
+}

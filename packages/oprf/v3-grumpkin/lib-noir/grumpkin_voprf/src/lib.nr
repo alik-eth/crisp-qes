@@ -35,6 +35,8 @@ mod tests {
     use crate::dleq::verify_dleq;
     use crate::oprf::oprf_verify_and_nullify;
     use crate::oprf::{commit_r, oprf_nullify_bound};
+    use crate::oprf::{select_lagrange_2of3, oprf_nullify_threshold};
+    use crate::dleq::verify_dleq_share;
 
     // ---- honest vectors (from lib.mjs, RNOKPP "1234567890") ----
     global U0: Field = 5600281009168003126016872261719506870450933036194097358717167907313473038919;
@@ -226,6 +228,169 @@ mod tests {
         let wrong_y = Pt { x: HX, y: HY, is_infinite: false };
         let _ = oprf_nullify_bound(
             m_pt(), wrong_y, kpub(), r(), rinv(), cr, C_LO, C_HI, Z_LO, Z_HI,
+        );
+    }
+
+    // ===== threshold (2-of-3) variant =====
+    // 3-share honest vector (degree-1 poly f(x)=k'+a*x; shares f(1),f(2),f(3))
+    // over the SAME identity M = r*H2C("1234567890") and r as the single-key
+    // tests, generated via lib.mjs. epoch is the session tag bound into each
+    // per-share DLEQ. The combined Y = k'*M for ANY 2-subset, so the nullifier
+    // is the SAME across responder subsets (the determinism property).
+    global THR_EPOCH: Field = 40910090656963856243247878701719173671483007054788362974932774194;
+
+    global KP1X: Field = 1300773079976865615374422193436422178757196213922244895988312348073491553096;
+    global KP1Y: Field = 15863751897456978492324492985036923550873218614342423235844821733821446970511;
+    global B1X: Field = 18464513144175189460020706322996166911019243795136153399436865451409848222982;
+    global B1Y: Field = 20744006627659222864352970887986039392482726452176153524960146753711188602496;
+    global C1_LO: Field = 4663667518715029932151845635974345243;
+    global C1_HI: Field = 57410839322477302215911436133323531437;
+    global Z1_LO: Field = 180421693623783396830395719829025102667;
+    global Z1_HI: Field = 19388978379009812048912877033214604302;
+
+    global KP2X: Field = 19489493224869241172851597111830873890925109881566144638029341587804238897584;
+    global KP2Y: Field = 17345074639877754555214387893542892078133174957587265992146793274294716445592;
+    global B2X: Field = 7872268825558125680991080043458275427058915319837565158130137745754842866286;
+    global B2Y: Field = 19784478187670577844412053340302787412100973789722903230222777050211819902179;
+    global C2_LO: Field = 338385840906444421518174896052385447927;
+    global C2_HI: Field = 15301488582665266596685669347027346589;
+    global Z2_LO: Field = 168861251188786448730990063194980898974;
+    global Z2_HI: Field = 24695171529057576271641186325888896417;
+
+    global KP3X: Field = 1829942668752649341918597284748339402438500396765082764114228051597956675409;
+    global KP3Y: Field = 15894338081301998477041379188385682907426818171702689442128382427841723263000;
+    global B3X: Field = 7035367941204660746296788055938469858011679795841579488891350393170643471231;
+    global B3Y: Field = 8520999158688967813714497594244656185095355059965065914339966253782234491985;
+    global C3_LO: Field = 216466597765188210863263130663053237231;
+    global C3_HI: Field = 41155382934402573474760731085769893057;
+    global Z3_LO: Field = 42528784054966123187488382424578868013;
+    global Z3_HI: Field = 62605005698345674649121664499461838944;
+
+    // nullifier = pedersen(rinv*Y) = pedersen(k'*H2C(id)) for the threshold epoch.
+    global THR_NULLIFIER: Field =
+        0x15f45ee3ae19caac1503058be2fd8108e26b93b2a943efd45ed9dfd0b7fbfc58;
+
+    fn kp1() -> Pt { Pt { x: KP1X, y: KP1Y, is_infinite: false } }
+    fn b1() -> Pt { Pt { x: B1X, y: B1Y, is_infinite: false } }
+    fn kp2() -> Pt { Pt { x: KP2X, y: KP2Y, is_infinite: false } }
+    fn b2() -> Pt { Pt { x: B2X, y: B2Y, is_infinite: false } }
+    fn kp3() -> Pt { Pt { x: KP3X, y: KP3Y, is_infinite: false } }
+    fn b3() -> Pt { Pt { x: B3X, y: B3Y, is_infinite: false } }
+
+    // lagrange2(1,2) = (2, -1): l1 == 2 and l2 == field/scalar -1 (= N-1).
+    // select_lagrange_2of3 returns the pinned mod-N Scalar limbs; check {1,2}.
+    #[test]
+    fn test_lagrange2_idx_1_2() {
+        let (l1, l2) = select_lagrange_2of3(1, 2);
+        // l1 == 2
+        assert(l1.lo == 2);
+        assert(l1.hi == 0);
+        // l2 == N-1 (the pinned mod-N representation of -1)
+        assert(l2.lo == 201385395114098847380338600778089168198);
+        assert(l2.hi == 64323764613183177041862057485226039389);
+    }
+
+    // HONEST threshold register, responder set {1,2}: yields the threshold-epoch
+    // nullifier (the recovery anchor for this epoch).
+    #[test]
+    fn test_nullify_threshold_honest() {
+        let nullifier = oprf_nullify_threshold(
+            m_pt(), kp1(), b1(), kp2(), b2(), 1, 2, THR_EPOCH,
+            C1_LO, C1_HI, Z1_LO, Z1_HI, C2_LO, C2_HI, Z2_LO, Z2_HI,
+            r(), rinv(), EXPECTED_CR,
+        );
+        assert(nullifier == THR_NULLIFIER);
+    }
+
+    // DETERMINISM / subset invariance (THE key correctness check for the pinned
+    // constants): responder set {1,3} must yield the SAME nullifier as {1,2}.
+    #[test]
+    fn test_nullify_threshold_subset_invariance() {
+        let nullifier = oprf_nullify_threshold(
+            m_pt(), kp1(), b1(), kp3(), b3(), 1, 3, THR_EPOCH,
+            C1_LO, C1_HI, Z1_LO, Z1_HI, C3_LO, C3_HI, Z3_LO, Z3_HI,
+            r(), rinv(), EXPECTED_CR,
+        );
+        assert(nullifier == THR_NULLIFIER);
+    }
+
+    // Also confirm the third subset {2,3} reconstructs to the SAME leaf.
+    #[test]
+    fn test_nullify_threshold_subset_2_3() {
+        let nullifier = oprf_nullify_threshold(
+            m_pt(), kp2(), b2(), kp3(), b3(), 2, 3, THR_EPOCH,
+            C2_LO, C2_HI, Z2_LO, Z2_HI, C3_LO, C3_HI, Z3_LO, Z3_HI,
+            r(), rinv(), EXPECTED_CR,
+        );
+        assert(nullifier == THR_NULLIFIER);
+    }
+
+    // verify_dleq_share standalone: honest share-1 DLEQ accepts.
+    #[test]
+    fn test_verify_dleq_share_honest() {
+        verify_dleq_share(kp1(), m_pt(), b1(), THR_EPOCH, C1_LO, C1_HI, Z1_LO, Z1_HI);
+    }
+
+    // REJECT: tampered B_1 -> the per-share DLEQ C-1 limb binding fails.
+    #[test(should_fail)]
+    fn test_threshold_tampered_b1_rejected() {
+        let bad_b1 = Pt { x: B1X + 1, y: B1Y, is_infinite: false };
+        let _ = oprf_nullify_threshold(
+            m_pt(), kp1(), bad_b1, kp2(), b2(), 1, 2, THR_EPOCH,
+            C1_LO, C1_HI, Z1_LO, Z1_HI, C2_LO, C2_HI, Z2_LO, Z2_HI,
+            r(), rinv(), EXPECTED_CR,
+        );
+    }
+
+    // REJECT: duplicate index (1,1) -> the responder-set selector assert.
+    #[test(should_fail_with = "invalid 2-of-3 responder set")]
+    fn test_threshold_dup_index_rejected() {
+        let _ = oprf_nullify_threshold(
+            m_pt(), kp1(), b1(), kp1(), b1(), 1, 1, THR_EPOCH,
+            C1_LO, C1_HI, Z1_LO, Z1_HI, C1_LO, C1_HI, Z1_LO, Z1_HI,
+            r(), rinv(), EXPECTED_CR,
+        );
+    }
+
+    // REJECT: non-canonical / out-of-range index (2,1) -> selector assert.
+    #[test(should_fail_with = "invalid 2-of-3 responder set")]
+    fn test_threshold_noncanonical_index_rejected() {
+        let _ = oprf_nullify_threshold(
+            m_pt(), kp2(), b2(), kp1(), b1(), 2, 1, THR_EPOCH,
+            C2_LO, C2_HI, Z2_LO, Z2_HI, C1_LO, C1_HI, Z1_LO, Z1_HI,
+            r(), rinv(), EXPECTED_CR,
+        );
+    }
+
+    // REJECT: wrong c_r -> the F2 cross-proof binding.
+    #[test(should_fail_with = "c_r mismatch (r != enroll r)")]
+    fn test_threshold_wrong_cr_rejected() {
+        let _ = oprf_nullify_threshold(
+            m_pt(), kp1(), b1(), kp2(), b2(), 1, 2, THR_EPOCH,
+            C1_LO, C1_HI, Z1_LO, Z1_HI, C2_LO, C2_HI, Z2_LO, Z2_HI,
+            r(), rinv(), EXPECTED_CR + 1,
+        );
+    }
+
+    // REJECT: wrong rinv (2*r^-1) -> the F2 group equation r*N == Y.
+    #[test(should_fail_with = "F2: r*N != Y")]
+    fn test_threshold_wrong_rinv_rejected() {
+        let bad_rinv = Scalar { lo: RINV2_LO, hi: RINV2_HI };
+        let _ = oprf_nullify_threshold(
+            m_pt(), kp1(), b1(), kp2(), b2(), 1, 2, THR_EPOCH,
+            C1_LO, C1_HI, Z1_LO, Z1_HI, C2_LO, C2_HI, Z2_LO, Z2_HI,
+            r(), bad_rinv, EXPECTED_CR,
+        );
+    }
+
+    // REJECT: stale epoch (DLEQs built for THR_EPOCH, verified at THR_EPOCH+1)
+    // -> the epoch-extended transcript hash differs -> C-1 limb binding fails.
+    #[test(should_fail)]
+    fn test_threshold_wrong_epoch_rejected() {
+        let _ = oprf_nullify_threshold(
+            m_pt(), kp1(), b1(), kp2(), b2(), 1, 2, THR_EPOCH + 1,
+            C1_LO, C1_HI, Z1_LO, Z1_HI, C2_LO, C2_HI, Z2_LO, Z2_HI,
+            r(), rinv(), EXPECTED_CR,
         );
     }
 }

@@ -201,3 +201,130 @@ pub fn oprf_nullify_bound(
 
     std::hash::pedersen_hash([n.x, n.y])
 }
+
+// ===========================================================================
+// Threshold (t-of-n) variant -- the 2-of-3 register entry point.
+//
+// Replaces the single node's Y with an IN-CIRCUIT Lagrange combine of t=2
+// verified partials B_i = k_i*M, so no single party ever holds/assembles the
+// OPRF key k (the F4 mitigation). The nullifier self-attests the t-of-n eval:
+// there is no free Y input -- Y is computed here from the per-share DLEQs +
+// Lagrange weights.
+//
+// Lagrange coefficients lambda_i are SCALARS mod the Grumpkin group order N --
+// NOT Noir's native field (which is the BN254 scalar field = Grumpkin BASE field,
+// a DIFFERENT modulus). Computing lambda_i by native-field division would feed
+// the MSM a value reduced mod the wrong modulus (e.g. native -1 = P-1, but the
+// MSM scalar must be N-1, and P != N). So we PIN the canonical mod-N coefficient
+// pairs for each 2-of-3 responder set as EmbeddedCurveScalar limb constants and
+// select the matching pair in-circuit. (Computed off-circuit with lib.mjs Fn +
+// scalarLimbs; the subset-invariance test cross-checks them.)
+// ===========================================================================
+
+// Pinned mod-N Lagrange coefficient limbs for the three 2-of-3 responder sets,
+// in canonical (idx1 < idx2) order. lambda values:
+//   {1,2}: (2, N-1)        {1,3}: (3*inv2, N-inv2)        {2,3}: (3, N-2)
+// where inv2 = 2^-1 mod N. (lambda_LO/HI are the 128-bit limbs of lambda mod N.)
+global LAMBDA_12_1_LO: Field = 2;
+global LAMBDA_12_1_HI: Field = 0;
+global LAMBDA_12_2_LO: Field = 201385395114098847380338600778089168198;
+global LAMBDA_12_2_HI: Field = 64323764613183177041862057485226039389;
+global LAMBDA_13_1_LO: Field = 270833881017518655421856604104928689829;
+global LAMBDA_13_1_HI: Field = 32161882306591588520931028742613019694;
+global LAMBDA_13_2_LO: Field = 270833881017518655421856604104928689827;
+global LAMBDA_13_2_HI: Field = 32161882306591588520931028742613019694;
+global LAMBDA_23_1_LO: Field = 3;
+global LAMBDA_23_1_HI: Field = 0;
+global LAMBDA_23_2_LO: Field = 201385395114098847380338600778089168197;
+global LAMBDA_23_2_HI: Field = 64323764613183177041862057485226039389;
+
+// select_lagrange_2of3 -- return the pinned mod-N Lagrange Scalar pair for the
+// responder set {idx1, idx2}. Indices MUST be distinct and a canonical
+// (idx1 < idx2) pair drawn from {1,2,3}: exactly one of {1,2},{1,3},{2,3}.
+// A duplicate, out-of-range, or non-canonical (e.g. (2,1)) pair is rejected
+// (combine() dedup + valid-responder check, review #7).
+pub fn select_lagrange_2of3(idx1: Field, idx2: Field) -> (Scalar, Scalar) {
+    let is12 = (idx1 == 1) & (idx2 == 2);
+    let is13 = (idx1 == 1) & (idx2 == 3);
+    let is23 = (idx1 == 2) & (idx2 == 3);
+    // Exactly one canonical pair must match (also enforces idx1 != idx2 and the
+    // {1,2,3} canonical-order domain).
+    assert((is12 as Field) + (is13 as Field) + (is23 as Field) == 1, "invalid 2-of-3 responder set");
+
+    // cmov-select the limbs for the matching pair (booleans are mutually exclusive).
+    let s12 = is12 as Field;
+    let s13 = is13 as Field;
+    let s23 = is23 as Field;
+    let l1_lo = s12 * LAMBDA_12_1_LO + s13 * LAMBDA_13_1_LO + s23 * LAMBDA_23_1_LO;
+    let l1_hi = s12 * LAMBDA_12_1_HI + s13 * LAMBDA_13_1_HI + s23 * LAMBDA_23_1_HI;
+    let l2_lo = s12 * LAMBDA_12_2_LO + s13 * LAMBDA_13_2_LO + s23 * LAMBDA_23_2_LO;
+    let l2_hi = s12 * LAMBDA_12_2_HI + s13 * LAMBDA_13_2_HI + s23 * LAMBDA_23_2_HI;
+    (Scalar { lo: l1_lo, hi: l1_hi }, Scalar { lo: l2_lo, hi: l2_hi })
+}
+
+// oprf_nullify_threshold -- the t-of-n (t=2) register entry point.
+//
+// Verifies t per-share epoch-bound DLEQs, asserts a valid distinct responder set,
+// Lagrange-combines Y = l1*B_1 + l2*B_2 IN-CIRCUIT (pinned mod-N coefficients),
+// then applies the F2 tail (C_r binding + r*N==Y + is_infinite guards) exactly
+// like oprf_nullify_bound. For the SAME effective group key k (= f(0) of the
+// sharing polynomial) the resulting nullifier == the single-key path's
+// pedersen(k*H2C(id)) for that epoch -- and is identical across responder
+// subsets (determinism/recovery preserved within the threshold epoch).
+//
+// kpub1/kpub2/m are caller-supplied (the SERVICE binds them to the published
+// Kpub set + the enroll proof's M); Y is NOT an input -- it is computed here, so
+// the proof self-attests the threshold evaluation.
+//
+// Arguments:
+//   m                 PUBLIC blinded element M = r*H2C(id) (service: == enroll's M)
+//   kpub1, b1         node 1's PUBLIC key Kpub_1=k_1*GEN and PRIVATE partial B_1=k_1*M
+//   kpub2, b2         node 2's PUBLIC key Kpub_2=k_2*GEN and PRIVATE partial B_2=k_2*M
+//   idx1, idx2        PUBLIC node indices (service: the t distinct responders)
+//   epoch             PUBLIC session tag (service: == current enrollEpoch)
+//   c1_*/c2_*         per-share DLEQ_1 / DLEQ_2 (c,z) as 128-bit limbs (PRIVATE)
+//   r, rinv, c_r      blind scalar bound to enroll via c_r (F2), its inverse, the
+//                     enroll proof's cross-proof commitment (PUBLIC c_r)
+// Returns the nullifier = pedersen([N.x, N.y]).
+pub fn oprf_nullify_threshold(
+    m: Pt,
+    kpub1: Pt,
+    b1: Pt,
+    kpub2: Pt,
+    b2: Pt,
+    idx1: Field,
+    idx2: Field,
+    epoch: Field,
+    c1_lo: Field,
+    c1_hi: Field,
+    z1_lo: Field,
+    z1_hi: Field,
+    c2_lo: Field,
+    c2_hi: Field,
+    z2_lo: Field,
+    z2_hi: Field,
+    r: Scalar,
+    rinv: Scalar,
+    c_r: Field,
+) -> Field {
+    // 1. Per-share epoch-bound DLEQs vs the pinned GEN (F1 + C-1 + session).
+    //    A cheating/faulty node whose B_i != k_i*M fails its DLEQ here.
+    dleq::verify_dleq_share(kpub1, m, b1, epoch, c1_lo, c1_hi, z1_lo, z1_hi);
+    dleq::verify_dleq_share(kpub2, m, b2, epoch, c2_lo, c2_hi, z2_lo, z2_hi);
+
+    // 2. Lagrange combine IN-CIRCUIT with pinned mod-N coefficients (no free Y).
+    //    select_lagrange_2of3 also enforces distinct, valid, canonical indices.
+    let (l1, l2) = select_lagrange_2of3(idx1, idx2);
+    let y = multi_scalar_mul([b1, b2], [l1, l2]);
+
+    // 3. F2 tail (same as oprf_nullify_bound, with the in-circuit-combined Y).
+    rinv.lo.assert_max_bit_size::<128>();
+    rinv.hi.assert_max_bit_size::<128>();
+    assert(commit_r(r) == c_r, "c_r mismatch (r != enroll r)");
+    assert(!y.is_infinite, "y is the point at infinity");
+    let n = multi_scalar_mul([y], [rinv]);
+    assert(!n.is_infinite, "n is the point at infinity");
+    let ycheck = multi_scalar_mul([n], [r]);
+    assert((ycheck.x == y.x) & (ycheck.y == y.y), "F2: r*N != Y");
+    std::hash::pedersen_hash([n.x, n.y])
+}
