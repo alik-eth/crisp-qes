@@ -1,10 +1,11 @@
 // grumpkin_voprf::h2c -- RFC-9380 SvdW hash-to-curve for Grumpkin.
 //
-// Ported VERBATIM from oprf_commitment's svdw_map (same hint-verification:
-// assert_is_square, sqrt, cmov, sgn0), except the suite constants are now read
-// from `params` globals (F3 pinning) instead of being passed in. The caller
-// supplies only the identity field elements u0,u1 and the per-map hints
-// h = [inv_t, e1, w1, e2, w2, sqrt_x].
+// The svdw_map gadget (same hint-verification: assert_is_square, sqrt, cmov,
+// sgn0), with the suite constants read from `params` globals (F3 pinning)
+// instead of being passed in. The caller supplies only the identity field
+// elements u0,u1 and the per-map hints h = [inv_t, e1, w1, e2, w2, sqrt_x].
+// (This is the single canonical home for the v3 hash-to-curve; the standalone
+// commitment circuit it was ported from has been retired.)
 //
 // hash_to_field(expand_message_xmd) stays app-side: the app produces u0,u1 and
 // the hints; this module proves the SvdW map onto the curve and sums the two
@@ -65,8 +66,7 @@ fn svdw_map(u: Field, h: [Field; 6]) -> Pt {
 
 // H2C(id) = map(u0) + map(u1). Returns the curve point; the app blinds it.
 // The point add is done via a blackbox MSM with scalar 1 (avoids an explicit
-// point-add gadget, matching the original oprf_commitment which folded the add
-// into multi_scalar_mul).
+// point-add gadget, folding the add into multi_scalar_mul).
 pub fn h2c_grumpkin(u0: Field, u1: Field, h0: [Field; 6], h1: [Field; 6]) -> Pt {
     let p0 = svdw_map(u0, h0);
     let p1 = svdw_map(u1, h1);

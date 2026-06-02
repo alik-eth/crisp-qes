@@ -1,7 +1,7 @@
 // Generate Prover.toml for the FUSED enroll_commit circuit.
 //
 // Combines the qes_frontend witness (synthetic P-256 cert + ECDSA over
-// sha256(signedAttrs) + DER RNOKPP/DOB offsets) with the oprf_commitment
+// sha256(signedAttrs) + DER RNOKPP/DOB offsets) with the hash-to-curve
 // witness (u0,u1 = hashToField2(RNOKPP), SvdW hints, blinding scalar r,
 // M = r*H2C(RNOKPP)). Also computes the in-circuit Pedersen binding
 // rnokpp_commit = pedersen_hash([rnokpp_field]) so we can cross-check the

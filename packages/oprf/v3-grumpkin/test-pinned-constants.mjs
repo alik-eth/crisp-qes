@@ -1,102 +1,94 @@
 // Regression test for the F1 + F3 pinned-constant security fixes.
 //
-// For each circuit: build the HONEST witness and assert `nargo execute` ACCEPTS,
-// then build a FORGERY witness and assert `nargo execute` REJECTS. Exits nonzero
-// on ANY deviation (honest rejected OR forgery accepted), so CI catches a
-// regression that re-opens the under-constraint.
+// After the grumpkin_voprf library extraction, BOTH attacks are STRUCTURALLY
+// IMPOSSIBLE rather than merely asserted-away inside a standalone circuit:
+//   F1 (DLEQ generator substitution): GEN is the library's pinned global
+//      (params::GEN_X/GEN_Y). It is NOT a circuit input, so oprf_nullifier's ABI
+//      has no gx/gy to substitute -- the G' = (k')^-1*Kpub forgery is unexpressible.
+//   F3 (non-canonical SvdW suite): c1..c4 are library globals (params::SVDW_C1..C4)
+//      consumed by h2c. They are NOT inputs to enroll_commit_v2, so there is no
+//      c1..c4 to swap for a non-canonical suite -- the forgery is unexpressible.
 //
-//   F1  oprf_nullifier   : generator substitution (G' = k'^-1 * Kpub).
-//   F3  oprf_commitment  : non-canonical SvdW suite constants.
-//   F3  enroll_commit_v2 : its production main() is unreachable via `nargo
-//                          execute` (needs a real Diia-pinned-CA signature over a
-//                          PII leaf cert), so the SvdW-pinning gate is exercised
-//                          via the in-circuit #[test]s (assert_canonical_svdw):
-//                          test_svdw_canonical_ok (accept) +
-//                          test_svdw_forged_constants_fail / _tampered_c4_fail
-//                          (reject). We run `nargo test` and require all pass.
+// The retired standalone commitment circuit (and its forge-f3-* probes) are
+// gone; this harness now (a) ASSERTS the attacks are unexpressible by checking
+// the compiled ABIs carry no gx/gy (nullifier) and no c1..c4 (enroll), and
+// (b) runs the lib's `nargo test` (grumpkin_voprf) which covers SvdW pinning +
+// the DLEQ/C_r binding, plus enroll_commit_v2's own #[test]s.
 //
-// Run:  node test-pinned-constants.mjs   (cwd = packages/oprf/v3-grumpkin)
+// Exits nonzero on ANY deviation, so CI catches a regression that re-introduces
+// a forgeable input. Run:  node test-pinned-constants.mjs  (cwd = v3-grumpkin)
 
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const CIRCUITS = join(ROOT, "circuits");
+const LIB = join(ROOT, "lib-noir", "grumpkin_voprf");
 
 let failures = 0;
 const log = (s) => console.log(s);
 const fail = (s) => { console.error("  FAIL: " + s); failures++; };
 const pass = (s) => console.log("  ok:   " + s);
 
-// Run a generator script (writes the target circuit's Prover.toml).
-function gen(script, env = {}) {
-    execFileSync("node", [join(ROOT, script)], {
-        cwd: ROOT, stdio: "pipe", env: { ...process.env, ...env },
-    });
+// Compiled-ABI param names for a circuit (from its target JSON).
+function abiParamNames(circuit) {
+    const j = JSON.parse(
+        readFileSync(join(CIRCUITS, circuit, "target", `${circuit}.json`), "utf8"),
+    );
+    return j.abi.parameters.map((p) => p.name);
 }
 
-// `nargo execute` in a circuit dir. Returns true if the witness solved.
-function nargoExecute(circuit) {
+// `nargo test` in a package dir. Returns true if ALL tests pass.
+function nargoTest(cwd) {
     try {
-        execFileSync("nargo", ["execute"], {
-            cwd: join(CIRCUITS, circuit), stdio: "pipe",
-        });
+        execFileSync("nargo", ["test"], { cwd, stdio: "pipe" });
         return true;
     } catch {
         return false;
     }
 }
 
-// `nargo test` in a circuit dir. Returns true if ALL tests pass.
-function nargoTest(circuit) {
+// Assert NONE of `forbidden` appear in the circuit's compiled-ABI inputs.
+function assertNoInputs(name, circuit, forbidden) {
+    let params;
     try {
-        execFileSync("nargo", ["test"], {
-            cwd: join(CIRCUITS, circuit), stdio: "pipe",
-        });
-        return true;
-    } catch {
-        return false;
+        params = abiParamNames(circuit);
+    } catch (e) {
+        fail(`${name}: could not read ${circuit} ABI (compile it first): ${e.message}`);
+        return;
+    }
+    const present = forbidden.filter((f) => params.includes(f));
+    if (present.length === 0) {
+        pass(`${name}: ${circuit} ABI has no [${forbidden.join(", ")}] input (closed by construction)`);
+    } else {
+        fail(`${name}: ${circuit} ABI re-introduced forgeable input(s): ${present.join(", ")}`);
     }
 }
 
-// Generic accept/reject check for an execute-based circuit.
-function checkExecuteCircuit(name, circuit, honestGen, forgeryGen) {
-    log(`\n[${name}] (${circuit})`);
-    gen(honestGen);
-    if (nargoExecute(circuit)) pass("honest witness ACCEPTED");
-    else fail("honest witness was REJECTED (expected accept)");
-    gen(forgeryGen);
-    if (!nargoExecute(circuit)) pass("forgery witness REJECTED");
-    else fail("forgery witness was ACCEPTED (under-constraint re-opened!)");
-}
+// F1 — oprf_nullifier: the DLEQ base GEN is the lib's pinned global, NOT an input.
+// A substituted-generator forgery needs gx/gy inputs; assert they are absent.
+log(`\n[F1] (oprf_nullifier — pinned GEN in grumpkin_voprf; no attacker-suppliable base)`);
+assertNoInputs("F1", "oprf_nullifier", ["gx", "gy"]);
 
-// F1 — oprf_nullifier: generator substitution.
-checkExecuteCircuit(
-    "F1", "oprf_nullifier",
-    "gen-nullifier-witness.mjs", "forge-f1-nullifier-witness.mjs",
-);
+// F3 — enroll_commit_v2: the SvdW suite c1..c4 are lib globals, NOT inputs.
+// A non-canonical-suite forgery needs c1..c4 inputs; assert they are absent.
+log(`\n[F3] (enroll_commit_v2 — pinned SvdW c1..c4 in grumpkin_voprf; no suite inputs)`);
+assertNoInputs("F3", "enroll_commit_v2", ["c1", "c2", "c3", "c4"]);
 
-// F3 — oprf_commitment: non-canonical SvdW constants.
-checkExecuteCircuit(
-    "F3", "oprf_commitment",
-    "gen-commitment-witness.mjs", "forge-f3-commitment-witness.mjs",
-);
+// Library coverage: grumpkin_voprf's tests pin SvdW (h2c) + GEN (dleq) + the F2
+// C_r binding. enroll_commit_v2's own #[test]s cover the Diia chain + C_r anchor.
+log(`\n[lib] grumpkin_voprf nargo test (SvdW/GEN pinning + DLEQ/C_r binding)`);
+if (nargoTest(LIB)) pass("grumpkin_voprf nargo test passed");
+else fail("grumpkin_voprf nargo test FAILED (pinning/binding regression)");
 
-// F3 — enroll_commit_v2: SvdW pinning via in-circuit tests (main() unreachable).
-log(`\n[F3] (enroll_commit_v2 — in-circuit #[test] gate; main() needs real PII cert)`);
-if (nargoTest("enroll_commit_v2")) {
-    pass("nargo test passed (incl. test_svdw_canonical_ok + forged/tampered should_fail)");
-} else {
-    fail("nargo test FAILED (F3 pinning regression: a forged-constant test no longer rejects, or honest no longer accepts)");
-}
-
-// Restore honest witnesses so a developer's working tree is left consistent.
-gen("gen-nullifier-witness.mjs");
-gen("gen-commitment-witness.mjs");
+log(`\n[circuit] enroll_commit_v2 nargo test (Diia chain + C_r anchor)`);
+if (nargoTest(join(CIRCUITS, "enroll_commit_v2"))) pass("enroll_commit_v2 nargo test passed");
+else fail("enroll_commit_v2 nargo test FAILED");
 
 if (failures > 0) {
     console.error(`\n${failures} check(s) FAILED.`);
     process.exit(1);
 }
-console.log("\nAll pinned-constant security checks passed (F1 + F3).");
+console.log("\nAll pinned-constant security checks passed (F1 + F3 closed by construction).");

@@ -1,10 +1,11 @@
 // grumpkin_voprf::params -- pinned curve/suite constants (ONE source of truth).
 //
-// These globals are copied VERBATIM from the F1/F3 security-fix commit (8da263b):
-//   GEN_X/GEN_Y          from oprf_nullifier (F1: pinned DLEQ generator)
-//   SVDW_C1..C4, SVDW_Z  from oprf_commitment (F3: pinned RFC-9380 SvdW suite)
-//   ZETA, BCURVE         from oprf_commitment (curve params for SvdW)
-//   DST                  from enroll_commit_v2 (RFC-9380 domain separation tag)
+// These globals are the canonical v3 Grumpkin VOPRF constants (originally the
+// F1/F3 security-fix values, commit 8da263b):
+//   GEN_X/GEN_Y          F1: pinned DLEQ generator (canonical Grumpkin base)
+//   SVDW_C1..C4, SVDW_Z  F3: pinned RFC-9380 SvdW suite
+//   ZETA, BCURVE         curve params for SvdW
+//   DST                  RFC-9380 domain separation tag (== enroll_commit_v2 DST)
 //
 // Every consumer of this library inherits these pinned values with NO way to
 // opt out: hash-to-curve cannot be redefined (F3) and the DLEQ base cannot be

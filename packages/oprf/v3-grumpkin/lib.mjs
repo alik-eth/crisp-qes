@@ -2,7 +2,7 @@
 // Promoted from the validated PoCs. Curve == Noir's embedded curve exactly
 // (Grumpkin y^2=x^3-17, generator x=1, y=sqrt(-16)), so JS points and Noir
 // embedded_curve_ops interoperate. Adds SvdW *hint* generation so we can feed
-// a real witness to the oprf_commitment Noir circuit.
+// a real witness to the grumpkin_voprf hash-to-curve (h2c) Noir circuits.
 
 import { weierstrassPoints } from "@noble/curves/abstract/weierstrass";
 import { Field } from "@noble/curves/abstract/modular";
