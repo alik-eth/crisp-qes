@@ -61,8 +61,9 @@ no option-selection UI.
 ### Backend (operator, Fly)
 
 ```
-┌────────────────────────── one Fly app (supervisor) ──────────────────────────┐
-│  persistent anvil (Fly volume, --dump-state/--load-state)   chainId = <op>    │
+┌──────────── ONE Fly machine (supervisor) — scale-to-zero when idle ───────────┐
+│  Fly volume /data  (survives stop→start)                                       │
+│  persistent anvil  (anvil --state /data/anvil-state.json)   chainId = <op>     │
 │      │                                                                         │
 │      ├─ Enclave E3 graph  (enclave, ciphernode_registry, bonding_registry,    │
 │      │    slashing_manager, fee_token)        ── `pnpm evm:deploy` (unchanged) │
@@ -70,22 +71,42 @@ no option-selection UI.
 │      ├─ BallotRegistry (NEW)                   ── new deploy step               │
 │      │                                                                         │
 │  3× ciphernode (cn1..cn3)  BFV DKG, insecure-512, threshold = 3-of-3 decrypt  │
+│      key shares persisted to /data OR seed-derived (see Persistence)           │
 │  program server  (enclave program, dev mode)                                  │
 │  coordination server (Rust Actix, /qes/* routes: broadcast, active-slots,     │
-│                       enrollment-root, tally)                                  │
+│                       enrollment-root, tally) — wakes the machine on request   │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Persistence:** anvil is ephemeral by default. We mount a Fly volume and use
-  `anvil --state /data/anvil-state.json` (load on boot, dump on interval/SIGTERM) so the
-  Enclave/CRISPQES/BallotRegistry deployments and all cast ballots survive restarts.
-- **Packaging:** a single Fly app runs anvil + 3 nodes + program + coordination server
-  under a process supervisor (adapting the existing `dev_*.sh` scripts to target the
-  persistent anvil instead of an ephemeral one). Deliberately not production topology.
-- **Committee/threshold:** set committee size 3 in `enclave.config.yaml`; configure the
-  BFV decryption threshold so **all 3** are required. (Phase-1 task: confirm the enclave
-  DKG supports n-of-n for `insecure-512`; if only t<n is available, document the actual
-  threshold achieved.)
+- **Packaging:** the ENTIRE stack runs as **one Fly machine** under a process
+  supervisor (adapting the existing `dev_*.sh` scripts to target the persistent anvil
+  instead of an ephemeral one). It is one machine specifically so scale-to-zero works:
+  a single wake trigger boots the whole committee as a unit. Not production topology.
+- **Scale-to-zero:** `min_machines_running = 0`, `auto_stop_machines = "stop"`,
+  `auto_start_machines = true` (the pattern the relayer already uses). The machine
+  sleeps when idle; the first request to the coordination server wakes it.
+- **Wakeup routine:** on cold boot the supervisor brings processes up in dependency
+  order — anvil (load `/data` state) → ciphernodes (re-sync from chain, restore/derive
+  key shares) → program server → coordination server. `/healthz` goes green **only**
+  once the committee public key is available and the chain is synced. The web treats a
+  not-yet-green backend as "warming up" and polls; first request after idle may take
+  tens of seconds.
+- **Persistence — load-bearing, two parts:**
+  1. **Anvil state** → `anvil --state /data/anvil-state.json` (load on boot, dump on a
+     short interval + on SIGTERM within Fly's stop grace period) so the
+     Enclave/CRISPQES/BallotRegistry deployments and all cast ballots survive sleep.
+  2. **🔴 Ciphernode BFV key shares** → MUST survive stop→start, or every wake re-runs
+     DKG, rotates the committee public key, and **permanently orphans all previously
+     cast ballots**. Two viable mechanisms: (a) the nodes persist their shares to
+     `/data`, or (b) **seed-derive** the shares from a Fly secret so a cold boot
+     reconstructs the *same* key (mirrors the `V3_THRESHOLD_SEED` pattern on the OPRF
+     side). Which is achievable is the **Phase-1 spike** — and it gates the whole
+     scale-to-zero approach. If neither is possible without upstream changes, fall back
+     to `min_machines_running = 1` (always-on) for the committee.
+- **Committee/threshold:** committee size 3 in `enclave.config.yaml`; configure the BFV
+  decryption threshold so **all 3** are required. (Phase-1 task, folded into the spike:
+  confirm the enclave DKG supports n-of-n for `insecure-512`; if only t<n is available,
+  document the actual threshold achieved.)
 
 ### Client (web / civicvoice)
 
@@ -153,10 +174,16 @@ enroll (Base Sepolia, existing)
 
 ## Plan shape (6 phases — detailed in the implementation plan)
 
-1. **Backend infra up.** Persistent anvil + Enclave/CRISPQES deploy + 3-node committee +
-   program + coordination server on Fly. Acceptance: the existing `qesVote` E2E (or a
-   trimmed version) passes against the live operator stack; DKG publishes a committee key;
-   a ballot proof verifies on-chain.
+1. **Backend infra up (gated by the persistence spike).** FIRST: spike whether
+   ciphernode key shares survive stop→start (persist-to-`/data` or seed-derive); this
+   gates scale-to-zero (fall back to always-on if neither works). THEN: persistent anvil
+   + Enclave/CRISPQES deploy + 3-node committee + program + coordination server as one
+   Fly machine with a `/data` volume, scale-to-zero config, and a `/healthz`-gated wakeup
+   routine. Acceptance: the machine sleeps when idle and wakes on request; after wake the
+   committee public key is **identical** to before (a ballot encrypted pre-sleep still
+   decrypts post-wake); the existing `qesVote` E2E (or a trimmed version) passes against
+   the live operator stack; DKG publishes a committee key; a ballot proof verifies
+   on-chain.
 2. **BallotRegistry** contract + deploy + operator round-open script (snapshots Base
    Sepolia root). Acceptance: a round is created on-chain and readable.
 3. **Web: round list + ballot selection UI.** Acceptance: open rounds + one-hot option
