@@ -101,7 +101,10 @@ Inherits F1 (pinned GEN), F2 (`C_r` + `r·N==Y`), C-1 (limb-bound challenges), C
 
 ## 11. Determinism / recovery
 
-`Y = k·M` for the SAME effective `k` as the single-key key ⇒ `nullifier = pedersen(k·H2C(id))` unchanged per identity ⇒ recovery + existing leaves preserved, **provided the threshold key equals the deployed single-key `k`** (the DKG must reproduce the same `k`, or this is a fresh-epoch migration). DECISION NEEDED at planning: reuse the existing `k` as the DKG secret (preserves leaves) vs a new threshold key (new epoch, re-enroll). For the demo, a fresh threshold key in a new epoch is simplest; flag the migration implication.
+**DECIDED (2026-06-02): fresh threshold key `k'` in a NEW enrollment epoch.** The 2-of-3 DKG generates a brand-new `k'` unrelated to the deployed single-key `k`. Consequences:
+- Existing on-chain leaves stay valid under the OLD epoch (the registry is epoch-scoped); they are NOT re-derivable under `k'` and are not migrated.
+- New (threshold) enrollments land under the new epoch with `nullifier = pedersen(k'·H2C(id))`, deterministic per identity within that epoch ⇒ recovery still works *within the threshold epoch*.
+- The threshold cohort re-enrolls (acceptable for the demo; no attempt to reproduce `k`). The epoch value (§4 `epoch`) is bumped for the threshold deployment and bound into every per-share DLEQ.
 
 ## 12. Security properties
 
