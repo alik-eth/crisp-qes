@@ -7,9 +7,11 @@ node_modules
 .git
 *.log
 
-# Vendor + threshold scratch the service does not need at runtime.
+# Vendor scratch the service does not need at runtime.
+# NOTE: threshold/ is NO LONGER ignored — oprf-node.mjs (ShareNode/makeNodes)
+# imports threshold/threshold-oprf.mjs (Shamir/DKG-lite) at startup for the
+# 2-of-3 threshold; excluding it crashes boot (ERR_MODULE_NOT_FOUND).
 vendor
-threshold
 
 # Other circuits' build outputs are not needed (only enroll_commit_v2/target is).
 circuits/qes_frontend/target
