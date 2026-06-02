@@ -27,6 +27,7 @@ import {
     verifyNullifierProof,
     extractMFromPublicInputs,
     extractDigestFromPublicInputs,
+    extractCrFromEnroll,
     OPRF_NULLIFIER_JSON,
 } from "./proof-gate.mjs";
 import { expectedDigestLimbs } from "./challenge.mjs";
@@ -293,7 +294,7 @@ export async function buildApp(opts = {}) {
     }
 
     // Reconstruct the v3 challenge from the PUBLIC M + intent + epoch, sha256 it,
-    // and require it equals the digest the enroll proof bound (public words 14/15).
+    // and require it equals the digest the enroll proof bound (public words 11/12).
     // Stateless + operator-blind: we never see the cert, only M (which we have).
     function challengeDigestOk(Mhex, publicInputs) {
         let bound, expected;
@@ -438,15 +439,18 @@ export async function buildApp(opts = {}) {
     // chaining them:  commitment -> N -> Y -> M -> cert.
     //
     //   1. enroll_commit_v2 proof  — verifies + binds M <-> a valid age>=18 cert
-    //      (public output M at enrollPublicInputs[12],[13]).
+    //      (public output M at enrollPublicInputs[8],[9]; C_r at [10]).
     //   2. oprf_nullifier proof    — verifies the in-circuit DLEQ (Y = k*M for
-    //      Kpub = k*G), unblinds N = rinv*Y bound to r via r*N == Y, and RETURNS
-    //      commitment = pedersen([N.x, N.y]) as its public output.
+    //      Kpub = k*GEN against the PINNED generator), unblinds N = rinv*Y bound
+    //      to r via r*N == Y AND to the enroll blind via commit_r(r) == C_r, and
+    //      RETURNS commitment = pedersen([N.x, N.y]) as its public output.
     //
     //   CROSS-CHECKS (verifyNullifierProof):
-    //     (a) nullifier.M  == enroll.M                  (chains M -> cert)
+    //     (a) nullifier.M  == enroll.M                  (chains M -> cert; HARD)
     //     (b) nullifier.Kpub == THIS node's Kpub        (Y under our k)
     //     (c) nullifier.commitment == submitted commitment
+    //     (d) nullifier.C_r == enroll.C_r               (binds the same blind r
+    //                                                    across proofs -> F2)
     //
     // Only when BOTH proofs verify AND all cross-checks hold do we append the
     // leaf and attester-sign. A client can no longer register an arbitrary
@@ -508,15 +512,26 @@ export async function buildApp(opts = {}) {
         }
 
         // bind the registered leaf to the live-signed challenge as well.
-        const exHex = enrollPublicInputs[12].replace(/^0x/, "").padStart(64, "0");
-        const eyHex = enrollPublicInputs[13].replace(/^0x/, "").padStart(64, "0");
+        // M.x/M.y are the enroll proof's first two public-output words [8],[9].
+        const exHex = enrollPublicInputs[8].replace(/^0x/, "").padStart(64, "0");
+        const eyHex = enrollPublicInputs[9].replace(/^0x/, "").padStart(64, "0");
         if (!challengeDigestOk(`0x${exHex}${eyHex}`, enrollPublicInputs)) {
             return reply.code(409).send({ error: "ChallengeMismatch", detail: "enroll proof challenge digest mismatch" });
         }
 
+        // C_r the enroll proof published (public word [10]); the nullifier proof
+        // must re-assert commit_r(its r) == this value (cross-check (d), F2).
+        let enrollCr;
+        try {
+            enrollCr = extractCrFromEnroll(enrollPublicInputs);
+        } catch (e) {
+            return reply.code(400).send({ error: "MalformedProof", detail: e.message });
+        }
+
         // — (2) Verify the nullifier proof + enforce the binding cross-checks ─
         // Bind nullifier.M to the enroll proof's M, nullifier.Kpub to THIS
-        // node's Kpub, and nullifier.commitment to the submitted commitment.
+        // node's Kpub, nullifier.commitment to the submitted commitment, and
+        // nullifier.C_r to the enroll proof's C_r (same blind r across proofs).
         const Kaff = node.Kpub.toAffine();
         let nullifierResult;
         try {
@@ -527,6 +542,7 @@ export async function buildApp(opts = {}) {
                 expectedM: enrollM,
                 expectedKpub: { x: Kaff.x, y: Kaff.y },
                 expectedCommitment: BigInt(commitment),
+                expectedCr: enrollCr,
             });
         } catch (e) {
             req.log.error({ err: e.message }, "register nullifier proof gate errored");

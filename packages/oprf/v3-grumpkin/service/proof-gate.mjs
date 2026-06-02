@@ -20,15 +20,19 @@
 //       (2) call backend.verifyProof({ proof, publicInputs }) in-process.
 //     BOTH must hold, else the request is rejected (4xx) and NOT evaluated.
 //
-// PUBLIC INPUTS LAYOUT (enroll_commit_v2, 16 field words of 32 bytes BE):
+// PUBLIC INPUTS LAYOUT (enroll_commit_v2, 13 field words of 32 bytes BE):
 //   [0..8)  today[8]  (ASCII bytes of YYYYMMDD)
-//   [8..12) c1,c2,c3,c4  (SvdW suite constants)
-//   [12]    M.x        <- the circuit's first public return value
-//   [13]    M.y        <- the circuit's second public return value
-//   [14]    digest_hi  <- signedAttrs messageDigest, high 16 bytes
-//   [15]    digest_lo  <- signedAttrs messageDigest, low 16 bytes
-// So M = (publicInputs[12], publicInputs[13]) and the bound messageDigest =
-// digest_hi*2^128 + digest_lo = (publicInputs[14], publicInputs[15]).
+//   [8]     M.x        <- the circuit's first public return value
+//   [9]     M.y        <- the circuit's second public return value
+//   [10]    C_r        <- commit_r(r) = pedersen([CR_DOMAIN, r_lo, r_hi]); the
+//                         cross-proof shared-r binding (F2). The oprf_nullifier
+//                         register proof re-asserts commit_r(its r) == this C_r.
+//   [11]    digest_hi  <- signedAttrs messageDigest, high 16 bytes
+//   [12]    digest_lo  <- signedAttrs messageDigest, low 16 bytes
+// So M = (publicInputs[8], publicInputs[9]), C_r = publicInputs[10], and the
+// bound messageDigest = digest_hi*2^128 + digest_lo = (publicInputs[11],[12]).
+// (The SvdW suite constants c1..c4 are no longer public inputs -- they are pinned
+// inside grumpkin_voprf, F3.)
 
 import { readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
@@ -66,31 +70,35 @@ export const OPRF_NULLIFIER_JSON = join(
 
 // Index of the M.x public-input word and total expected word count. Asserted
 // against the request so a circuit-shape change can't silently weaken the gate.
-export const M_X_WORD_INDEX = 12;
-// enroll_commit_v2 now returns (M.x, M.y, digest_hi, digest_lo); the two digest
+export const M_X_WORD_INDEX = 8;
+// C_r (cross-proof shared-r commitment) is the circuit's third return value.
+export const C_R_WORD_INDEX = 10;
+// enroll_commit_v2 returns (M.x, M.y, C_r, digest_hi, digest_lo); the two digest
 // limbs are the signedAttrs messageDigest the circuit bound to the signature.
-export const DIGEST_HI_WORD_INDEX = 14;
-export const DIGEST_LO_WORD_INDEX = 15;
-export const PUBLIC_INPUT_WORD_COUNT = 16;
+export const DIGEST_HI_WORD_INDEX = 11;
+export const DIGEST_LO_WORD_INDEX = 12;
+export const PUBLIC_INPUT_WORD_COUNT = 13;
 const FIELD_BYTES = 32;
 
-// — oprf_nullifier public-input layout (10 field words of 32 bytes BE) ─────────
+// — oprf_nullifier public-input layout (8 field words of 32 bytes BE) ──────────
 // The circuit's `main` declares these public inputs IN ABI ORDER, then appends
 // its single public return value (the commitment) as the final word:
-//   [0] G.x    [1] G.y      (generator, == lib.mjs G; word [0] is the fixed 0x..01)
-//   [2] Kpub.x [3] Kpub.y   (node public key k*G — must equal THIS node's Kpub)
+//   [0] Kpub.x [1] Kpub.y   (node public key k*G — must equal THIS node's Kpub;
+//                            single k*G OR Lagrange-combined Kpub, threshold-ready)
+//   [2] Y.x    [3] Y.y      (node response Y = k*M)
 //   [4] M.x    [5] M.y      (blinded element — must equal the enroll proof's M)
-//   [6] Y.x    [7] Y.y      (node response Y = k*M)
-//   [8] c_expected          (Fiat-Shamir DLEQ challenge)
-//   [9] commitment          (RETURN: pedersen([N.x, N.y]), N = rinv*Y)
-// All limbs (c,z,rinv,r) are PRIVATE, so they do not appear here.
-export const NULLIFIER_G_X_WORD_INDEX = 0;
-export const NULLIFIER_KPUB_X_WORD_INDEX = 2;
+//   [6] c_r                 (shared-r commitment — must equal the enroll proof's
+//                            C_r; binds r across the two proofs, F2)
+//   [7] commitment          (RETURN: pedersen([N.x, N.y]), N = rinv*Y)
+// All limbs (c,z,rinv,r) are PRIVATE, so they do not appear here. The free DLEQ
+// base G (F1 surface) and the redundant c_expected are GONE: GEN is pinned in
+// grumpkin_voprf and C-1 is the lib's in-circuit limb binding.
+export const NULLIFIER_KPUB_X_WORD_INDEX = 0;
+export const NULLIFIER_Y_X_WORD_INDEX = 2;
 export const NULLIFIER_M_X_WORD_INDEX = 4;
-export const NULLIFIER_Y_X_WORD_INDEX = 6;
-export const NULLIFIER_C_EXPECTED_WORD_INDEX = 8;
-export const NULLIFIER_COMMITMENT_WORD_INDEX = 9;
-export const NULLIFIER_PUBLIC_INPUT_WORD_COUNT = 10;
+export const NULLIFIER_C_R_WORD_INDEX = 6;
+export const NULLIFIER_COMMITMENT_WORD_INDEX = 7;
+export const NULLIFIER_PUBLIC_INPUT_WORD_COUNT = 8;
 
 // Threads for the bb.js wasm backend. Verification is light; 1 thread keeps the
 // container memory footprint predictable. Override via BB_THREADS if needed.
@@ -220,7 +228,7 @@ export function extractMFromPublicInputs(words) {
 }
 
 // Extract the messageDigest the proof bound (as a single 32-byte bigint) from
-// the enroll proof's public words [14],[15] (hi*2^128 + lo).
+// the enroll proof's public words [11],[12] (hi*2^128 + lo).
 export function extractDigestFromPublicInputs(words) {
     if (!Array.isArray(words) || words.length !== PUBLIC_INPUT_WORD_COUNT) {
         throw new Error(`publicInputs must have exactly ${PUBLIC_INPUT_WORD_COUNT} words`);
@@ -232,11 +240,24 @@ export function extractDigestFromPublicInputs(words) {
     };
 }
 
+// Extract C_r (the cross-proof shared-r commitment) as a bigint from the enroll
+// proof's public word [10]. Passed into verifyNullifierProof as expectedCr so
+// the register proof's commit_r(r) must equal it (binds the same blind r across
+// the two proofs -> F2).
+export function extractCrFromEnroll(words) {
+    if (!Array.isArray(words) || words.length !== PUBLIC_INPUT_WORD_COUNT) {
+        throw new Error(`publicInputs must have exactly ${PUBLIC_INPUT_WORD_COUNT} words`);
+    }
+    return BigInt("0x" + wordToBE32(words[C_R_WORD_INDEX]).toString("hex"));
+}
+
 // Extract the load-bearing public values from an oprf_nullifier proof's public
-// inputs: the points G, Kpub, M, Y (as {x,y} bigints) and the returned
-// commitment (= pedersen(N)) bigint. Used at /v3/register to cross-check the
-// nullifier proof against the enroll proof, this node's Kpub, and the submitted
-// commitment — closing the Sybil-binding gap.
+// inputs: the points Kpub, Y, M (as {x,y} bigints), the cross-proof commitment
+// c_r, and the returned commitment (= pedersen(N)) bigint. Used at /v3/register
+// to cross-check the nullifier proof against the enroll proof (M and C_r), this
+// node's Kpub, and the submitted commitment — closing the Sybil-binding gap.
+// (G and c_expected are no longer public: GEN is pinned in-circuit, F1; C-1 is
+// the lib's in-circuit limb binding.)
 export function extractNullifierPublics(words) {
     if (!Array.isArray(words) || words.length !== NULLIFIER_PUBLIC_INPUT_WORD_COUNT) {
         throw new Error(
@@ -246,11 +267,10 @@ export function extractNullifierPublics(words) {
     const toBig = (w) => BigInt("0x" + wordToBE32(w).toString("hex"));
     const pt = (i) => ({ x: toBig(words[i]), y: toBig(words[i + 1]) });
     return {
-        G: pt(NULLIFIER_G_X_WORD_INDEX),
         Kpub: pt(NULLIFIER_KPUB_X_WORD_INDEX),
-        M: pt(NULLIFIER_M_X_WORD_INDEX),
         Y: pt(NULLIFIER_Y_X_WORD_INDEX),
-        cExpected: toBig(words[NULLIFIER_C_EXPECTED_WORD_INDEX]),
+        M: pt(NULLIFIER_M_X_WORD_INDEX),
+        cr: toBig(words[NULLIFIER_C_R_WORD_INDEX]),
         commitment: toBig(words[NULLIFIER_COMMITMENT_WORD_INDEX]),
     };
 }
@@ -263,7 +283,7 @@ export function extractNullifierPublics(words) {
  * @param {object} args
  * @param {ProofGate} args.gate         in-process gate (from createGate()).
  * @param {string|Uint8Array} args.proof   the bb proof (0x-hex or bytes).
- * @param {Array<string|bigint>} args.publicInputs  the 14 public-input words.
+ * @param {Array<string|bigint>} args.publicInputs  the 13 public-input words.
  * @param {{x: bigint, y: bigint}} args.expectedM   M parsed from the request.
  * @returns {Promise<{ ok: true } | { ok: false, code: string, detail: string }>}
  */
@@ -317,24 +337,31 @@ export async function verifyEnrollCommitProof({ gate, proof, publicInputs, expec
  * the enrollment commitment back to the certificate, closing the Sybil-binding
  * gap at /v3/register. The circuit ITSELF proves, in zero knowledge:
  *   commitment = pedersen(N),  N = rinv*Y,  r*N == Y (binds r),
- *   Y = k*M via an in-circuit Chaum-Pedersen DLEQ against Kpub=k*G.
+ *   commit_r(r) == c_r (binds r to the enroll proof's blind),
+ *   Y = k*M via an in-circuit Chaum-Pedersen DLEQ against the PINNED GEN (F1).
  * On top of the cryptographic verification we require:
- *   (a) the proof's M  == the (already cert-bound) enroll proof's M,
+ *   (a) the proof's M  == the (already cert-bound) enroll proof's M  [HARD:
+ *       identity binding; c_r binds r but NOT the identity, so this is
+ *       non-skippable],
  *   (b) the proof's Kpub == THIS node's Kpub (Y was evaluated under our k),
- *   (c) the proof's returned commitment == the commitment being registered.
- * Together these chain  commitment -> N -> Y -> M -> cert.
+ *   (c) the proof's returned commitment == the commitment being registered,
+ *   (d) the proof's C_r == the enroll proof's C_r (binds the SAME blind r across
+ *       the two proofs -> F2).
+ * Together these chain  commitment -> N -> Y -> M -> cert, with r bound across
+ * both proofs via C_r.
  *
  * @param {object} args
  * @param {ProofGate} args.gate    in-process nullifier gate (createGate(OPRF_NULLIFIER_JSON)).
  * @param {string|Uint8Array} args.proof  the bb proof (0x-hex or bytes).
- * @param {Array<string|bigint>} args.publicInputs  the 10 nullifier public-input words.
+ * @param {Array<string|bigint>} args.publicInputs  the 8 nullifier public-input words.
  * @param {{x:bigint,y:bigint}} args.expectedM        M from the enroll proof.
  * @param {{x:bigint,y:bigint}} args.expectedKpub     this node's Kpub.
  * @param {bigint} args.expectedCommitment            the submitted commitment leaf.
+ * @param {bigint} args.expectedCr                    C_r from the enroll proof.
  * @returns {Promise<{ ok: true, publics: object } | { ok: false, code: string, detail: string }>}
  */
 export async function verifyNullifierProof({
-    gate, proof, publicInputs, expectedM, expectedKpub, expectedCommitment,
+    gate, proof, publicInputs, expectedM, expectedKpub, expectedCommitment, expectedCr,
 }) {
     // (1) Structural parse + cross-checks first (cheap; reject before the wasm
     //     verifier). A mismatch here means the proof — even if internally valid —
@@ -376,6 +403,15 @@ export async function verifyNullifierProof({
             ok: false,
             code: "NullifierMismatchedCommitment",
             detail: "nullifier proof commitment does not equal the registered commitment",
+        };
+    }
+    // (d) the proof's C_r == the enroll proof's C_r (binds the SAME blind r
+    //     across the two proofs -> F2).
+    if (p.cr !== expectedCr) {
+        return {
+            ok: false,
+            code: "NullifierMismatchedCr",
+            detail: "nullifier proof C_r does not equal the enroll proof C_r",
         };
     }
 
