@@ -36,9 +36,14 @@ z_i  = t_i + c_i·k_i   (mod N)
 ## 5. Library additions (`grumpkin_voprf`)
 
 - `dleq::verify_dleq_share(kpub_i, m, b_i, epoch, c_lo,c_hi,z_lo,z_hi)` — the §4 per-share DLEQ verify against the **pinned GEN** (F1), with `epoch` in the transcript and the C-1 limb binding (carried over). (A thin epoch-aware variant of `verify_dleq`.)
-- `oprf::oprf_nullify_threshold` — the t-of-n register entry point (the §6 body). Verifies the t per-share DLEQs, computes the Lagrange combine **in-circuit**, asserts distinct indices, unblinds, and applies the F2 `C_r` + `r·N==Y` binding. Keeps `oprf_nullify_bound` (single-key) for reference/other consumers.
+- `oprf::oprf_nullify_threshold` — the t-of-n register entry point (the §6 body). Verifies the t per-share DLEQs, applies the **pinned per-subset Lagrange combine**, asserts distinct/canonical indices, unblinds, and applies the F2 `C_r` + `r·N==Y` binding. Keeps `oprf_nullify_bound` (single-key) for reference/other consumers.
 
-Lagrange coefficients `λ_i = Π_{j≠i} (−idx_j)/(idx_i − idx_j) (mod N)` are computed **in-circuit** — `N` is the Grumpkin scalar order = the **BN254 base field = Noir's native field**, so this is native field arithmetic (cheap), not non-native.
+**Lagrange coefficients — pinned per-subset constants (NOT computed in-circuit).** CRITICAL FIELD NOTE: Noir's native `Field` is the **BN254 scalar field = Grumpkin's BASE field = lib `P`**, whereas an `EmbeddedCurveScalar` (what scales a point) is interpreted **mod the Grumpkin group order `N`** (= BN254 base field). `P ≠ N`. So a Lagrange coefficient `λ_i = Π_{j≠i}(−idx_j)/(idx_i−idx_j) (mod N)` CANNOT be computed in Noir's native field (native `−1` is `P−1`, but the MSM scalar `−1` is `N−1`; `P−1 ≠ N−1`). Computing λ in-circuit would require a non-native mod-`N` gadget (the very thing the F2 design avoided).
+  Since **t=2, n=3** there are exactly **3 responder subsets** and λ depends ONLY on the public indices (no witness freedom), so we **pin the 3 coefficient pairs as canonical mod-`N` `Scalar{lo,hi}` constants** and select the correct pair from `(idx1,idx2)` in-circuit:
+  - `{1,2} → (λ1=2,        λ2=N−1)`
+  - `{1,3} → (λ1=3·2⁻¹,    λ2=N−2⁻¹)`  (mod N)
+  - `{2,3} → (λ1=3,        λ2=N−2)`
+  Require `idx1 < idx2` (canonical order) + both ∈ {1,2,3} + distinct; map the pair to its pinned `(λ1,λ2)` via in-circuit equality selection. Sound (constants, no freedom), cheap (no non-native arithmetic, no bignum dep), and complete for 2-of-3. (Generalizing to arbitrary t/n would need a mod-`N` bignum gadget — out of scope.)
 
 ## 6. Threshold nullifier circuit (`oprf_nullifier`, compiled for t=2)
 
@@ -61,8 +66,9 @@ fn main(
     // 2. per-share DLEQs vs pinned GEN, epoch-bound (F1 + C-1 + session)
     verify_dleq_share(Kpub_1, M, B_1, epoch, c1..);
     verify_dleq_share(Kpub_2, M, B_2, epoch, c2..);
-    // 3. Lagrange combine IN-CIRCUIT: lambda_i from idx (native field), Y = sum lambda_i*B_i
-    let (l1, l2) = lagrange2(idx1, idx2);
+    // 3. Lagrange combine via PINNED per-subset constants (mod N), selected by idx.
+    //    assert idx1<idx2, both in {1,2,3}; pick (lambda1,lambda2) Scalar consts for the pair.
+    let (l1, l2) = select_lagrange_2of3(idx1, idx2);   // pinned mod-N Scalar constants
     let Y = msm([B_1, B_2], [l1, l2]);
     // 4. unblind + F2 binding (C_r + r*N==Y), is_infinite guards, nullifier
     //    (reuses oprf_nullify_bound's tail, with Y now the in-circuit combined point)
