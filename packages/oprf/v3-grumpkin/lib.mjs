@@ -2,7 +2,7 @@
 // Promoted from the validated PoCs. Curve == Noir's embedded curve exactly
 // (Grumpkin y^2=x^3-17, generator x=1, y=sqrt(-16)), so JS points and Noir
 // embedded_curve_ops interoperate. Adds SvdW *hint* generation so we can feed
-// a real witness to the oprf_commitment Noir circuit.
+// a real witness to the grumpkin_voprf hash-to-curve (h2c) Noir circuits.
 
 import { weierstrassPoints } from "@noble/curves/abstract/weierstrass";
 import { Field } from "@noble/curves/abstract/modular";
@@ -131,6 +131,13 @@ async function pedersenHashFields(fields) {
 // c is the pedersen output (a base-field element < P < N) used directly as the
 // challenge scalar -- identical value feeds both z and the circuit's MSM.
 export async function dleqProve(k, Kpub, Mpoint, Ypoint, t) {
+    return dleqProveBase(G, k, Kpub, Mpoint, Ypoint, t);
+}
+
+// Like dleqProve but over an ARBITRARY base point `base` (the canonical
+// generator for honest proofs; an attacker-chosen G' for the F1 forgery probe).
+// Transcript uses `base` in slot 0 exactly as the circuit reads gx,gy.
+export async function dleqProveBase(base, k, Kpub, Mpoint, Ypoint, t) {
     // t: random nonce in [1, N). Caller may pass one (tests); else generated here.
     if (t === undefined) {
         t = (bytesToNumberBE(sha256(concatBytes(
@@ -139,9 +146,9 @@ export async function dleqProve(k, Kpub, Mpoint, Ypoint, t) {
             Ypoint.toRawBytes(true),
         ))) % (N - 1n)) + 1n;
     }
-    const a1 = G.multiply(Fn.create(t));
+    const a1 = base.multiply(Fn.create(t));
     const a2 = Mpoint.multiply(Fn.create(t));
-    const Ga = G.toAffine();
+    const Ga = base.toAffine();
     const Ka = Kpub.toAffine();
     const Ma = Mpoint.toAffine();
     const Ya = Ypoint.toAffine();
@@ -153,4 +160,68 @@ export async function dleqProve(k, Kpub, Mpoint, Ypoint, t) {
     // z = t + c*k mod N.
     const z = Fn.add(Fn.create(t), Fn.mul(Fn.create(c), Fn.create(k)));
     return { c, z };
+}
+
+// ---- threshold: per-share, epoch-bound Chaum-Pedersen DLEQ ----
+// dleqProveShare proves B_i = k_i*M vs Kpub_i = k_i*GEN for one threshold share,
+// with the session `epoch` appended to the transcript. The transcript order and
+// contents MUST mirror grumpkin_voprf::dleq::verify_dleq_share BYTE-FOR-BYTE:
+//   c = pedersen([GEN.x, GEN.y, Kpub_i.x, Kpub_i.y, M.x, M.y, B_i.x, B_i.y,
+//                 a1.x, a1.y, a2.x, a2.y, epoch])   // 13 elements, epoch LAST
+//   a1 = t_i*GEN, a2 = t_i*M, z = t_i + c*k_i (mod N)
+// `epoch` is a Field (bigint). t_i is the DLEQ nonce (caller passes one in tests;
+// else derived). Returns { c, z } as bigints.
+export async function dleqProveShare(Kpub_i, k_i, Mpoint, B_i, epoch, t_i) {
+    if (t_i === undefined) {
+        t_i = (bytesToNumberBE(sha256(concatBytes(
+            i2osp(Fn.create(k_i), 32),
+            Mpoint.toRawBytes(true),
+            B_i.toRawBytes(true),
+            i2osp(Fp.create(epoch), 32),
+        ))) % (N - 1n)) + 1n;
+    }
+    const a1 = G.multiply(Fn.create(t_i));
+    const a2 = Mpoint.multiply(Fn.create(t_i));
+    const Ga = G.toAffine();
+    const Ka = Kpub_i.toAffine();
+    const Ma = Mpoint.toAffine();
+    const Ba = B_i.toAffine();
+    const a1a = a1.toAffine();
+    const a2a = a2.toAffine();
+    const c = await pedersenHashFields([
+        Ga.x, Ga.y, Ka.x, Ka.y, Ma.x, Ma.y, Ba.x, Ba.y, a1a.x, a1a.y, a2a.x, a2a.y, epoch,
+    ]);
+    const z = Fn.add(Fn.create(t_i), Fn.mul(Fn.create(c), Fn.create(k_i)));
+    return { c, z };
+}
+
+// Recompute-and-check the per-share DLEQ (client/service side; mirrors the
+// circuit's verify_dleq_share). Returns true iff (c,z) is a valid proof that
+// B_i = k_i*M for Kpub_i = k_i*GEN under this epoch. a1 = z*GEN - c*Kpub_i,
+// a2 = z*M - c*B_i, then c must equal the 13-element epoch-bound transcript hash.
+export async function verifyDleqShare(Kpub_i, Mpoint, B_i, epoch, { c, z }) {
+    const zc = Fn.create(z), cc = Fn.create(c);
+    const a1 = G.multiply(zc).add(Kpub_i.multiply(cc).negate());
+    const a2 = Mpoint.multiply(zc).add(B_i.multiply(cc).negate());
+    const Ga = G.toAffine(), Ka = Kpub_i.toAffine(), Ma = Mpoint.toAffine(), Ba = B_i.toAffine();
+    const a1a = a1.toAffine(), a2a = a2.toAffine();
+    const cExpected = await pedersenHashFields([
+        Ga.x, Ga.y, Ka.x, Ka.y, Ma.x, Ma.y, Ba.x, Ba.y, a1a.x, a1a.y, a2a.x, a2a.y, epoch,
+    ]);
+    return Fp.create(cExpected) === Fp.create(c);
+}
+
+// ---- cross-proof shared-r commitment (F2) ----
+// Domain-separation tag for commit_r: ASCII "CRISP-QES-V3-Cr". MUST match the
+// grumpkin_voprf params CR_DOMAIN byte-for-byte (lib-noir/.../src/oprf.nr), or
+// the JS-computed C_r won't match the circuit's commit_r(r) and the register
+// proof's cross-proof binding will reject.
+export const CR_DOMAIN = 0x43524953502d5145532d56332d4372n;
+
+// commit_r(r) = pedersen([CR_DOMAIN, r_lo, r_hi]). Mirrors
+// grumpkin_voprf::oprf::commit_r exactly (same domain prefix + 128-bit limb
+// split + Noir-compatible pedersen). `r` may be a bigint scalar or {lo,hi}.
+export async function commitR(r) {
+    const { lo, hi } = typeof r === "bigint" ? scalarLimbs(r) : r;
+    return pedersenHashFields([CR_DOMAIN, lo, hi]);
 }

@@ -20,15 +20,17 @@
 import Fastify from "fastify";
 import fastifyCors from "@fastify/cors";
 
-import { OprfNode, pointFromHex } from "./oprf-node.mjs";
+import { makeNodes, pointFromHex, N } from "./oprf-node.mjs";
 import {
     createGate,
     verifyEnrollCommitProof,
-    verifyNullifierProof,
+    verifyThresholdNullifierProof,
     extractMFromPublicInputs,
     extractDigestFromPublicInputs,
+    extractCrFromEnroll,
     OPRF_NULLIFIER_JSON,
 } from "./proof-gate.mjs";
+import { sha256 } from "@noble/hashes/sha2";
 import { expectedDigestLimbs } from "./challenge.mjs";
 import { Attester } from "./attester.mjs";
 import { MerkleIndex, TREE_DEPTH, GENESIS_ROOT, bigintToHex32 } from "./merkle.mjs";
@@ -177,10 +179,43 @@ export function resolveAttesterKey(env = process.env) {
     return `0x${k.toString(16).padStart(64, "0")}`;
 }
 
+/**
+ * Resolve the threshold keygen SEED from env V3_THRESHOLD_SEED (hex or decimal).
+ * The seed deterministically derives the 2-of-3 share set, so the published Kpub
+ * set + k' (hence the deterministic nullifier + recovery) are STABLE across
+ * restarts. REQUIRED in production -- fail closed if absent, exactly like the
+ * attester key. Outside production a labeled deterministic dev seed is used so
+ * tests / local runs are stable without a secret (its k' is NOT a production
+ * key). The seed is a SECRET: returned as a bigint, NEVER logged.
+ *
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {bigint} keygen seed.
+ */
+export function resolveThresholdSeed(env = process.env) {
+    const raw = env.V3_THRESHOLD_SEED;
+    if (raw) {
+        const s = raw.trim();
+        const v = /^0x[0-9a-fA-F]+$/.test(s) ? BigInt(s)
+            : /^[0-9]+$/.test(s) ? BigInt(s)
+            : null;
+        if (v === null || v === 0n) {
+            throw new Error("V3_THRESHOLD_SEED must be a nonzero hex (0x..) or decimal integer");
+        }
+        return v;
+    }
+    if (env.NODE_ENV === "production") {
+        throw new Error("[oprf-v3] V3_THRESHOLD_SEED is required in production");
+    }
+    // eslint-disable-next-line no-console
+    console.warn("[oprf-v3] V3_THRESHOLD_SEED not set — using a deterministic dev seed (NOT a production key set)");
+    // Labeled dev-only seed (NOT a production secret), matching the dev-attester
+    // labeling style. Stable across restarts so local recovery works.
+    return BigInt("0x" + Buffer.from("crisp-qes-v3-grumpkin-dev-threshold-seed").toString("hex"));
+}
+
 // — App builder (exported so the roundtrip test can run it in-process) ────────
 
 export async function buildApp(opts = {}) {
-    const node = opts.node ?? new OprfNode(opts.k ?? defaultDevKey());
     const corsOrigins = opts.corsAllowedOrigins ?? ["*"];
     const allowAll = corsOrigins.includes("*");
 
@@ -223,6 +258,36 @@ export async function buildApp(opts = {}) {
     const chainId = opts.chainId ?? DEFAULT_CHAIN_ID;
     const enrollmentRegistry = opts.enrollmentRegistry ?? DEFAULT_ENROLLMENT_REGISTRY;
     const enrollEpoch = process.env.OPRF_ENROLLMENT_EPOCH_V3 ?? "v3-2026";
+
+    // — Threshold (2-of-3) OPRF node set ─────────────────────────────────────
+    // Replaces the single-key OprfNode: the group key k' is Shamir-shared across
+    // 3 ShareNodes (any 2 evaluate). k' is NEVER assembled at any node (the F4
+    // design). For the co-hosted DEMO all 3 nodes run in THIS process, SEEDED
+    // from one secret (V3_THRESHOLD_SEED) so the published Kpub set + k' are
+    // STABLE across restarts -- the deterministic nullifier (and recovery /
+    // in-flight enrollments) survives reboots. CAVEAT: a real independent-
+    // operator deployment would have EACH node hold its OWN share (no shared
+    // seed) and run its own gated blind-eval; the single-seed demo trades that
+    // independence for restart-stability, and F4 is only mitigated when >=2 nodes
+    // are independently operated (an operational property, not a code one).
+    // Tests may inject a prebuilt set via opts.nodeSet, or a seed via opts.seed.
+    const { nodes, published } =
+        opts.nodeSet ?? makeNodes(opts.n ?? 3, opts.t ?? 2, { seed: opts.seed ?? resolveThresholdSeed() });
+    // The published Kpub set as {x,y} bigints in index order 1,2,3 -- the
+    // canonical set the register cross-check (e) pins by value.
+    const publishedKpubSet = published.map((p) => {
+        const a = pointFromHex(p.Kpub_i).toAffine();
+        return { x: a.x, y: a.y };
+    });
+    // The DEFAULT t=2 responders for the co-hosted demo (any 2 of 3; nodes 1,2).
+    const responderNodes = [nodes[0], nodes[1]];
+    // Threshold per-share DLEQ epoch (a Field/bigint) -- bound into every
+    // partial's transcript and pinned by the register check (f). Derived
+    // deterministically from the string enrollEpoch so blind-eval and register
+    // agree, and rotating enrollEpoch rotates the threshold session.
+    const thresholdEpoch =
+        BigInt("0x" + Buffer.from(sha256(new TextEncoder().encode(`v3-threshold-epoch:${enrollEpoch}`))).toString("hex")) % N;
+
     const attester = new Attester(opts.attesterKey ?? resolveAttesterKey());
     // The attester address is whatever V3_ATTESTER_KEY derives to (the registry
     // attester was rotated; no address is hardcoded). In production assert only
@@ -293,7 +358,7 @@ export async function buildApp(opts = {}) {
     }
 
     // Reconstruct the v3 challenge from the PUBLIC M + intent + epoch, sha256 it,
-    // and require it equals the digest the enroll proof bound (public words 14/15).
+    // and require it equals the digest the enroll proof bound (public words 11/12).
     // Stateless + operator-blind: we never see the cert, only M (which we have).
     function challengeDigestOk(Mhex, publicInputs) {
         let bound, expected;
@@ -321,10 +386,16 @@ export async function buildApp(opts = {}) {
         return {
             ok: true,
             suite: "grumpkin-SHA256-SvdW",
-            mode: "VOPRF v3 (build, unaudited — single node, proof-gating ENFORCED)",
+            mode: "VOPRF v3 (build, unaudited — 2-of-3 threshold, proof-gating ENFORCED)",
             curve: "Grumpkin (y^2 = x^3 - 17)",
             wireFormat: "point = 0x{x:32B BE}{y:32B BE}; scalar = decimal bigint",
-            Kpub: node.publicKeyHex(),
+            // Published 2-of-3 Kpub set (the canonical node keys). k' (the group
+            // key) is never assembled at any node. The set is SEED-DERIVED (from
+            // V3_THRESHOLD_SEED) so it is stable across restarts; the seed itself
+            // is a secret and is never exposed here.
+            keySet: "seed-derived (stable across restarts)",
+            publishedKpubSet: published.map((p) => ({ i: p.i.toString(), Kpub_i: p.Kpub_i })),
+            thresholdEpoch: thresholdEpoch.toString(),
             proofGating: gateError
                 ? `unavailable (gate init failed: ${gateError}) — failing closed`
                 : "enforced (in-process bb.js verify of enroll_commit_v2 proof + M-binding)",
@@ -409,25 +480,37 @@ export async function buildApp(opts = {}) {
         }
         req.log.info("v3 blind-eval proof accepted");
 
-        // — BlindEvaluate + DLEQ ─────────────────────────────────────────
-        let out;
+        // — Threshold blind-evaluate: t=2 responders' partials ────────────
+        // Each responder ShareNode returns B_i = k_i*M + a per-share epoch-bound
+        // DLEQ (proving B_i = k_i*M vs its published Kpub_i). The client verifies
+        // each DLEQ, combines Y = sum lambda_i*B_i locally for its commitment, and
+        // carries the partials into the threshold nullifier proof for in-circuit
+        // re-verification. DEMO NOTE: with INDEPENDENT operators, each node would
+        // run its OWN gated /v3/blind-eval; the co-hosted demo gates ONCE (this
+        // enroll-proof check) and evaluates the 2 responders in-process.
+        let partials;
         try {
-            out = await node.evaluate(M);
+            partials = await Promise.all(
+                responderNodes.map((sn) => sn.evaluate(M, thresholdEpoch)),
+            );
         } catch (e) {
-            req.log.error({ err: e.message }, "evaluate failed");
-            return reply
-                .code(500)
-                .send({ error: "EvalError", detail: e.message });
+            req.log.error({ err: e.message }, "threshold evaluate failed");
+            return reply.code(500).send({ error: "EvalError", detail: e.message });
         }
 
-        // Wire shape: { Y: pointHex, dleq: { c, z }, Kpub: pointHex }.
-        // c and z are group-order scalars (< N) sent as decimal strings to
-        // avoid any BigInt->JSON precision loss; the client re-parses with
-        // BigInt(). Echo proofAccepted so clients see the gating posture.
+        // Wire shape: { partials: [{ i, B_i, dleq:{c,z}, Kpub_i }], epoch,
+        // publishedKpubSet }. c/z are group-order scalars (< N) sent as decimal
+        // strings to avoid BigInt->JSON precision loss; the client re-parses with
+        // BigInt(). epoch is the threshold session tag (decimal).
         return reply.code(200).send({
-            Y: out.Y,
-            dleq: { c: out.dleq.c.toString(), z: out.dleq.z.toString() },
-            Kpub: out.Kpub,
+            partials: partials.map((p) => ({
+                i: p.i.toString(),
+                B_i: p.B_i,
+                dleq: { c: p.dleq.c.toString(), z: p.dleq.z.toString() },
+                Kpub_i: p.Kpub_i,
+            })),
+            epoch: thresholdEpoch.toString(),
+            publishedKpubSet: published.map((p) => ({ i: p.i.toString(), Kpub_i: p.Kpub_i })),
             proofAccepted: "verified (in-process bb.js verify + M-binding)",
         });
     });
@@ -438,19 +521,25 @@ export async function buildApp(opts = {}) {
     // chaining them:  commitment -> N -> Y -> M -> cert.
     //
     //   1. enroll_commit_v2 proof  — verifies + binds M <-> a valid age>=18 cert
-    //      (public output M at enrollPublicInputs[12],[13]).
-    //   2. oprf_nullifier proof    — verifies the in-circuit DLEQ (Y = k*M for
-    //      Kpub = k*G), unblinds N = rinv*Y bound to r via r*N == Y, and RETURNS
-    //      commitment = pedersen([N.x, N.y]) as its public output.
+    //      (public output M at enrollPublicInputs[8],[9]; C_r at [10]).
+    //   2. THRESHOLD oprf_nullifier proof — self-attests the 2-of-3 evaluation:
+    //      per-share epoch-bound DLEQs vs the PINNED GEN, idx->Kpub selection from
+    //      the published set, the pinned mod-N Lagrange combine (Y in-circuit), and
+    //      the F2 binding (commit_r(r) == C_r + r*N == Y). RETURNS the nullifier =
+    //      pedersen([N.x, N.y]).
     //
-    //   CROSS-CHECKS (verifyNullifierProof):
-    //     (a) nullifier.M  == enroll.M                  (chains M -> cert)
-    //     (b) nullifier.Kpub == THIS node's Kpub        (Y under our k)
+    //   CROSS-CHECKS (verifyThresholdNullifierProof) — the service pins only:
+    //     (a) nullifier.M     == enroll.M               (chains M -> cert; HARD)
     //     (c) nullifier.commitment == submitted commitment
+    //     (d) nullifier.C_r   == enroll.C_r             (same blind r across proofs)
+    //     (e) nullifier.{Kpub1,Kpub2,Kpub3} == the canonical PUBLISHED Kpub set
+    //     (f) nullifier.epoch == the current threshold epoch (session binding)
+    //   (b) is GONE: there is no single node Kpub; the published-set check (e) +
+    //   the in-circuit idx->Kpub selection bind the responders to the canonical set.
     //
     // Only when BOTH proofs verify AND all cross-checks hold do we append the
     // leaf and attester-sign. A client can no longer register an arbitrary
-    // commitment: it must be exactly pedersen(rinv*(k*M)) for the cert-bound M.
+    // commitment: it must be exactly pedersen(k'*H2C(id)) for the cert-bound M.
     app.post("/v3/register", async (req, reply) => {
         const parsed = validateRegisterBody(req.body);
         if (!parsed.ok) {
@@ -508,24 +597,37 @@ export async function buildApp(opts = {}) {
         }
 
         // bind the registered leaf to the live-signed challenge as well.
-        const exHex = enrollPublicInputs[12].replace(/^0x/, "").padStart(64, "0");
-        const eyHex = enrollPublicInputs[13].replace(/^0x/, "").padStart(64, "0");
+        // M.x/M.y are the enroll proof's first two public-output words [8],[9].
+        const exHex = enrollPublicInputs[8].replace(/^0x/, "").padStart(64, "0");
+        const eyHex = enrollPublicInputs[9].replace(/^0x/, "").padStart(64, "0");
         if (!challengeDigestOk(`0x${exHex}${eyHex}`, enrollPublicInputs)) {
             return reply.code(409).send({ error: "ChallengeMismatch", detail: "enroll proof challenge digest mismatch" });
         }
 
-        // — (2) Verify the nullifier proof + enforce the binding cross-checks ─
-        // Bind nullifier.M to the enroll proof's M, nullifier.Kpub to THIS
-        // node's Kpub, and nullifier.commitment to the submitted commitment.
-        const Kaff = node.Kpub.toAffine();
+        // C_r the enroll proof published (public word [10]); the nullifier proof
+        // must re-assert commit_r(its r) == this value (cross-check (d), F2).
+        let enrollCr;
+        try {
+            enrollCr = extractCrFromEnroll(enrollPublicInputs);
+        } catch (e) {
+            return reply.code(400).send({ error: "MalformedProof", detail: e.message });
+        }
+
+        // — (2) Verify the THRESHOLD nullifier proof + binding cross-checks ──
+        // Pin nullifier.M to the enroll proof's M, nullifier.C_r to the enroll
+        // C_r, the proof's 3-Kpub set to the canonical published set, the epoch to
+        // the current threshold epoch, and the nullifier to the submitted
+        // commitment. The proof self-attests the per-share DLEQs + Lagrange combine.
         let nullifierResult;
         try {
-            nullifierResult = await verifyNullifierProof({
+            nullifierResult = await verifyThresholdNullifierProof({
                 gate: nullifierGate,
                 proof: nullifierProof,
                 publicInputs: nullifierPublicInputs,
                 expectedM: enrollM,
-                expectedKpub: { x: Kaff.x, y: Kaff.y },
+                publishedKpubSet,
+                expectedEpoch: thresholdEpoch,
+                expectedCr: enrollCr,
                 expectedCommitment: BigInt(commitment),
             });
         } catch (e) {
@@ -637,48 +739,8 @@ export async function buildApp(opts = {}) {
     return app;
 }
 
-// Grumpkin group order (re-exported from oprf-node.mjs as N).
-const GRUMPKIN_N =
-    21888242871839275222246405745257275088696311157297823662689037894645226208583n;
-
-// Deterministic dev key — explicitly NOT a production secret. Matches the
-// labeling style of gen-nullifier-witness.mjs's `det()` helper. Used only when
-// GRUMPKIN_OPRF_KEY is unset outside production.
-function defaultDevKey() {
-    const label = "crisp-qes-v3-grumpkin-dev-node-k";
-    const raw = BigInt("0x" + Buffer.from(label).toString("hex"));
-    // Reduce into [1, N).
-    return (raw % (GRUMPKIN_N - 1n)) + 1n;
-}
-
-/**
- * Resolve the node secret scalar k from the GRUMPKIN_OPRF_KEY env var (32-byte
- * big-endian hex, 0x-optional), reduced into [1, N). Required in production;
- * outside production a labeled deterministic dev key is used. Mirrors v2's
- * OPRF_KEY handling in packages/oprf/src/config.ts.
- *
- * @param {NodeJS.ProcessEnv} [env]
- * @returns {bigint}
- */
-export function resolveNodeKey(env = process.env) {
-    const isProd = env.NODE_ENV === "production";
-    const raw = env.GRUMPKIN_OPRF_KEY;
-    if (raw) {
-        const h = raw.startsWith("0x") || raw.startsWith("0X") ? raw.slice(2) : raw;
-        if (!/^[0-9a-fA-F]{64}$/.test(h)) {
-            throw new Error("GRUMPKIN_OPRF_KEY must be 32-byte hex (64 hex chars)");
-        }
-        const k = BigInt("0x" + h) % GRUMPKIN_N;
-        if (k === 0n) throw new Error("GRUMPKIN_OPRF_KEY reduces to 0 mod N");
-        return k;
-    }
-    if (isProd) {
-        throw new Error("[oprf-v3] GRUMPKIN_OPRF_KEY is required in production");
-    }
-    // eslint-disable-next-line no-console
-    console.warn("[oprf-v3] GRUMPKIN_OPRF_KEY not set — using deterministic dev key");
-    return defaultDevKey();
-}
+// (The legacy single-key node-key resolver was removed: the deployed service is
+// the 2-of-3 threshold set, keyed by V3_THRESHOLD_SEED via resolveThresholdSeed.)
 
 // — CLI entrypoint: `node server.mjs` ────────────────────────────────────────
 const isMain =
@@ -691,8 +753,8 @@ if (isMain) {
     // default to loopback for local dev. Override with HOST.
     const host = process.env.HOST ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
     const app = await buildApp({
-        k: resolveNodeKey(),
         attesterKey: resolveAttesterKey(),
+        seed: resolveThresholdSeed(),
         logger: { level: "info" },
     });
     await app.listen({ port, host });

@@ -13,5 +13,4 @@ threshold
 
 # Other circuits' build outputs are not needed (only enroll_commit_v2/target is).
 circuits/qes_frontend/target
-circuits/oprf_commitment/target
 circuits/enroll_commit/target

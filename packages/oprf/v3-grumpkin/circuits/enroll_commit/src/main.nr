@@ -1,8 +1,10 @@
 // enroll_commit circuit (v3 Grumpkin OPRF, operator-blind enrollment; build/unaudited).
 //
+// SUPERSEDED by enroll_commit_v2 (kept for reference; not deployed).
 // FUSED circuit: combines qes_frontend (P-256 cert verify + DER RNOKPP extract +
-// age >= 18) with oprf_commitment (M = r * H2C(RNOKPP) via SvdW + scalar-mul)
-// into ONE proof. Given a (synthetic) Diia-style P-256 cert and a private
+// age >= 18) with the blinded hash-to-curve commitment (M = r * H2C(RNOKPP) via
+// SvdW + scalar-mul) into ONE proof. Given a (synthetic) Diia-style P-256 cert
+// and a private
 // blinding scalar r, this proves in-circuit:
 //   (1) ECDSA-P256 signature over signedAttrs verifies (stdlib blackbox).
 //   (2) the RNOKPP (10 ASCII digits) is extracted from the cert DER behind
@@ -43,7 +45,8 @@ global ZETA: Field = 5;
 global BCURVE: Field = -17;
 global SVDW_Z: Field = 1;
 
-// --- SvdW hash-to-curve (mirrors oprf_commitment) ---
+// --- SvdW hash-to-curve (legacy inline copy; the canonical pinned version is
+//     grumpkin_voprf::h2c) ---
 fn g(x: Field) -> Field {
     x * x * x + BCURVE
 }

@@ -20,15 +20,19 @@
 //       (2) call backend.verifyProof({ proof, publicInputs }) in-process.
 //     BOTH must hold, else the request is rejected (4xx) and NOT evaluated.
 //
-// PUBLIC INPUTS LAYOUT (enroll_commit_v2, 16 field words of 32 bytes BE):
+// PUBLIC INPUTS LAYOUT (enroll_commit_v2, 13 field words of 32 bytes BE):
 //   [0..8)  today[8]  (ASCII bytes of YYYYMMDD)
-//   [8..12) c1,c2,c3,c4  (SvdW suite constants)
-//   [12]    M.x        <- the circuit's first public return value
-//   [13]    M.y        <- the circuit's second public return value
-//   [14]    digest_hi  <- signedAttrs messageDigest, high 16 bytes
-//   [15]    digest_lo  <- signedAttrs messageDigest, low 16 bytes
-// So M = (publicInputs[12], publicInputs[13]) and the bound messageDigest =
-// digest_hi*2^128 + digest_lo = (publicInputs[14], publicInputs[15]).
+//   [8]     M.x        <- the circuit's first public return value
+//   [9]     M.y        <- the circuit's second public return value
+//   [10]    C_r        <- commit_r(r) = pedersen([CR_DOMAIN, r_lo, r_hi]); the
+//                         cross-proof shared-r binding (F2). The oprf_nullifier
+//                         register proof re-asserts commit_r(its r) == this C_r.
+//   [11]    digest_hi  <- signedAttrs messageDigest, high 16 bytes
+//   [12]    digest_lo  <- signedAttrs messageDigest, low 16 bytes
+// So M = (publicInputs[8], publicInputs[9]), C_r = publicInputs[10], and the
+// bound messageDigest = digest_hi*2^128 + digest_lo = (publicInputs[11],[12]).
+// (The SvdW suite constants c1..c4 are no longer public inputs -- they are pinned
+// inside grumpkin_voprf, F3.)
 
 import { readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
@@ -54,7 +58,7 @@ export const ENROLL_COMMIT_V2_JSON = join(
 
 // Path to the committed oprf_nullifier circuit artifact. Its proof binds the
 // post-blind-eval enrollment commitment to the same M the enroll proof commits
-// to, closing the Sybil-binding gap at /v3/register (see verifyNullifierProof).
+// to, closing the Sybil-binding gap at /v3/register (see verifyThresholdNullifierProof).
 export const OPRF_NULLIFIER_JSON = join(
     __dirname,
     "..",
@@ -66,31 +70,43 @@ export const OPRF_NULLIFIER_JSON = join(
 
 // Index of the M.x public-input word and total expected word count. Asserted
 // against the request so a circuit-shape change can't silently weaken the gate.
-export const M_X_WORD_INDEX = 12;
-// enroll_commit_v2 now returns (M.x, M.y, digest_hi, digest_lo); the two digest
+export const M_X_WORD_INDEX = 8;
+// C_r (cross-proof shared-r commitment) is the circuit's third return value.
+export const C_R_WORD_INDEX = 10;
+// enroll_commit_v2 returns (M.x, M.y, C_r, digest_hi, digest_lo); the two digest
 // limbs are the signedAttrs messageDigest the circuit bound to the signature.
-export const DIGEST_HI_WORD_INDEX = 14;
-export const DIGEST_LO_WORD_INDEX = 15;
-export const PUBLIC_INPUT_WORD_COUNT = 16;
+export const DIGEST_HI_WORD_INDEX = 11;
+export const DIGEST_LO_WORD_INDEX = 12;
+export const PUBLIC_INPUT_WORD_COUNT = 13;
 const FIELD_BYTES = 32;
 
-// — oprf_nullifier public-input layout (10 field words of 32 bytes BE) ─────────
+// — THRESHOLD oprf_nullifier public-input layout (13 field words of 32B BE) ─────
 // The circuit's `main` declares these public inputs IN ABI ORDER, then appends
-// its single public return value (the commitment) as the final word:
-//   [0] G.x    [1] G.y      (generator, == lib.mjs G; word [0] is the fixed 0x..01)
-//   [2] Kpub.x [3] Kpub.y   (node public key k*G — must equal THIS node's Kpub)
-//   [4] M.x    [5] M.y      (blinded element — must equal the enroll proof's M)
-//   [6] Y.x    [7] Y.y      (node response Y = k*M)
-//   [8] c_expected          (Fiat-Shamir DLEQ challenge)
-//   [9] commitment          (RETURN: pedersen([N.x, N.y]), N = rinv*Y)
-// All limbs (c,z,rinv,r) are PRIVATE, so they do not appear here.
-export const NULLIFIER_G_X_WORD_INDEX = 0;
-export const NULLIFIER_KPUB_X_WORD_INDEX = 2;
-export const NULLIFIER_M_X_WORD_INDEX = 4;
-export const NULLIFIER_Y_X_WORD_INDEX = 6;
-export const NULLIFIER_C_EXPECTED_WORD_INDEX = 8;
-export const NULLIFIER_COMMITMENT_WORD_INDEX = 9;
-export const NULLIFIER_PUBLIC_INPUT_WORD_COUNT = 10;
+// its single public return value (the nullifier) as the final word:
+//   [0]  M.x   [1]  M.y    (blinded element — must equal the enroll proof's M)
+//   [2]  kp1.x [3]  kp1.y  (PUBLISHED Kpub_1 — must be the canonical node-1 key)
+//   [4]  kp2.x [5]  kp2.y  (PUBLISHED Kpub_2)
+//   [6]  kp3.x [7]  kp3.y  (PUBLISHED Kpub_3)
+//   [8]  idx1  [9]  idx2   (the t=2 responder indices, distinct, in {1,2,3})
+//   [10] epoch             (session tag — must equal the current enrollEpoch)
+//   [11] c_r               (shared-r commitment — must equal the enroll proof's C_r)
+//   [12] nullifier         (RETURN: pedersen([N.x, N.y]), N = rinv*Y, Y combined)
+// PRIVATE (not here): the responder partials B_a/B_b, the two per-share DLEQ
+// limb sets, and r/rinv. Y is COMPUTED in-circuit (no free Y) so the proof
+// SELF-ATTESTS the t-of-n evaluation: per-share epoch-bound DLEQs vs the pinned
+// GEN (F1+C-1+session), idx->Kpub selection from the published set, and the
+// pinned mod-N Lagrange combine. The service only pins M / c_r / the published
+// Kpub set / epoch / the submitted commitment.
+export const THRESHOLD_NULLIFIER_M_X_WORD_INDEX = 0;
+export const THRESHOLD_NULLIFIER_KP1_X_WORD_INDEX = 2;
+export const THRESHOLD_NULLIFIER_KP2_X_WORD_INDEX = 4;
+export const THRESHOLD_NULLIFIER_KP3_X_WORD_INDEX = 6;
+export const THRESHOLD_NULLIFIER_IDX1_WORD_INDEX = 8;
+export const THRESHOLD_NULLIFIER_IDX2_WORD_INDEX = 9;
+export const THRESHOLD_NULLIFIER_EPOCH_WORD_INDEX = 10;
+export const THRESHOLD_NULLIFIER_C_R_WORD_INDEX = 11;
+export const THRESHOLD_NULLIFIER_COMMITMENT_WORD_INDEX = 12;
+export const THRESHOLD_NULLIFIER_WORD_COUNT = 13;
 
 // Threads for the bb.js wasm backend. Verification is light; 1 thread keeps the
 // container memory footprint predictable. Override via BB_THREADS if needed.
@@ -220,7 +236,7 @@ export function extractMFromPublicInputs(words) {
 }
 
 // Extract the messageDigest the proof bound (as a single 32-byte bigint) from
-// the enroll proof's public words [14],[15] (hi*2^128 + lo).
+// the enroll proof's public words [11],[12] (hi*2^128 + lo).
 export function extractDigestFromPublicInputs(words) {
     if (!Array.isArray(words) || words.length !== PUBLIC_INPUT_WORD_COUNT) {
         throw new Error(`publicInputs must have exactly ${PUBLIC_INPUT_WORD_COUNT} words`);
@@ -232,26 +248,43 @@ export function extractDigestFromPublicInputs(words) {
     };
 }
 
-// Extract the load-bearing public values from an oprf_nullifier proof's public
-// inputs: the points G, Kpub, M, Y (as {x,y} bigints) and the returned
-// commitment (= pedersen(N)) bigint. Used at /v3/register to cross-check the
-// nullifier proof against the enroll proof, this node's Kpub, and the submitted
-// commitment — closing the Sybil-binding gap.
-export function extractNullifierPublics(words) {
-    if (!Array.isArray(words) || words.length !== NULLIFIER_PUBLIC_INPUT_WORD_COUNT) {
+// Extract C_r (the cross-proof shared-r commitment) as a bigint from the enroll
+// proof's public word [10]. Passed into verifyThresholdNullifierProof as expectedCr so
+// the register proof's commit_r(r) must equal it (binds the same blind r across
+// the two proofs -> F2).
+export function extractCrFromEnroll(words) {
+    if (!Array.isArray(words) || words.length !== PUBLIC_INPUT_WORD_COUNT) {
+        throw new Error(`publicInputs must have exactly ${PUBLIC_INPUT_WORD_COUNT} words`);
+    }
+    return BigInt("0x" + wordToBE32(words[C_R_WORD_INDEX]).toString("hex"));
+}
+
+// Extract the load-bearing public values from a THRESHOLD oprf_nullifier proof's
+// public inputs: M, the published 3-node Kpub set (Kpub1/2/3 as {x,y} bigints),
+// the responder indices idx1/idx2, the session epoch, the cross-proof commitment
+// c_r, and the returned nullifier (= pedersen(N)) bigint. Used at /v3/register to
+// cross-check the proof against the enroll proof (M and C_r), the canonical
+// published Kpub set, the current epoch, and the submitted commitment. The proof
+// self-attests the per-share DLEQs + idx->Kpub selection + Lagrange combine, so
+// the service pins ONLY these values (not Y, which is computed in-circuit).
+export function extractThresholdNullifierPublics(words) {
+    if (!Array.isArray(words) || words.length !== THRESHOLD_NULLIFIER_WORD_COUNT) {
         throw new Error(
-            `nullifier publicInputs must have exactly ${NULLIFIER_PUBLIC_INPUT_WORD_COUNT} words`,
+            `threshold nullifier publicInputs must have exactly ${THRESHOLD_NULLIFIER_WORD_COUNT} words`,
         );
     }
     const toBig = (w) => BigInt("0x" + wordToBE32(w).toString("hex"));
     const pt = (i) => ({ x: toBig(words[i]), y: toBig(words[i + 1]) });
     return {
-        G: pt(NULLIFIER_G_X_WORD_INDEX),
-        Kpub: pt(NULLIFIER_KPUB_X_WORD_INDEX),
-        M: pt(NULLIFIER_M_X_WORD_INDEX),
-        Y: pt(NULLIFIER_Y_X_WORD_INDEX),
-        cExpected: toBig(words[NULLIFIER_C_EXPECTED_WORD_INDEX]),
-        commitment: toBig(words[NULLIFIER_COMMITMENT_WORD_INDEX]),
+        M: pt(THRESHOLD_NULLIFIER_M_X_WORD_INDEX),
+        Kpub1: pt(THRESHOLD_NULLIFIER_KP1_X_WORD_INDEX),
+        Kpub2: pt(THRESHOLD_NULLIFIER_KP2_X_WORD_INDEX),
+        Kpub3: pt(THRESHOLD_NULLIFIER_KP3_X_WORD_INDEX),
+        idx1: toBig(words[THRESHOLD_NULLIFIER_IDX1_WORD_INDEX]),
+        idx2: toBig(words[THRESHOLD_NULLIFIER_IDX2_WORD_INDEX]),
+        epoch: toBig(words[THRESHOLD_NULLIFIER_EPOCH_WORD_INDEX]),
+        cr: toBig(words[THRESHOLD_NULLIFIER_C_R_WORD_INDEX]),
+        nullifier: toBig(words[THRESHOLD_NULLIFIER_COMMITMENT_WORD_INDEX]),
     };
 }
 
@@ -263,7 +296,7 @@ export function extractNullifierPublics(words) {
  * @param {object} args
  * @param {ProofGate} args.gate         in-process gate (from createGate()).
  * @param {string|Uint8Array} args.proof   the bb proof (0x-hex or bytes).
- * @param {Array<string|bigint>} args.publicInputs  the 14 public-input words.
+ * @param {Array<string|bigint>} args.publicInputs  the 13 public-input words.
  * @param {{x: bigint, y: bigint}} args.expectedM   M parsed from the request.
  * @returns {Promise<{ ok: true } | { ok: false, code: string, detail: string }>}
  */
@@ -313,48 +346,60 @@ export async function verifyEnrollCommitProof({ gate, proof, publicInputs, expec
 }
 
 /**
- * Verify a client's oprf_nullifier proof and enforce the cross-checks that bind
- * the enrollment commitment back to the certificate, closing the Sybil-binding
- * gap at /v3/register. The circuit ITSELF proves, in zero knowledge:
- *   commitment = pedersen(N),  N = rinv*Y,  r*N == Y (binds r),
- *   Y = k*M via an in-circuit Chaum-Pedersen DLEQ against Kpub=k*G.
- * On top of the cryptographic verification we require:
- *   (a) the proof's M  == the (already cert-bound) enroll proof's M,
- *   (b) the proof's Kpub == THIS node's Kpub (Y was evaluated under our k),
- *   (c) the proof's returned commitment == the commitment being registered.
- * Together these chain  commitment -> N -> Y -> M -> cert.
+ * Verify a client's THRESHOLD (2-of-3) oprf_nullifier proof and enforce the
+ * cross-checks that bind the enrollment commitment back to the certificate at
+ * /v3/register. The circuit ITSELF proves, in zero knowledge:
+ *   nullifier = pedersen(N),  N = rinv*Y,  r*N == Y (binds r),
+ *   commit_r(r) == c_r (binds r to the enroll proof's blind, F2),
+ *   for each of the t=2 responders: an epoch-bound per-share Chaum-Pedersen DLEQ
+ *     B_i = k_i*M vs the PUBLISHED Kpub_{idx_i} (idx->Kpub selected in-circuit
+ *     from the published set, against the PINNED GEN, F1+C-1+session), and
+ *   Y = Lagrange-combine(B_a, B_b) with PINNED mod-N coefficients (no free Y).
+ * So the proof SELF-ATTESTS the t-of-n evaluation; the service only pins:
+ *   (a) the proof's M   == the (cert-bound) enroll proof's M   [HARD: identity
+ *       binding; c_r binds r but NOT the identity, so this is non-skippable],
+ *   (d) the proof's c_r == the enroll proof's C_r (same blind r across proofs),
+ *   (e) the proof's {Kpub1,Kpub2,Kpub3} == the canonical PUBLISHED Kpub set,
+ *       by value in index order 1,2,3 (so a forged/foreign key set is rejected;
+ *       the in-circuit idx->Kpub selection then makes mislabeling impossible),
+ *   (f) the proof's epoch == the current enrollEpoch (the in-circuit binding
+ *       rejects a stale DLEQ; the service pins which epoch is live),
+ *   (c) the proof's nullifier == the commitment being registered.
  *
  * @param {object} args
  * @param {ProofGate} args.gate    in-process nullifier gate (createGate(OPRF_NULLIFIER_JSON)).
  * @param {string|Uint8Array} args.proof  the bb proof (0x-hex or bytes).
- * @param {Array<string|bigint>} args.publicInputs  the 10 nullifier public-input words.
- * @param {{x:bigint,y:bigint}} args.expectedM        M from the enroll proof.
- * @param {{x:bigint,y:bigint}} args.expectedKpub     this node's Kpub.
- * @param {bigint} args.expectedCommitment            the submitted commitment leaf.
+ * @param {Array<string|bigint>} args.publicInputs  the 13 threshold public-input words.
+ * @param {{x:bigint,y:bigint}} args.expectedM      M from the enroll proof.
+ * @param {Array<{x:bigint,y:bigint}>} args.publishedKpubSet  the canonical
+ *        3-node Kpub set for indices [1,2,3].
+ * @param {bigint} args.expectedEpoch               the current enrollEpoch.
+ * @param {bigint} args.expectedCr                  C_r from the enroll proof.
+ * @param {bigint} args.expectedCommitment          the submitted commitment leaf.
  * @returns {Promise<{ ok: true, publics: object } | { ok: false, code: string, detail: string }>}
  */
-export async function verifyNullifierProof({
-    gate, proof, publicInputs, expectedM, expectedKpub, expectedCommitment,
+export async function verifyThresholdNullifierProof({
+    gate, proof, publicInputs, expectedM, publishedKpubSet, expectedEpoch, expectedCr, expectedCommitment,
 }) {
     // (1) Structural parse + cross-checks first (cheap; reject before the wasm
     //     verifier). A mismatch here means the proof — even if internally valid —
-    //     does not bind THIS commitment / M / node, so it cannot admit.
+    //     does not bind THIS commitment / M / Kpub-set / epoch, so it cannot admit.
     let proofBytes, piWords, p;
     try {
         proofBytes = proofToBytes(proof);
         piWords = normalizePublicInputs(publicInputs);
-        p = extractNullifierPublics(publicInputs);
+        p = extractThresholdNullifierPublics(publicInputs);
     } catch (e) {
         return { ok: false, code: "MalformedProof", detail: e.message };
     }
-    if (piWords.length !== NULLIFIER_PUBLIC_INPUT_WORD_COUNT) {
+    if (piWords.length !== THRESHOLD_NULLIFIER_WORD_COUNT) {
         return {
             ok: false,
             code: "MalformedProof",
-            detail: `nullifier public_inputs must be ${NULLIFIER_PUBLIC_INPUT_WORD_COUNT} field words`,
+            detail: `threshold nullifier public_inputs must be ${THRESHOLD_NULLIFIER_WORD_COUNT} field words`,
         };
     }
-    // (a) same M as the enroll proof (chains M -> cert).
+    // (a) same M as the enroll proof (chains M -> cert). HARD identity binding.
     if (p.M.x !== expectedM.x || p.M.y !== expectedM.y) {
         return {
             ok: false,
@@ -362,16 +407,45 @@ export async function verifyNullifierProof({
             detail: "nullifier proof M does not equal the enroll proof M",
         };
     }
-    // (b) Y was evaluated under THIS node's k (Kpub binds k via the DLEQ).
-    if (p.Kpub.x !== expectedKpub.x || p.Kpub.y !== expectedKpub.y) {
+    // (d) the proof's C_r == the enroll proof's C_r (same blind r across proofs).
+    if (p.cr !== expectedCr) {
         return {
             ok: false,
-            code: "NullifierMismatchedKpub",
-            detail: "nullifier proof Kpub does not equal this node's Kpub",
+            code: "NullifierMismatchedCr",
+            detail: "nullifier proof C_r does not equal the enroll proof C_r",
         };
     }
-    // (c) the proof's returned commitment is exactly the one being registered.
-    if (p.commitment !== expectedCommitment) {
+    // (e) the proof's published Kpub set == the canonical set, BY VALUE in index
+    //     order 1,2,3. The in-circuit idx->Kpub selection then makes mislabeling
+    //     impossible; the service just pins WHICH 3 keys are the canonical nodes.
+    if (!Array.isArray(publishedKpubSet) || publishedKpubSet.length !== 3) {
+        return {
+            ok: false,
+            code: "MalformedConfig",
+            detail: "publishedKpubSet must be 3 points [Kpub1,Kpub2,Kpub3]",
+        };
+    }
+    const setOk =
+        p.Kpub1.x === publishedKpubSet[0].x && p.Kpub1.y === publishedKpubSet[0].y &&
+        p.Kpub2.x === publishedKpubSet[1].x && p.Kpub2.y === publishedKpubSet[1].y &&
+        p.Kpub3.x === publishedKpubSet[2].x && p.Kpub3.y === publishedKpubSet[2].y;
+    if (!setOk) {
+        return {
+            ok: false,
+            code: "NullifierMismatchedKpubSet",
+            detail: "nullifier proof Kpub set does not equal the canonical published set",
+        };
+    }
+    // (f) the proof's epoch == the current enrollEpoch (session binding).
+    if (p.epoch !== expectedEpoch) {
+        return {
+            ok: false,
+            code: "NullifierMismatchedEpoch",
+            detail: "nullifier proof epoch does not equal the current enrollEpoch",
+        };
+    }
+    // (c) the proof's returned nullifier is exactly the commitment being registered.
+    if (p.nullifier !== expectedCommitment) {
         return {
             ok: false,
             code: "NullifierMismatchedCommitment",

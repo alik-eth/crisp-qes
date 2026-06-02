@@ -264,3 +264,88 @@ export async function nullifierCommitment(Npt: Pt): Promise<bigint> {
     const a = Npt.toAffine();
     return pedersenHashFields([a.x, a.y]);
 }
+
+// Domain-separation tag for commit_r: ASCII "CRISP-QES-V3-Cr". MUST match the
+// grumpkin_voprf params CR_DOMAIN and lib.mjs CR_DOMAIN byte-for-byte.
+export const CR_DOMAIN = 0x43524953502d5145532d56332d4372n;
+
+// commit_r(r) = pedersen([CR_DOMAIN, r_lo, r_hi]). Mirrors
+// grumpkin_voprf::oprf::commit_r (and lib.mjs commitR) exactly: same domain
+// prefix + 128-bit limb split + Noir-compatible pedersen. This is the
+// cross-proof shared-r commitment (F2). In the deployed flow the enroll proof
+// PROVES this value (public output C_r); the client reads it from the enroll
+// proof's publicInputs rather than recomputing -- this helper is for fail-fast
+// sanity / tests.
+export async function commitR(r: bigint): Promise<bigint> {
+    const { lo, hi } = scalarLimbs(r);
+    return pedersenHashFields([CR_DOMAIN, lo, hi]);
+}
+
+// ---- threshold (2-of-3) client helpers (mirror lib.mjs / grumpkin_voprf) ----
+
+// Recompute-and-check a node's per-share epoch-bound DLEQ (client fail-fast;
+// mirrors grumpkin_voprf::dleq::verify_dleq_share). True iff (c,z) proves
+// B_i = k_i*M for Kpub_i = k_i*GEN under this epoch. The 13-element transcript
+// (epoch LAST) MUST match the circuit byte-for-byte:
+//   a1 = z*GEN - c*Kpub_i,  a2 = z*M - c*B_i
+//   c == pedersen([GEN.x,GEN.y, Kpub_i.x,Kpub_i.y, M.x,M.y, B_i.x,B_i.y,
+//                  a1.x,a1.y, a2.x,a2.y, epoch])
+export async function verifyPartialDleq(
+    Kpub_i: Pt,
+    Mpoint: Pt,
+    B_i: Pt,
+    epoch: bigint,
+    dleq: { c: bigint; z: bigint },
+): Promise<boolean> {
+    const zc = Fn.create(dleq.z);
+    const cc = Fn.create(dleq.c);
+    const a1 = G.multiply(zc).add(Kpub_i.multiply(cc).negate());
+    const a2 = Mpoint.multiply(zc).add(B_i.multiply(cc).negate());
+    const Ga = G.toAffine();
+    const Ka = Kpub_i.toAffine();
+    const Ma = Mpoint.toAffine();
+    const Ba = B_i.toAffine();
+    const a1a = a1.toAffine();
+    const a2a = a2.toAffine();
+    const cExpected = await pedersenHashFields([
+        Ga.x, Ga.y, Ka.x, Ka.y, Ma.x, Ma.y, Ba.x, Ba.y,
+        a1a.x, a1a.y, a2a.x, a2a.y, epoch,
+    ]);
+    return Fp.create(cExpected) === Fp.create(dleq.c);
+}
+
+// mod-N Lagrange coefficient lambda_i(0) for the index set `indices`:
+//   lambda_i = prod_{j != i} (-j)/(i - j)   (mod N)
+// MUST be computed mod N (the Grumpkin group order), NOT the native Fp field
+// (= BN254 scalar field), since these scale curve points. Used ONLY for the
+// local Y combine / commitment UX; the PROOF carries the shares + pinned coeffs.
+export function lagrangeCoeff(i: bigint, indices: bigint[]): bigint {
+    let num = 1n;
+    let den = 1n;
+    for (const j of indices) {
+        if (j === i) continue;
+        num = Fn.mul(num, Fn.neg(j)); // (0 - j)
+        den = Fn.mul(den, Fn.sub(i, j)); // (i - j)
+    }
+    return Fn.mul(num, Fn.inv(den));
+}
+
+// Lagrange-combine the responder partials into Y = sum lambda_i*B_i (mod N
+// coefficients). Distinct indices required. Client-side only (local commitment /
+// UX); the threshold nullifier PROOF re-verifies the combine in-circuit.
+export function combineThreshold(
+    partials: Array<{ i: bigint; B_i: Pt }>,
+): Pt {
+    const indices = partials.map((p) => p.i);
+    if (new Set(indices.map((x) => x.toString())).size !== indices.length) {
+        throw new Error("combineThreshold: duplicate responder index");
+    }
+    let Y: Pt | null = null;
+    for (const { i, B_i } of partials) {
+        const lambda = lagrangeCoeff(i, indices);
+        const term = B_i.multiply(Fn.create(lambda));
+        Y = Y === null ? term : Y.add(term);
+    }
+    if (Y === null) throw new Error("combineThreshold: no partials");
+    return Y;
+}

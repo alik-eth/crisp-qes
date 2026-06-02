@@ -19,14 +19,14 @@ import { p256 } from "@noble/curves/p256";
 import { sha256 } from "@noble/hashes/sha2";
 import {
     Fn,
-    G,
     N,
     Point,
-    SVDW_CONSTS,
     hashToField2,
     mapToCurveSvdW,
     scalarLimbs,
     nullifierCommitment,
+    verifyPartialDleq,
+    combineThreshold,
     type Pt,
     type SvdWHints,
 } from "./grumpkin.js";
@@ -137,7 +137,6 @@ export function buildEnrollWitness(): EnrollWitnessBundle {
     const r = randomScalar();
     const M = Hpt.multiply(r);
 
-    const { c1, c2, c3, c4 } = SVDW_CONSTS;
     const { lo, hi } = scalarLimbs(r);
 
     const u8arr = (u8: Uint8Array): string[] =>
@@ -153,10 +152,8 @@ export function buildEnrollWitness(): EnrollWitnessBundle {
         rnokpp_oid_off: rnokppOff.toString(),
         dob_off: dobOff.toString(),
         today: Array.from(today).map((c) => c.charCodeAt(0).toString()),
-        c1: dec(c1),
-        c2: dec(c2),
-        c3: dec(c3),
-        c4: dec(c4),
+        // SvdW suite constants c1..c4 are no longer circuit inputs (pinned inside
+        // grumpkin_voprf, F3); only the per-map hints h0/h1 are witnessed.
         h0: hintArr(m0.hints),
         h1: hintArr(m1.hints),
         r_lo: dec(lo),
@@ -166,15 +163,32 @@ export function buildEnrollWitness(): EnrollWitnessBundle {
     return { witness, r, M };
 }
 
-export interface BlindEvalResponse {
-    Y: Pt;
-    c: bigint;
-    z: bigint;
-    Kpub: Pt;
+// One responder's partial (parsed): B_i = k_i*M + its epoch-bound per-share DLEQ
+// + its published Kpub_i. The threshold service returns t=2 of these (the
+// responders, indices 1 and 2).
+export interface ThresholdPartial {
+    i: bigint;
+    B_i: Pt;
+    dleq: { c: bigint; z: bigint };
+    Kpub_i: Pt;
 }
 
-// POST the enroll proof + public M to the LIVE service. Proof-gating is
-// enforced: the service bb.js-verifies enroll_commit_v2 and checks public M.
+// Parsed threshold /v3/blind-eval response. `Y` is the LOCAL Lagrange combine
+// (for the commitment / UX); the PROOF carries the partials for in-circuit
+// re-verification. `publishedKpubSet` is the canonical 3-node Kpub set (indices
+// 1,2,3) the threshold nullifier witness pins.
+export interface BlindEvalResponse {
+    partials: ThresholdPartial[]; // the t=2 responders (indices 1,2)
+    epoch: bigint; // threshold session tag (bound into each DLEQ)
+    publishedKpubSet: Pt[]; // the 3 published Kpub, index order 1,2,3
+    Y: Pt; // local Lagrange combine of the partials
+}
+
+// POST the enroll proof + public M to the LIVE service (request shape unchanged:
+// the gate + challengeDigestOk still apply). The THRESHOLD service returns the
+// t=2 responders' partials, the session epoch, and the published 3-Kpub set.
+// We verify EACH partial's per-share DLEQ client-side (fail fast on a misbehaving
+// node) and Lagrange-combine Y locally for the commitment.
 export async function blindEval(
     M: Pt,
     proofBytes: Uint8Array,
@@ -195,60 +209,119 @@ export async function blindEval(
         throw new Error(`blind-eval HTTP ${res.status}: ${text.slice(0, 300)}`);
     }
     const json = (await res.json()) as {
-        Y: string;
-        dleq: { c: string; z: string };
-        Kpub: string;
+        partials: Array<{ i: string; B_i: string; dleq: { c: string; z: string }; Kpub_i: string }>;
+        epoch: string;
+        publishedKpubSet: Array<{ i: string; Kpub_i: string }>;
     };
-    return {
-        Y: pointFromHex(json.Y),
-        c: BigInt(json.dleq.c),
-        z: BigInt(json.dleq.z),
-        Kpub: pointFromHex(json.Kpub),
-    };
+    if (!Array.isArray(json.partials) || json.partials.length < 2) {
+        throw new Error(`blind-eval: expected >=2 threshold partials, got ${json.partials?.length}`);
+    }
+    const epoch = BigInt(json.epoch);
+    const partials: ThresholdPartial[] = json.partials.map((p) => ({
+        i: BigInt(p.i),
+        B_i: pointFromHex(p.B_i),
+        dleq: { c: BigInt(p.dleq.c), z: BigInt(p.dleq.z) },
+        Kpub_i: pointFromHex(p.Kpub_i),
+    }));
+
+    // Verify each responder's per-share DLEQ (fail fast on a misbehaving node).
+    for (const p of partials) {
+        // eslint-disable-next-line no-await-in-loop
+        const ok = await verifyPartialDleq(p.Kpub_i, M, p.B_i, epoch, p.dleq);
+        if (!ok) {
+            throw new Error(`blind-eval: node ${p.i} returned an invalid per-share DLEQ`);
+        }
+    }
+
+    // Published 3-Kpub set in index order (sorted by i so [0]=node1 ... [2]=node3).
+    const publishedKpubSet = [...json.publishedKpubSet]
+        .sort((a, b) => Number(BigInt(a.i) - BigInt(b.i)))
+        .map((p) => pointFromHex(p.Kpub_i));
+
+    // Local Lagrange combine for the commitment / UX (the proof re-verifies it).
+    const Y = combineThreshold(partials.map((p) => ({ i: p.i, B_i: p.B_i })));
+
+    return { partials, epoch, publishedKpubSet, Y };
 }
 
-// Build the oprf_nullifier witness from the service response (mirrors
-// gen-nullifier-witness.mjs). Unblind N = rinv*Y; the circuit re-derives the
-// DLEQ challenge and the commitment.
-export function buildNullifierWitness(
+// Build the THRESHOLD oprf_nullifier witness (13-word ABI) from the blind-eval
+// response. The circuit re-verifies the t=2 per-share DLEQs vs the pinned GEN,
+// binds each idx->Kpub from the PUBLISHED set, Lagrange-combines Y in-circuit (no
+// free Y), unblinds N = rinv*Y, and re-asserts commit_r(r) == c_r (F2). `cr` is
+// the enroll proof's PROVEN C_r (publicInputs[10]). Responders are idx1=1, idx2=2
+// (partials[0], partials[1]); the full published 3-Kpub set is passed in order.
+export function buildThresholdNullifierWitness(
     M: Pt,
     r: bigint,
     ev: BlindEvalResponse,
+    cr: bigint,
 ): InputMap {
-    const Ga = G.toAffine();
-    const Ka = ev.Kpub.toAffine();
+    if (ev.partials.length < 2) {
+        throw new Error("buildThresholdNullifierWitness: need 2 responder partials");
+    }
+    if (ev.publishedKpubSet.length !== 3) {
+        throw new Error("buildThresholdNullifierWitness: need the full 3-Kpub published set");
+    }
     const Ma = M.toAffine();
-    const Ya = ev.Y.toAffine();
+    const kp1 = ev.publishedKpubSet[0]!.toAffine();
+    const kp2 = ev.publishedKpubSet[1]!.toAffine();
+    const kp3 = ev.publishedKpubSet[2]!.toAffine();
 
-    const cL = scalarLimbs(ev.c);
-    const zL = scalarLimbs(ev.z);
+    // Sort responders ASCENDING by index so idx1 < idx2 (canonical order). The
+    // circuit's select_lagrange_2of3 requires the canonical pair; a non-ascending
+    // service response would otherwise fail proving.
+    const sorted = [...ev.partials].sort((a, b) => Number(BigInt(a.i) - BigInt(b.i)));
+    const pa = sorted[0]!; // responder idx1 (lower index)
+    const pb = sorted[1]!; // responder idx2 (higher index)
+    const Ba = pa.B_i.toAffine();
+    const Bb = pb.B_i.toAffine();
+    const caL = scalarLimbs(pa.dleq.c);
+    const zaL = scalarLimbs(pa.dleq.z);
+    const cbL = scalarLimbs(pb.dleq.c);
+    const zbL = scalarLimbs(pb.dleq.z);
+
     const rinv = Fn.inv(Fn.create(r));
     const riL = scalarLimbs(rinv);
     const rL = scalarLimbs(r);
 
     return {
-        gx: dec(Ga.x),
-        gy: dec(Ga.y),
-        kpx: dec(Ka.x),
-        kpy: dec(Ka.y),
+        // public: M, the published 3-Kpub set, responder indices, epoch, c_r
         mx: dec(Ma.x),
         my: dec(Ma.y),
-        yx: dec(Ya.x),
-        yy: dec(Ya.y),
-        c_lo: dec(cL.lo),
-        c_hi: dec(cL.hi),
-        z_lo: dec(zL.lo),
-        z_hi: dec(zL.hi),
-        rinv_lo: dec(riL.lo),
-        rinv_hi: dec(riL.hi),
+        kp1x: dec(kp1.x),
+        kp1y: dec(kp1.y),
+        kp2x: dec(kp2.x),
+        kp2y: dec(kp2.y),
+        kp3x: dec(kp3.x),
+        kp3y: dec(kp3.y),
+        idx1: dec(pa.i),
+        idx2: dec(pb.i),
+        epoch: dec(ev.epoch),
+        c_r: dec(cr),
+        // private: the two responders' partials + DLEQs, then r/rinv
+        bax: dec(Ba.x),
+        bay: dec(Ba.y),
+        bbx: dec(Bb.x),
+        bby: dec(Bb.y),
+        ca_lo: dec(caL.lo),
+        ca_hi: dec(caL.hi),
+        za_lo: dec(zaL.lo),
+        za_hi: dec(zaL.hi),
+        cb_lo: dec(cbL.lo),
+        cb_hi: dec(cbL.hi),
+        zb_lo: dec(zbL.lo),
+        zb_hi: dec(zbL.hi),
         r_lo: dec(rL.lo),
         r_hi: dec(rL.hi),
-        c_expected: dec(ev.c),
+        rinv_lo: dec(riL.lo),
+        rinv_hi: dec(riL.hi),
     };
 }
 
 // Locally derive the unblinded OPRF output point N = rinv*Y and its pedersen
-// commitment (same value the circuit returns as its public output).
+// commitment (same value the threshold circuit returns as its public output).
+// `ev.Y` is the local Lagrange combine of the t=2 responder partials (= k'*M),
+// so N = rinv*Y = k'*H2C(id) -- the deterministic per-identity leaf.
 export async function deriveCommitment(
     r: bigint,
     ev: BlindEvalResponse,
@@ -364,18 +437,24 @@ export async function runEnrollment(
         ms: performance.now() - t,
     });
 
-    // Sanity: public M is at publicInputs [12],[13] (after today[8], c1..c4).
+    // Sanity: public M is at publicInputs [8],[9] (after today[8]); C_r at [10].
     const Maff = M.toAffine();
-    const pubMxRaw = enroll.publicInputs[12];
-    const pubMyRaw = enroll.publicInputs[13];
-    if (pubMxRaw === undefined || pubMyRaw === undefined) {
-        throw new Error("enroll proof missing public M (publicInputs[12,13])");
+    const pubMxRaw = enroll.publicInputs[8];
+    const pubMyRaw = enroll.publicInputs[9];
+    const pubCrRaw = enroll.publicInputs[10];
+    if (pubMxRaw === undefined || pubMyRaw === undefined || pubCrRaw === undefined) {
+        throw new Error("enroll proof missing public M/C_r (publicInputs[8,9,10])");
     }
     const pubMx = BigInt(pubMxRaw);
     const pubMy = BigInt(pubMyRaw);
     if (pubMx !== Maff.x || pubMy !== Maff.y) {
-        throw new Error("public M mismatch (proof publicInputs[12,13] != local M)");
+        throw new Error("public M mismatch (proof publicInputs[8,9] != local M)");
     }
+    // C_r the enroll proof PROVED (commit_r(r)). Threading this exact value into
+    // the nullifier witness guarantees the nullifier's c_r == what the service
+    // cross-checks (extractCrFromEnroll). The nullifier circuit re-asserts
+    // commit_r(r) == c_r, so it fails closed if r and enrollCr disagree.
+    const enrollCr = BigInt(pubCrRaw);
 
     // 3. Round-trip the LIVE service.
     t = performance.now();
@@ -397,7 +476,7 @@ export async function runEnrollment(
     // 4. Prove oprf_nullifier.
     t = performance.now();
     onStage({ key: "nullifierProve", label: "Prove oprf_nullifier (DLEQ + unblind)", status: "running" });
-    const nullifierWitness = buildNullifierWitness(M, r, ev);
+    const nullifierWitness = buildThresholdNullifierWitness(M, r, ev, enrollCr);
     try {
         await runProof("nullifier", nullifierWitness, NULLIFIER_CIRCUIT_URL, () => {});
     } catch (err) {
@@ -642,16 +721,20 @@ export async function runRealEnrollment(
         ms: performance.now() - t,
     });
 
-    // Sanity: public M is at publicInputs [12],[13].
+    // Sanity: public M is at publicInputs [8],[9]; C_r at [10].
     const Maff = M.toAffine();
-    const pubMx = enroll.publicInputs[12];
-    const pubMy = enroll.publicInputs[13];
-    if (pubMx === undefined || pubMy === undefined) {
-        throw new Error("enroll proof missing public M (publicInputs[12,13])");
+    const pubMx = enroll.publicInputs[8];
+    const pubMy = enroll.publicInputs[9];
+    const pubCr = enroll.publicInputs[10];
+    if (pubMx === undefined || pubMy === undefined || pubCr === undefined) {
+        throw new Error("enroll proof missing public M/C_r (publicInputs[8,9,10])");
     }
     if (BigInt(pubMx) !== Maff.x || BigInt(pubMy) !== Maff.y) {
-        throw new Error("public M mismatch (proof publicInputs[12,13] != local M)");
+        throw new Error("public M mismatch (proof publicInputs[8,9] != local M)");
     }
+    // C_r the enroll proof PROVED; thread it into the nullifier witness so the
+    // nullifier's c_r equals what the service cross-checks (extractCrFromEnroll).
+    const enrollCr = BigInt(pubCr);
 
     // 3. Round-trip the LIVE service (proof-gated).
     t = performance.now();
@@ -672,7 +755,7 @@ export async function runRealEnrollment(
     // 4. Prove oprf_nullifier (unblind + DLEQ).
     t = performance.now();
     stage("nullifierProve", "Prove oprf_nullifier (DLEQ + unblind)", "running");
-    const nullifierWitness = buildNullifierWitness(M, r, ev);
+    const nullifierWitness = buildThresholdNullifierWitness(M, r, ev, enrollCr);
     let nullifier: ProveResult;
     try {
         nullifier = await runProof(

@@ -43,7 +43,8 @@
 //                                 begins (06 03 55 04 05 13 10 "TINUA-" <10d>).
 //   dob_off                     — offset (in leaf_tbs) of 8 ASCII DOB digits.
 //   today[8]                    — public YYYYMMDD ASCII (age check).
-//   c1..c4, h0[6], h1[6]        — SvdW suite constants + per-map sqrt hints.
+//   h0[6], h1[6]                — per-map SvdW sqrt hints (the suite constants
+//                                 c1..c4 are pinned inside grumpkin_voprf, F3).
 //   r_lo, r_hi                  — blinding scalar limbs (private).
 //
 // The circuit derives u0,u1 = hash_to_field(RNOKPP) fully in-circuit, so the
@@ -92,7 +93,6 @@ import { extractRnokpp } from "./rnokpp.js";
 import {
     N,
     Point,
-    SVDW_CONSTS,
     hashToField2,
     mapToCurveSvdW,
     scalarLimbs,
@@ -525,7 +525,6 @@ export function buildP7sEnrollWitness(
     const r = opts.r ?? randomScalar();
     const M = Hpt.multiply(r);
 
-    const { c1, c2, c3, c4 } = SVDW_CONSTS;
     const { lo, hi } = scalarLimbs(r);
     const today = todayYYYYMMDD(opts.now);
 
@@ -545,10 +544,8 @@ export function buildP7sEnrollWitness(
         rnokpp_oid_off: rnokppOff.toString(),
         dob_off: dobOff.toString(),
         today: Array.from(today).map((c) => c.charCodeAt(0).toString()),
-        c1: dec(c1),
-        c2: dec(c2),
-        c3: dec(c3),
-        c4: dec(c4),
+        // SvdW suite constants c1..c4 are no longer circuit inputs (pinned inside
+        // grumpkin_voprf, F3). Only the per-map hints h0/h1 are still witnessed.
         h0: hintArr(m0.hints),
         h1: hintArr(m1.hints),
         r_lo: dec(lo),

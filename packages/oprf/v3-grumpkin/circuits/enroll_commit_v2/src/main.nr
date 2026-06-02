@@ -20,8 +20,14 @@
 //       from the AUTHENTICATED leaf_tbs.
 //   (4) u0, u1 = hash_to_field(RNOKPP) via expand_message_xmd(SHA-256),
 //       computed IN-CIRCUIT.
-//   (5) M = r * H2C(RNOKPP) where H2C = map(u0) + map(u1) (RFC-9380 SvdW),
-//       M is the PUBLIC output.
+//   (5) BLIND + shared-r commitment (this is the /v3/blind-eval GATE, NOT the
+//       nullifier proof): M = r*H2C(RNOKPP) via the grumpkin_voprf library
+//       (pinned SvdW suite, F3), plus C_r = commit_r(r) = the cross-proof
+//       shared-r binding (F2). The DLEQ/unblind/nullifier are done by the
+//       SEPARATE oprf_nullifier register proof (it needs the node response Y,
+//       which only exists AFTER blind-eval). Keeping two proofs keeps the OPRF a
+//       closed oracle (a fused single proof could not gate blind-eval).
+//       PUBLIC outputs: M, C_r, messageDigest (hi,lo).
 //
 // CHAIN PROVEN: Diia CA -> leaf TBS (carries RNOKPP + DOB + leaf SPKI) -> leaf
 // key signs the challenge. RNOKPP/DOB are no longer read from a free cert[]
@@ -39,7 +45,7 @@
 // uniform_bytes = b1 || b2 || b3 (96 bytes). u0 = bytes[0..48],
 // u1 = bytes[48..96].
 
-use std::embedded_curve_ops::{EmbeddedCurvePoint as Pt, EmbeddedCurveScalar as Scalar, multi_scalar_mul};
+use std::embedded_curve_ops::EmbeddedCurveScalar as Scalar;
 
 // LEAF_TBS_LEN bounds the leaf certificate's signed TBS bytes. Real Diia leaf
 // TBS is ~1203 B (20 SHA-256 blocks); 1536 gives 24-block headroom. sha256_var
@@ -90,9 +96,11 @@ global DIIA_PINNED_CA: [([u8; 32], [u8; 32]); 2] = [
     ),
 ];
 
-global ZETA: Field = 5;
-global BCURVE: Field = -17;
-global SVDW_Z: Field = 1;
+// SvdW curve/suite constants (ZETA, BCURVE, SVDW_Z, SVDW_C1..C4) and the
+// hash-to-curve gadget (svdw_map + helpers) now live in grumpkin_voprf
+// (params.nr / h2c.nr) -- F3 pinning is enforced there, ONE source of truth.
+// The app-side expand_message_xmd below still produces u0,u1 and the per-map
+// hints h0,h1, which it feeds into grumpkin_voprf::h2c::h2c_grumpkin.
 
 // DST = "CRISP-QES-V3-Grumpkin_XMD:SHA-256_SVDW_RO_" (42 bytes).
 global DST_LEN: u32 = 42;
@@ -100,56 +108,6 @@ global DST: [u8; 42] = [
     67, 82, 73, 83, 80, 45, 81, 69, 83, 45, 86, 51, 45, 71, 114, 117, 109, 112, 107, 105, 110, 95,
     88, 77, 68, 58, 83, 72, 65, 45, 50, 53, 54, 95, 83, 86, 68, 87, 95, 82, 79, 95,
 ];
-
-// --- SvdW hash-to-curve (mirrors oprf_commitment) ---
-fn g(x: Field) -> Field {
-    x * x * x + BCURVE
-}
-fn assert_is_square(gx: Field, e: Field, w: Field) {
-    assert(e * (e - 1) == 0);
-    let lhs = w * w;
-    assert(e * (lhs - gx) + (1 - e) * (lhs - gx * ZETA) == 0);
-}
-fn cmov(a: Field, b: Field, c: Field) -> Field {
-    a + c * (b - a)
-}
-fn sgn0(x: Field) -> Field {
-    let bits: [u1; 254] = x.to_le_bits();
-    bits[0] as Field
-}
-fn svdw_map(
-    u: Field,
-    c1: Field,
-    c2: Field,
-    c3: Field,
-    c4: Field,
-    inv_t: Field,
-    e1: Field,
-    w1: Field,
-    e2: Field,
-    w2: Field,
-    sqrt_x: Field,
-) -> Pt {
-    let mut tv1 = u * u * c1;
-    let tv2 = 1 + tv1;
-    tv1 = 1 - tv1;
-    assert(tv1 * tv2 * inv_t == 1);
-    let tv4 = u * tv1 * inv_t * c3;
-    let x1 = c2 - tv4;
-    assert_is_square(g(x1), e1, w1);
-    let x2 = c2 + tv4;
-    assert_is_square(g(x2), e2, w2);
-    let t = tv2 * tv2 * inv_t;
-    let x3 = t * t * c4 + SVDW_Z;
-    let mut x = cmov(x3, x1, e1);
-    x = cmov(x, x2, e2 * (1 - e1));
-    let gx = g(x);
-    assert(sqrt_x * sqrt_x == gx);
-    let y = sqrt_x;
-    let eq = 1 - (sgn0(u) - sgn0(y)) * (sgn0(u) - sgn0(y));
-    let y_final = cmov(-y, y, eq);
-    Pt { x, y: y_final, is_infinite: false }
-}
 
 fn read_at(buf: [u8; LEAF_TBS_LEN], base: u32, k: u32) -> u8 {
     buf[base + k]
@@ -293,18 +251,32 @@ fn main(
     dob_off: u32,
     // --- public current date YYYYMMDD ---
     today: pub [u8; 8],
-    // --- SvdW suite constants ---
-    c1: pub Field,
-    c2: pub Field,
-    c3: pub Field,
-    c4: pub Field,
     // --- per-map SvdW hints [inv_t, e1, w1, e2, w2, sqrt_x] ---
     h0: [Field; 6],
     h1: [Field; 6],
-    // --- blinding scalar r (private) ---
+    // --- blinding scalar r (private); the SAME r is reused (and bound via C_r)
+    //     by the separate oprf_nullifier register proof (Task 3) ---
     r_lo: Field,
     r_hi: Field,
-) -> pub (Field, Field, Field, Field) {
+) -> pub (Field, Field, Field, Field, Field) {
+    // TWO-PROOF GATE: this circuit is the /v3/blind-eval gate. It proves the
+    // enrollment (Diia chain, age, M = r*H2C(cert)) and publishes C_r = commit_r(r)
+    // so the SEPARATE oprf_nullifier register proof can bind to the SAME r (F2).
+    // It does NOT do the DLEQ/unblind/nullifier -- those need the node response Y,
+    // which only exists AFTER blind-eval. Fusing them here would let blind-eval be
+    // run without gating, opening the OPRF to an oracle (deanonymization); so the
+    // deployed path keeps two proofs.
+    //
+    // PUBLIC OUTPUT TUPLE ORDER (service Task 5 + client Task 6 depend on this):
+    //   (M.x, M.y, C_r, messageDigest_hi, messageDigest_lo)
+    // where M = r*H2C(RNOKPP) is the blinded commitment sent to the node,
+    // C_r = commit_r(r) = pedersen([CR_DOMAIN, r_lo, r_hi]) is the cross-proof
+    // shared-r binding (F2), and messageDigest_(hi,lo) is the PKCS#9 messageDigest
+    // split into 16-byte halves.
+    //
+    // PUBLIC-INPUT LAYOUT (13 words): today occupies words [0..8); the returned
+    // tuple follows as M.x[8], M.y[9], C_r[10], messageDigest_hi[11],
+    // messageDigest_lo[12].
     // ---- (0) Diia CA -> leaf TBS chain + CA pinning. ----
     // sha256_var digests exactly leaf_tbs_len bytes; the CA signature must cover
     // that digest, and the CA must be in the PRODUCTION pinned Diia root set.
@@ -436,13 +408,19 @@ fn main(
     let u0 = be_bytes_to_field(u0_bytes);
     let u1 = be_bytes_to_field(u1_bytes);
 
-    // ---- (5) M = r * H2C(RNOKPP) = r*(P0 + P1) via SvdW + blackbox MSM. ----
-    let p0 = svdw_map(u0, c1, c2, c3, c4, h0[0], h0[1], h0[2], h0[3], h0[4], h0[5]);
-    let p1 = svdw_map(u1, c1, c2, c3, c4, h1[0], h1[1], h1[2], h1[3], h1[4], h1[5]);
+    // ---- (5) BLIND + shared-r commitment (two-proof gate; NO DLEQ here). ----
+    // H2C(RNOKPP) = map(u0) + map(u1) with the lib's PINNED SvdW suite (F3).
+    let h2c_point = grumpkin_voprf::h2c::h2c_grumpkin(u0, u1, h0, h1);
     let r = Scalar { lo: r_lo, hi: r_hi };
-    let m = multi_scalar_mul([p0, p1], [r, r]);
+    // M = r*H2C(id): the blinded commitment the node evaluates at /v3/blind-eval.
+    let m = std::embedded_curve_ops::multi_scalar_mul([h2c_point], [r]);
+    // C_r = commit_r(r): the cross-proof shared-r binding (F2). The separate
+    // oprf_nullifier register proof re-asserts commit_r(its r) == C_r, so Pedersen
+    // binding ties both proofs to the SAME r. commit_r domain-separates internally
+    // (CR_DOMAIN) and range-checks r's limbs.
+    let c_r = grumpkin_voprf::oprf::commit_r(r);
 
-    (m.x, m.y, digest_hi, digest_lo)
+    (m.x, m.y, c_r, digest_hi, digest_lo)
 }
 
 // ===========================================================================
@@ -662,4 +640,36 @@ fn test_rnokpp_out_of_bounds_fails() {
         tbs[963 + k] = digits[k];
     }
     let _ = extract_rnokpp(tbs, 900, 950); // bound check must fail
+}
+
+// ===========================================================================
+// TWO-PROOF GATE TESTS (Task 2).
+//
+// This circuit reverted from the fused single proof back to the two-proof gate:
+// it publishes M and C_r (no DLEQ/nullifier here). The fused tests were removed;
+// the DLEQ/unblind/F2-binding coverage lives in grumpkin_voprf's test module and
+// (Task 3) in the separate oprf_nullifier register proof.
+//
+// The former F3 SvdW-pinning regression tests were already moved into the lib
+// (params.nr pins SVDW_C1..C4; the lib owns hash-to-curve).
+//
+// main() itself is unreachable via `nargo execute` (it needs a real
+// Diia-pinned-CA signature over a PII leaf cert), so the C_r mechanism is
+// validated here at unit level against the lib's pinned cross-proof value.
+// ===========================================================================
+
+// The enroll-side C_r == the lib's pinned cross-proof commitment for the test r
+// (det("crisp-qes-test-r") => R_LO/R_HI). This anchors enroll's C_r to the same
+// value the oprf_nullifier register proof will re-assert (Task 3), so the
+// shared-r binding matches end-to-end. EXPECTED_CR is from grumpkin_voprf Task 1.
+#[test]
+fn test_enroll_commit_r_matches_lib() {
+    let r = Scalar {
+        lo: 132187632223543972593629152660226846067,
+        hi: 0,
+    };
+    assert(
+        grumpkin_voprf::oprf::commit_r(r)
+            == 0x2dc4e70bdf48c031a3cc6cd54a75361de20ced244c10b98c824ab6a5d659c2ac,
+    );
 }
