@@ -20,16 +20,17 @@
 import Fastify from "fastify";
 import fastifyCors from "@fastify/cors";
 
-import { OprfNode, pointFromHex } from "./oprf-node.mjs";
+import { makeNodes, pointFromHex, N } from "./oprf-node.mjs";
 import {
     createGate,
     verifyEnrollCommitProof,
-    verifyNullifierProof,
+    verifyThresholdNullifierProof,
     extractMFromPublicInputs,
     extractDigestFromPublicInputs,
     extractCrFromEnroll,
     OPRF_NULLIFIER_JSON,
 } from "./proof-gate.mjs";
+import { sha256 } from "@noble/hashes/sha2";
 import { expectedDigestLimbs } from "./challenge.mjs";
 import { Attester } from "./attester.mjs";
 import { MerkleIndex, TREE_DEPTH, GENESIS_ROOT, bigintToHex32 } from "./merkle.mjs";
@@ -181,7 +182,6 @@ export function resolveAttesterKey(env = process.env) {
 // — App builder (exported so the roundtrip test can run it in-process) ────────
 
 export async function buildApp(opts = {}) {
-    const node = opts.node ?? new OprfNode(opts.k ?? defaultDevKey());
     const corsOrigins = opts.corsAllowedOrigins ?? ["*"];
     const allowAll = corsOrigins.includes("*");
 
@@ -224,6 +224,32 @@ export async function buildApp(opts = {}) {
     const chainId = opts.chainId ?? DEFAULT_CHAIN_ID;
     const enrollmentRegistry = opts.enrollmentRegistry ?? DEFAULT_ENROLLMENT_REGISTRY;
     const enrollEpoch = process.env.OPRF_ENROLLMENT_EPOCH_V3 ?? "v3-2026";
+
+    // — Threshold (2-of-3) OPRF node set ─────────────────────────────────────
+    // Replaces the single-key OprfNode: the group key k' is Shamir-shared across
+    // 3 ShareNodes (any 2 evaluate). k' is NEVER assembled at any node (the F4
+    // design). For the co-hosted DEMO all 3 nodes run in THIS process; with
+    // INDEPENDENT operators each node would run separately and gate its own
+    // blind-eval -- F4 is only mitigated when >=2 nodes are independently
+    // operated (an operational property the demo must disclose, not a code one).
+    // Tests may inject a prebuilt set via opts.nodes/opts.publishedKpubSet.
+    const { nodes, published } =
+        opts.nodeSet ?? makeNodes(opts.n ?? 3, opts.t ?? 2);
+    // The published Kpub set as {x,y} bigints in index order 1,2,3 -- the
+    // canonical set the register cross-check (e) pins by value.
+    const publishedKpubSet = published.map((p) => {
+        const a = pointFromHex(p.Kpub_i).toAffine();
+        return { x: a.x, y: a.y };
+    });
+    // The DEFAULT t=2 responders for the co-hosted demo (any 2 of 3; nodes 1,2).
+    const responderNodes = [nodes[0], nodes[1]];
+    // Threshold per-share DLEQ epoch (a Field/bigint) -- bound into every
+    // partial's transcript and pinned by the register check (f). Derived
+    // deterministically from the string enrollEpoch so blind-eval and register
+    // agree, and rotating enrollEpoch rotates the threshold session.
+    const thresholdEpoch =
+        BigInt("0x" + Buffer.from(sha256(new TextEncoder().encode(`v3-threshold-epoch:${enrollEpoch}`))).toString("hex")) % N;
+
     const attester = new Attester(opts.attesterKey ?? resolveAttesterKey());
     // The attester address is whatever V3_ATTESTER_KEY derives to (the registry
     // attester was rotated; no address is hardcoded). In production assert only
@@ -322,10 +348,13 @@ export async function buildApp(opts = {}) {
         return {
             ok: true,
             suite: "grumpkin-SHA256-SvdW",
-            mode: "VOPRF v3 (build, unaudited — single node, proof-gating ENFORCED)",
+            mode: "VOPRF v3 (build, unaudited — 2-of-3 threshold, proof-gating ENFORCED)",
             curve: "Grumpkin (y^2 = x^3 - 17)",
             wireFormat: "point = 0x{x:32B BE}{y:32B BE}; scalar = decimal bigint",
-            Kpub: node.publicKeyHex(),
+            // Published 2-of-3 Kpub set (the canonical node keys). k' (the group
+            // key) is never assembled at any node.
+            publishedKpubSet: published.map((p) => ({ i: p.i.toString(), Kpub_i: p.Kpub_i })),
+            thresholdEpoch: thresholdEpoch.toString(),
             proofGating: gateError
                 ? `unavailable (gate init failed: ${gateError}) — failing closed`
                 : "enforced (in-process bb.js verify of enroll_commit_v2 proof + M-binding)",
@@ -410,25 +439,37 @@ export async function buildApp(opts = {}) {
         }
         req.log.info("v3 blind-eval proof accepted");
 
-        // — BlindEvaluate + DLEQ ─────────────────────────────────────────
-        let out;
+        // — Threshold blind-evaluate: t=2 responders' partials ────────────
+        // Each responder ShareNode returns B_i = k_i*M + a per-share epoch-bound
+        // DLEQ (proving B_i = k_i*M vs its published Kpub_i). The client verifies
+        // each DLEQ, combines Y = sum lambda_i*B_i locally for its commitment, and
+        // carries the partials into the threshold nullifier proof for in-circuit
+        // re-verification. DEMO NOTE: with INDEPENDENT operators, each node would
+        // run its OWN gated /v3/blind-eval; the co-hosted demo gates ONCE (this
+        // enroll-proof check) and evaluates the 2 responders in-process.
+        let partials;
         try {
-            out = await node.evaluate(M);
+            partials = await Promise.all(
+                responderNodes.map((sn) => sn.evaluate(M, thresholdEpoch)),
+            );
         } catch (e) {
-            req.log.error({ err: e.message }, "evaluate failed");
-            return reply
-                .code(500)
-                .send({ error: "EvalError", detail: e.message });
+            req.log.error({ err: e.message }, "threshold evaluate failed");
+            return reply.code(500).send({ error: "EvalError", detail: e.message });
         }
 
-        // Wire shape: { Y: pointHex, dleq: { c, z }, Kpub: pointHex }.
-        // c and z are group-order scalars (< N) sent as decimal strings to
-        // avoid any BigInt->JSON precision loss; the client re-parses with
-        // BigInt(). Echo proofAccepted so clients see the gating posture.
+        // Wire shape: { partials: [{ i, B_i, dleq:{c,z}, Kpub_i }], epoch,
+        // publishedKpubSet }. c/z are group-order scalars (< N) sent as decimal
+        // strings to avoid BigInt->JSON precision loss; the client re-parses with
+        // BigInt(). epoch is the threshold session tag (decimal).
         return reply.code(200).send({
-            Y: out.Y,
-            dleq: { c: out.dleq.c.toString(), z: out.dleq.z.toString() },
-            Kpub: out.Kpub,
+            partials: partials.map((p) => ({
+                i: p.i.toString(),
+                B_i: p.B_i,
+                dleq: { c: p.dleq.c.toString(), z: p.dleq.z.toString() },
+                Kpub_i: p.Kpub_i,
+            })),
+            epoch: thresholdEpoch.toString(),
+            publishedKpubSet: published.map((p) => ({ i: p.i.toString(), Kpub_i: p.Kpub_i })),
             proofAccepted: "verified (in-process bb.js verify + M-binding)",
         });
     });
@@ -440,21 +481,24 @@ export async function buildApp(opts = {}) {
     //
     //   1. enroll_commit_v2 proof  — verifies + binds M <-> a valid age>=18 cert
     //      (public output M at enrollPublicInputs[8],[9]; C_r at [10]).
-    //   2. oprf_nullifier proof    — verifies the in-circuit DLEQ (Y = k*M for
-    //      Kpub = k*GEN against the PINNED generator), unblinds N = rinv*Y bound
-    //      to r via r*N == Y AND to the enroll blind via commit_r(r) == C_r, and
-    //      RETURNS commitment = pedersen([N.x, N.y]) as its public output.
+    //   2. THRESHOLD oprf_nullifier proof — self-attests the 2-of-3 evaluation:
+    //      per-share epoch-bound DLEQs vs the PINNED GEN, idx->Kpub selection from
+    //      the published set, the pinned mod-N Lagrange combine (Y in-circuit), and
+    //      the F2 binding (commit_r(r) == C_r + r*N == Y). RETURNS the nullifier =
+    //      pedersen([N.x, N.y]).
     //
-    //   CROSS-CHECKS (verifyNullifierProof):
-    //     (a) nullifier.M  == enroll.M                  (chains M -> cert; HARD)
-    //     (b) nullifier.Kpub == THIS node's Kpub        (Y under our k)
+    //   CROSS-CHECKS (verifyThresholdNullifierProof) — the service pins only:
+    //     (a) nullifier.M     == enroll.M               (chains M -> cert; HARD)
     //     (c) nullifier.commitment == submitted commitment
-    //     (d) nullifier.C_r == enroll.C_r               (binds the same blind r
-    //                                                    across proofs -> F2)
+    //     (d) nullifier.C_r   == enroll.C_r             (same blind r across proofs)
+    //     (e) nullifier.{Kpub1,Kpub2,Kpub3} == the canonical PUBLISHED Kpub set
+    //     (f) nullifier.epoch == the current threshold epoch (session binding)
+    //   (b) is GONE: there is no single node Kpub; the published-set check (e) +
+    //   the in-circuit idx->Kpub selection bind the responders to the canonical set.
     //
     // Only when BOTH proofs verify AND all cross-checks hold do we append the
     // leaf and attester-sign. A client can no longer register an arbitrary
-    // commitment: it must be exactly pedersen(rinv*(k*M)) for the cert-bound M.
+    // commitment: it must be exactly pedersen(k'*H2C(id)) for the cert-bound M.
     app.post("/v3/register", async (req, reply) => {
         const parsed = validateRegisterBody(req.body);
         if (!parsed.ok) {
@@ -528,21 +572,22 @@ export async function buildApp(opts = {}) {
             return reply.code(400).send({ error: "MalformedProof", detail: e.message });
         }
 
-        // — (2) Verify the nullifier proof + enforce the binding cross-checks ─
-        // Bind nullifier.M to the enroll proof's M, nullifier.Kpub to THIS
-        // node's Kpub, nullifier.commitment to the submitted commitment, and
-        // nullifier.C_r to the enroll proof's C_r (same blind r across proofs).
-        const Kaff = node.Kpub.toAffine();
+        // — (2) Verify the THRESHOLD nullifier proof + binding cross-checks ──
+        // Pin nullifier.M to the enroll proof's M, nullifier.C_r to the enroll
+        // C_r, the proof's 3-Kpub set to the canonical published set, the epoch to
+        // the current threshold epoch, and the nullifier to the submitted
+        // commitment. The proof self-attests the per-share DLEQs + Lagrange combine.
         let nullifierResult;
         try {
-            nullifierResult = await verifyNullifierProof({
+            nullifierResult = await verifyThresholdNullifierProof({
                 gate: nullifierGate,
                 proof: nullifierProof,
                 publicInputs: nullifierPublicInputs,
                 expectedM: enrollM,
-                expectedKpub: { x: Kaff.x, y: Kaff.y },
-                expectedCommitment: BigInt(commitment),
+                publishedKpubSet,
+                expectedEpoch: thresholdEpoch,
                 expectedCr: enrollCr,
+                expectedCommitment: BigInt(commitment),
             });
         } catch (e) {
             req.log.error({ err: e.message }, "register nullifier proof gate errored");
