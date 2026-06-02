@@ -33,16 +33,19 @@ FROM deps AS build
 WORKDIR /app
 COPY lib.mjs ./lib.mjs
 COPY service ./service
-# enroll_commit_v2.json (compiled ACIR) is what the gate loads at runtime. The
-# proof/public_inputs are the committed test vector, copied here ONLY so the CRS
-# pre-bake below can run one real verify (they are not used at runtime).
+# enroll_commit_v2.json (compiled ACIR) is what the /v3/blind-eval gate loads at
+# runtime (its vk derives from this bytecode in proof-gate.mjs). No test
+# proof/public_inputs are copied for it: the enroll circuit needs a production
+# Diia-CA witness that can't be reproduced at build time, so the CRS pre-bake
+# smoke-tests the nullifier instead (same fixed-size verifier CRS).
 COPY circuits/enroll_commit_v2/target/enroll_commit_v2.json \
-     circuits/enroll_commit_v2/target/proof \
-     circuits/enroll_commit_v2/target/public_inputs \
      ./circuits/enroll_commit_v2/target/
-# oprf_nullifier ACIR: /v3/register bakes its vk at startup to verify the
-# nullifier proof (binds commitment<->N<->Y<->M<->cert).
+# oprf_nullifier ACIR + its locally-reproducible test vector: /v3/register bakes
+# its vk at startup, and the CRS pre-bake (bake-crs.mjs) runs one real verify of
+# this proof to warm the SRS + smoke-test the in-process gate.
 COPY circuits/oprf_nullifier/target/oprf_nullifier.json \
+     circuits/oprf_nullifier/target/proof \
+     circuits/oprf_nullifier/target/public_inputs \
      ./circuits/oprf_nullifier/target/
 
 # bb.js bundles prebuilt NAPI backends for 4 platforms (~125MB). The native
