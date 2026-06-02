@@ -72,7 +72,9 @@ export function pointFromHex(hex) {
 // — Node ─────────────────────────────────────────────────────────────────────
 
 /**
- * A single Grumpkin VOPRF node. Holds the secret scalar k and publishes
+ * LEGACY single-key Grumpkin VOPRF node. NOT on the deployed threshold path
+ * (the deployed service uses the 2-of-3 ShareNode set via makeNodes). Kept for
+ * roundtrip-test.mjs / gating-test.mjs. Holds the secret scalar k and publishes
  * Kpub = k*G. Stateless beyond k — one instance per node key.
  */
 export class OprfNode {
@@ -177,18 +179,23 @@ export class ShareNode {
  *              canonical nullifier == single-key pedersen(k'*H2C(id))). In
  *              production NO party knows k'; a live DKG never reveals it.
  *
- * This is the helper the 3-node demo (Tasks 5/7) uses. epoch is carried by each
- * evaluate() call, not stored on the node (a node serves multiple sessions).
+ * This is the helper the 3-node demo uses. epoch is carried by each evaluate()
+ * call, not stored on the node (a node serves multiple sessions).
+ *
+ * SEED (restart-stability): pass opts.seed (a bigint or Uint8Array SECRET) to
+ * derive the share set deterministically -- the SAME seed => the SAME shares =>
+ * the SAME k' => the SAME published Kpub set on every boot, so the deterministic
+ * nullifier (and recovery / in-flight enrollments) survives restarts. Without a
+ * seed the CSPRNG path is used (the set rotates each call -- fine only for tests
+ * that don't depend on stability). The seed is treated like a key: never logged.
  *
  * @param {number} n number of nodes.
  * @param {number} t threshold (any t of n can evaluate).
- * @param {bigint} [epoch] accepted for call-site symmetry; UNUSED at keygen
- *        (epoch is a per-session value carried by each ShareNode.evaluate call,
- *        not a property of the share set).
+ * @param {{ seed?: bigint | Uint8Array }} [opts] keygen seed for stability.
  * @returns {{ nodes: ShareNode[], published: Array<{i: bigint, Kpub_i: string}>, kImplied: bigint }}
  */
-export function makeNodes(n, t, _epoch) {
-    const { shares, kImplied } = dkgKeygen(n, t);
+export function makeNodes(n, t, opts = {}) {
+    const { shares, kImplied } = dkgKeygen(n, t, opts.seed);
     const nodes = shares.map((s) => new ShareNode({ i: BigInt(s.i), k_i: s.k_i }));
     const published = nodes.map((node) => node.publicShare());
     return { nodes, published, kImplied };

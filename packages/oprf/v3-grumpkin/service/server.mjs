@@ -179,6 +179,40 @@ export function resolveAttesterKey(env = process.env) {
     return `0x${k.toString(16).padStart(64, "0")}`;
 }
 
+/**
+ * Resolve the threshold keygen SEED from env V3_THRESHOLD_SEED (hex or decimal).
+ * The seed deterministically derives the 2-of-3 share set, so the published Kpub
+ * set + k' (hence the deterministic nullifier + recovery) are STABLE across
+ * restarts. REQUIRED in production -- fail closed if absent, exactly like the
+ * attester key. Outside production a labeled deterministic dev seed is used so
+ * tests / local runs are stable without a secret (its k' is NOT a production
+ * key). The seed is a SECRET: returned as a bigint, NEVER logged.
+ *
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {bigint} keygen seed.
+ */
+export function resolveThresholdSeed(env = process.env) {
+    const raw = env.V3_THRESHOLD_SEED;
+    if (raw) {
+        const s = raw.trim();
+        const v = /^0x[0-9a-fA-F]+$/.test(s) ? BigInt(s)
+            : /^[0-9]+$/.test(s) ? BigInt(s)
+            : null;
+        if (v === null || v === 0n) {
+            throw new Error("V3_THRESHOLD_SEED must be a nonzero hex (0x..) or decimal integer");
+        }
+        return v;
+    }
+    if (env.NODE_ENV === "production") {
+        throw new Error("[oprf-v3] V3_THRESHOLD_SEED is required in production");
+    }
+    // eslint-disable-next-line no-console
+    console.warn("[oprf-v3] V3_THRESHOLD_SEED not set — using a deterministic dev seed (NOT a production key set)");
+    // Labeled dev-only seed (NOT a production secret), matching the dev-attester
+    // labeling style. Stable across restarts so local recovery works.
+    return BigInt("0x" + Buffer.from("crisp-qes-v3-grumpkin-dev-threshold-seed").toString("hex"));
+}
+
 // — App builder (exported so the roundtrip test can run it in-process) ────────
 
 export async function buildApp(opts = {}) {
@@ -228,13 +262,17 @@ export async function buildApp(opts = {}) {
     // — Threshold (2-of-3) OPRF node set ─────────────────────────────────────
     // Replaces the single-key OprfNode: the group key k' is Shamir-shared across
     // 3 ShareNodes (any 2 evaluate). k' is NEVER assembled at any node (the F4
-    // design). For the co-hosted DEMO all 3 nodes run in THIS process; with
-    // INDEPENDENT operators each node would run separately and gate its own
-    // blind-eval -- F4 is only mitigated when >=2 nodes are independently
-    // operated (an operational property the demo must disclose, not a code one).
-    // Tests may inject a prebuilt set via opts.nodes/opts.publishedKpubSet.
+    // design). For the co-hosted DEMO all 3 nodes run in THIS process, SEEDED
+    // from one secret (V3_THRESHOLD_SEED) so the published Kpub set + k' are
+    // STABLE across restarts -- the deterministic nullifier (and recovery /
+    // in-flight enrollments) survives reboots. CAVEAT: a real independent-
+    // operator deployment would have EACH node hold its OWN share (no shared
+    // seed) and run its own gated blind-eval; the single-seed demo trades that
+    // independence for restart-stability, and F4 is only mitigated when >=2 nodes
+    // are independently operated (an operational property, not a code one).
+    // Tests may inject a prebuilt set via opts.nodeSet, or a seed via opts.seed.
     const { nodes, published } =
-        opts.nodeSet ?? makeNodes(opts.n ?? 3, opts.t ?? 2);
+        opts.nodeSet ?? makeNodes(opts.n ?? 3, opts.t ?? 2, { seed: opts.seed ?? resolveThresholdSeed() });
     // The published Kpub set as {x,y} bigints in index order 1,2,3 -- the
     // canonical set the register cross-check (e) pins by value.
     const publishedKpubSet = published.map((p) => {
@@ -352,7 +390,10 @@ export async function buildApp(opts = {}) {
             curve: "Grumpkin (y^2 = x^3 - 17)",
             wireFormat: "point = 0x{x:32B BE}{y:32B BE}; scalar = decimal bigint",
             // Published 2-of-3 Kpub set (the canonical node keys). k' (the group
-            // key) is never assembled at any node.
+            // key) is never assembled at any node. The set is SEED-DERIVED (from
+            // V3_THRESHOLD_SEED) so it is stable across restarts; the seed itself
+            // is a secret and is never exposed here.
+            keySet: "seed-derived (stable across restarts)",
             publishedKpubSet: published.map((p) => ({ i: p.i.toString(), Kpub_i: p.Kpub_i })),
             thresholdEpoch: thresholdEpoch.toString(),
             proofGating: gateError
@@ -698,48 +739,8 @@ export async function buildApp(opts = {}) {
     return app;
 }
 
-// Grumpkin group order (re-exported from oprf-node.mjs as N).
-const GRUMPKIN_N =
-    21888242871839275222246405745257275088696311157297823662689037894645226208583n;
-
-// Deterministic dev key — explicitly NOT a production secret. Matches the
-// labeling style of gen-nullifier-witness.mjs's `det()` helper. Used only when
-// GRUMPKIN_OPRF_KEY is unset outside production.
-function defaultDevKey() {
-    const label = "crisp-qes-v3-grumpkin-dev-node-k";
-    const raw = BigInt("0x" + Buffer.from(label).toString("hex"));
-    // Reduce into [1, N).
-    return (raw % (GRUMPKIN_N - 1n)) + 1n;
-}
-
-/**
- * Resolve the node secret scalar k from the GRUMPKIN_OPRF_KEY env var (32-byte
- * big-endian hex, 0x-optional), reduced into [1, N). Required in production;
- * outside production a labeled deterministic dev key is used. Mirrors v2's
- * OPRF_KEY handling in packages/oprf/src/config.ts.
- *
- * @param {NodeJS.ProcessEnv} [env]
- * @returns {bigint}
- */
-export function resolveNodeKey(env = process.env) {
-    const isProd = env.NODE_ENV === "production";
-    const raw = env.GRUMPKIN_OPRF_KEY;
-    if (raw) {
-        const h = raw.startsWith("0x") || raw.startsWith("0X") ? raw.slice(2) : raw;
-        if (!/^[0-9a-fA-F]{64}$/.test(h)) {
-            throw new Error("GRUMPKIN_OPRF_KEY must be 32-byte hex (64 hex chars)");
-        }
-        const k = BigInt("0x" + h) % GRUMPKIN_N;
-        if (k === 0n) throw new Error("GRUMPKIN_OPRF_KEY reduces to 0 mod N");
-        return k;
-    }
-    if (isProd) {
-        throw new Error("[oprf-v3] GRUMPKIN_OPRF_KEY is required in production");
-    }
-    // eslint-disable-next-line no-console
-    console.warn("[oprf-v3] GRUMPKIN_OPRF_KEY not set — using deterministic dev key");
-    return defaultDevKey();
-}
+// (The legacy single-key node-key resolver was removed: the deployed service is
+// the 2-of-3 threshold set, keyed by V3_THRESHOLD_SEED via resolveThresholdSeed.)
 
 // — CLI entrypoint: `node server.mjs` ────────────────────────────────────────
 const isMain =
@@ -752,8 +753,8 @@ if (isMain) {
     // default to loopback for local dev. Override with HOST.
     const host = process.env.HOST ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
     const app = await buildApp({
-        k: resolveNodeKey(),
         attesterKey: resolveAttesterKey(),
+        seed: resolveThresholdSeed(),
         logger: { level: "info" },
     });
     await app.listen({ port, host });
