@@ -90,3 +90,97 @@ pub fn oprf_verify_and_nullify(
     let nullifier = std::hash::pedersen_hash([n.x, n.y]);
     (nullifier, m)
 }
+
+// ===========================================================================
+// Two-proof variant (the DEPLOYED v3 path).
+//
+// We do NOT ship the fused single proof above for the deployed enrollment flow:
+// the fused proof needs the node response Y (built AFTER /v3/blind-eval), so it
+// cannot gate blind-eval, which would turn the OPRF into an OPEN oracle (anyone
+// guessing a 10-digit RNOKPP could unblind k*H2C(id) and membership-test the
+// registry => deanonymization). Instead the deployed path keeps TWO proofs:
+//   (1) enroll proof  -- gates blind-eval; commits to its blind r as
+//                        C_r = commit_r(r) and exposes it publicly.
+//   (2) register proof -- takes C_r as a PUBLIC input and re-asserts
+//                        commit_r(r) == C_r for ITS r, so Pedersen binding ties
+//                        the two proofs to the SAME r.
+// The fused oprf_verify_and_nullify stays for consumers without a gated-oracle
+// stage (CRISP/Interfold).
+// ===========================================================================
+
+// commit_r -- the cross-proof binding commitment over the blind scalar r.
+// C_r = pedersen([r.lo, r.hi]). Pedersen is binding, so two proofs that both
+// assert commit_r(r) == C_r for the SAME public C_r necessarily used the SAME r.
+// Range-checks the limbs so (lo,hi) is the unique integer (C-3) and the
+// commitment is well-defined.
+pub fn commit_r(r: Scalar) -> Field {
+    r.lo.assert_max_bit_size::<128>();
+    r.hi.assert_max_bit_size::<128>();
+    std::hash::pedersen_hash([r.lo, r.hi])
+}
+
+// oprf_nullify_bound -- the two-proof REGISTER entry point.
+//
+// Unlike the fused entry point, `m` is a PUBLIC INPUT here (NOT recomputed from
+// r*H2C): the register proof never sees H2C(id) (that lives in the separate
+// enroll proof). The service binds m == the enroll proof's M and c_r == the
+// enroll proof's C_r out-of-circuit; in-circuit we bind THIS proof's r to that
+// shared C_r and verify the node's DLEQ over the public (m, y, kpub).
+//
+// Math (why this yields the canonical nullifier):
+//   commit_r(r) == c_r  =>  r == r_enroll  (Pedersen binding; same r as enroll)
+//   verify_dleq         =>  Y == k*M  (for Kpub's k; M = r_enroll*H2C(id))
+//   n = rinv*Y, and r*n == Y with r == r_enroll  =>  rinv == r_enroll^-1
+//   => N = r_enroll^-1 * Y = r_enroll^-1 * k * r_enroll * H2C(id) = k*H2C(id)
+// the canonical, deterministic OPRF output -- no Sybil leverage (F2 closed).
+//
+// Threshold-compatible: `kpub` may be a single node key k*GEN OR the
+// Lagrange-combined Kpub of a threshold set; verify_dleq is identical either way.
+//
+// Arguments:
+//   m, y, kpub   PUBLIC blinded element M = r*H2C(id), node response Y = k*M,
+//                and node/threshold public key Kpub.
+//   r, rinv      PRIVATE blind scalar (bound to enroll via c_r) and its claimed
+//                inverse (forced exact by the group equation r*N == Y).
+//   c_r          PUBLIC cross-proof binding commitment from the enroll proof.
+//   c_lo..z_hi   DLEQ proof (c, z) as 128-bit limbs.
+// Returns the nullifier = pedersen([N.x, N.y]).
+pub fn oprf_nullify_bound(
+    m: Pt,
+    y: Pt,
+    kpub: Pt,
+    r: Scalar,
+    rinv: Scalar,
+    c_r: Field,
+    c_lo: Field,
+    c_hi: Field,
+    z_lo: Field,
+    z_hi: Field,
+) -> Field {
+    // C-3: range-check the rinv limbs (commit_r below range-checks r's limbs).
+    rinv.lo.assert_max_bit_size::<128>();
+    rinv.hi.assert_max_bit_size::<128>();
+
+    // F2 cross-proof binding: THIS proof's r must commit to the SAME C_r the
+    // enroll proof published => r == r_enroll (Pedersen binding). Also range-
+    // checks r's limbs.
+    assert(commit_r(r) == c_r, "c_r mismatch (r != enroll r)");
+
+    // Defense-in-depth: reject the point at infinity as an unblind input, before
+    // verify_dleq (the F2 group equation below compares only affine coords).
+    assert(!y.is_infinite, "y is the point at infinity");
+
+    // F1 + C-1: verify the node's DLEQ against the pinned generator over (m, y).
+    dleq::verify_dleq(kpub, m, y, c_lo, c_hi, z_lo, z_hi);
+
+    // Unblind: N = rinv * Y.
+    let n = multi_scalar_mul([y], [rinv]);
+    assert(!n.is_infinite, "n is the point at infinity");
+
+    // F2 binding: r * N == Y with r bound to enroll (via c_r) forces
+    // rinv = r_enroll^-1 => N = k*H2C(id). Without this, rinv is free.
+    let ycheck = multi_scalar_mul([n], [r]);
+    assert((ycheck.x == y.x) & (ycheck.y == y.y), "F2: r*N != Y");
+
+    std::hash::pedersen_hash([n.x, n.y])
+}

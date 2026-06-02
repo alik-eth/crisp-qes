@@ -27,6 +27,7 @@ mod tests {
     use crate::h2c::h2c_grumpkin;
     use crate::dleq::verify_dleq;
     use crate::oprf::oprf_verify_and_nullify;
+    use crate::oprf::{commit_r, oprf_nullify_bound};
 
     // ---- honest vectors (from lib.mjs, RNOKPP "1234567890") ----
     global U0: Field = 5600281009168003126016872261719506870450933036194097358717167907313473038919;
@@ -67,11 +68,24 @@ mod tests {
     global EXPECTED_NULLIFIER: Field =
         0x06f310b1dbbcdbb45604e11517493552d7577117ced0985984078cf754fab227;
 
+    // M = r*H2C(id) coords (the SAME M asserted in test_honest_accept); the
+    // two-proof register entry point takes M as a PUBLIC input.
+    global MX: Field = 12740386612938090927079547681734239410028477805108087007172264989097450666954;
+    global MY: Field = 7157360252618170453902251378396272710129452917231230593436182484546167046936;
+
+    // C_r = commit_r(r()) = pedersen([R_LO, R_HI]). Pinned (captured on first
+    // compile from the test_commit_r_deterministic failure, then hardcoded).
+    global EXPECTED_CR: Field =
+        0x1795c499b393f14a229a1c2f2fe5fdf8bfaad3c4c04b0e13f1dcba7bdc3f22c5;
+
     fn kpub() -> Pt {
         Pt { x: KPX, y: KPY, is_infinite: false }
     }
     fn y_pt() -> Pt {
         Pt { x: YX, y: YY, is_infinite: false }
+    }
+    fn m_pt() -> Pt {
+        Pt { x: MX, y: MY, is_infinite: false }
     }
     fn r() -> Scalar {
         Scalar { lo: R_LO, hi: R_HI }
@@ -147,6 +161,62 @@ mod tests {
         // the ONLY rejecter is the explicit is_infinite guard.
         let _ = oprf_verify_and_nullify(
             h2c_grumpkin(U0, U1, H0, H1), r(), rinv(), kpub(), inf, C_LO, C_HI, Z_LO, Z_HI,
+        );
+    }
+
+    // ===== two-proof variant (commit_r + oprf_nullify_bound) =====
+
+    // commit_r is deterministic and matches the pinned EXPECTED_CR.
+    #[test]
+    fn test_commit_r_deterministic() {
+        assert(commit_r(r()) == commit_r(r()));
+        assert(commit_r(r()) == EXPECTED_CR);
+    }
+
+    // HONEST two-proof register: with the shared-r commitment c_r = commit_r(r),
+    // oprf_nullify_bound yields the SAME nullifier as the fused path => the
+    // deployed two-proof path preserves the deterministic nullifier (recovery
+    // intact, no on-chain migration).
+    #[test]
+    fn test_nullify_bound_honest() {
+        let cr = commit_r(r());
+        let nullifier = oprf_nullify_bound(
+            m_pt(), y_pt(), kpub(), r(), rinv(), cr, C_LO, C_HI, Z_LO, Z_HI,
+        );
+        assert(nullifier == EXPECTED_NULLIFIER);
+    }
+
+    // CROSS-PROOF binding: a register proof whose c_r does not match commit_r(r)
+    // (i.e. r != enroll's r) is rejected by the commit_r(r)==c_r assert.
+    #[test(should_fail_with = "c_r mismatch (r != enroll r)")]
+    fn test_nullify_bound_wrong_cr() {
+        let bad_cr = commit_r(r()) + 1;
+        let _ = oprf_nullify_bound(
+            m_pt(), y_pt(), kpub(), r(), rinv(), bad_cr, C_LO, C_HI, Z_LO, Z_HI,
+        );
+    }
+
+    // F2 forgery in the two-proof path: honest c_r + r (so commit_r passes), but
+    // rinv = 2*r^-1 != r^-1. RINV2 limbs are < 2^128 (range check passes) and c_r
+    // matches honest r, so the ONLY rejecter is the F2 group equation r*N == Y.
+    // should_fail_with pins it to that assert (non-vacuous).
+    #[test(should_fail_with = "F2: r*N != Y")]
+    fn test_nullify_bound_f2_wrong_rinv() {
+        let cr = commit_r(r());
+        let bad_rinv = Scalar { lo: RINV2_LO, hi: RINV2_HI };
+        let _ = oprf_nullify_bound(
+            m_pt(), y_pt(), kpub(), r(), bad_rinv, cr, C_LO, C_HI, Z_LO, Z_HI,
+        );
+    }
+
+    // DLEQ-inconsistent: honest c_r/r/rinv but a wrong y (not k*M) => the DLEQ
+    // transcript hash differs from the supplied challenge limbs => C-1 fails.
+    #[test(should_fail)]
+    fn test_nullify_bound_dleq_inconsistent() {
+        let cr = commit_r(r());
+        let wrong_y = Pt { x: HX, y: HY, is_infinite: false };
+        let _ = oprf_nullify_bound(
+            m_pt(), wrong_y, kpub(), r(), rinv(), cr, C_LO, C_HI, Z_LO, Z_HI,
         );
     }
 }
