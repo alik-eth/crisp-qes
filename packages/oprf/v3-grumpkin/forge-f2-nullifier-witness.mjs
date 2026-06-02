@@ -8,7 +8,7 @@
 // reuses the SAME r that blinded H2C(id) (so r != (2*r^-1)^-1 there).
 
 import { writeFileSync } from "node:fs";
-import { Fp, Fn, N, G, hashToCurve, scalarLimbs, oprfEval, dleqProve } from "./lib.mjs";
+import { Fn, N, G, hashToCurve, scalarLimbs, oprfEval, dleqProve } from "./lib.mjs";
 
 const RNOKPP = new TextEncoder().encode("1234567890");
 const det = (label) => (BigInt("0x" + Buffer.from(label).toString("hex")) % (N - 1n)) + 1n;
