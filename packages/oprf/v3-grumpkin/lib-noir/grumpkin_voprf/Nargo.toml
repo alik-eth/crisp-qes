@@ -1,0 +1,7 @@
+[package]
+name = "grumpkin_voprf"
+type = "lib"
+authors = ["crisp-qes"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
