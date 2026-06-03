@@ -21,7 +21,12 @@ fi
 echo "[init] funding deployer $DEPLOYER_ADDR …"
 cast send "$DEPLOYER_ADDR" --value 10ether --private-key "$ANVIL0_KEY" --rpc-url "$RPC" >/dev/null
 
-cd /contracts
+# Stage the (read-only, bind-mounted) contracts into a writable in-container dir
+# so forge can write its cache/out/broadcast without touching the host mount
+# (avoids rootless-podman/SELinux write-permission issues on the bind-mount).
+echo "[init] staging contracts to /tmp/contracts …"
+rm -rf /tmp/contracts && cp -a /contracts /tmp/contracts
+cd /tmp/contracts
 echo "[init] deploying EnrollmentRegistry (nonce 0) …"
 ENROLL_ATTESTER="$ENROLL_ATTESTER" ENROLL_GENESIS_ROOT="$GENESIS_ROOT" \
   forge script script/DeployEnrollmentRegistry.s.sol \

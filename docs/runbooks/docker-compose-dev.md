@@ -53,6 +53,15 @@ broadcasts → a slot lands on the local anvil.
 docker compose --env-file .env.dev -f docker-compose.dev.yml down -v   # -v also drops the anvil volume
 ```
 
+## Podman / Fedora notes (validated on podman 5.8 rootless, SELinux enforcing)
+- Pre-pull base images so podman's short-name resolution doesn't block a non-TTY
+  build: `podman pull docker.io/library/caddy:2-alpine docker.io/library/ubuntu:24.04`.
+- Bind-mounts use `:z` (SELinux relabel); `init` copies the read-only contracts to
+  a writable `/tmp` before `forge` (avoids rootless write-perm issues on the mount).
+- `oprf`/`relayer` have `restart: unless-stopped` because podman-compose doesn't
+  honour `init`'s `service_completed_successfully`; they self-heal once the
+  registry is deployed (may log one `enrollmentRoot returned 0x` crash first).
+
 ## Notes / troubleshooting
 - **Deterministic addresses** assume a fresh chain. After `down -v`, addresses are
   stable; if you reset only the chain (not the volume), re-run `init`.
