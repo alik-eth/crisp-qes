@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@aztec/bb.js": "4.0.0-nightly.20260120",
+    "@aztec/bb.js-v3": "npm:@aztec/bb.js@3.0.0-nightly.20260102",
     "@crisp-qes/sdk": "workspace:*",
     "@noble/curves": "^1.6.0",
     "@noble/hashes": "^1.4.0",
