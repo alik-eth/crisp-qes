@@ -84,6 +84,8 @@ export interface AppConfig {
     fheBallotRegistry: `0x${string}`;
     /** CRISPQESProgram on the operator chain (tally decode). */
     fheCrispProgram: `0x${string}`;
+    /** CRISP coordination server (/state/lite committee key + /qes/broadcast). */
+    fheCoordinatorUrl: string;
 }
 
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as const;
@@ -123,4 +125,7 @@ export const config: AppConfig = {
         "VITE_FHE_CRISP_PROGRAM",
         "0x7969c5eD335650692Bc04293B07F5BF2e7A673C0",
     ) as `0x${string}`,
+    // Coordination server (443 -> :4000 on the Fly backend). Needs CORS for this
+    // web origin to allow the in-browser broadcast.
+    fheCoordinatorUrl: req("VITE_FHE_COORDINATOR_URL", "https://crisp-qes-fhe.fly.dev"),
 };

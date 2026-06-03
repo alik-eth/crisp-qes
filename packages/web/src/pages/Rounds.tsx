@@ -4,6 +4,7 @@ import { config } from "../config.js";
 import { fetchRounds, type VoteRound } from "../lib/voteRound.js";
 import { fetchTally, toResults, winningOption, type OptionResult } from "../lib/voteTally.js";
 import { voteSdkCheck, loadCapturedWitness, proveVoteInBrowser } from "../lib/voteProver.js";
+import { castVoteInBrowser } from "../lib/castVote.js";
 
 const DECODE_TALLY_ABI = [
     {
@@ -64,6 +65,39 @@ export function Rounds() {
             );
         } catch (e) {
             setProveResult(`prove failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    };
+
+    // Full live flow: pick the first open round, source the enrollment from the
+    // captured witness (the real product sources it from the voter's account +
+    // the round's Merkle path), prove in-browser, and broadcast to the coordinator.
+    const castVoteFull = async () => {
+        const open = (rounds ?? []).find((r) => r.isOpen(now));
+        if (!open) {
+            setProveResult("no open round to vote on");
+            return;
+        }
+        setProveResult(`casting vote on round ${open.e3Id}…`);
+        try {
+            const w = await loadCapturedWitness(`${import.meta.env.BASE_URL}vote-witness.json`);
+            const r = await castVoteInBrowser({
+                round: open,
+                optionIndex: 0,
+                enrollment: {
+                    enrollmentSecret: w.enrollmentSecret,
+                    merklePath: w.merklePath,
+                    merklePathIndices: w.merklePathIndices,
+                },
+                coordinatorUrl: config.fheCoordinatorUrl,
+                onStage: (s) => setProveResult(`vote: ${s}`),
+            });
+            setProveResult(
+                r.ok
+                    ? `VOTE BROADCAST OK — tx ${String(r.txHash).slice(0, 14)}…, nullifier ${r.nullifier.slice(0, 12)}…`
+                    : `broadcast ${r.status}${r.detail ? " — " + r.detail : ""}`,
+            );
+        } catch (e) {
+            setProveResult(`vote failed: ${e instanceof Error ? e.message : String(e)}`);
         }
     };
 
@@ -155,7 +189,10 @@ export function Rounds() {
                 </button>
                 {proverProbe && <p className="muted" style={{ fontFamily: "monospace" }}>{proverProbe}</p>}
                 <button type="button" onClick={() => void proveCapturedVote()}>
-                    Prove a captured vote in-browser (~130s)
+                    Prove a captured vote in-browser (~90s)
+                </button>
+                <button type="button" onClick={() => void castVoteFull()}>
+                    Cast vote on first open round (prove + broadcast)
                 </button>
                 {proveResult && <p className="muted" style={{ fontFamily: "monospace" }}>{proveResult}</p>}
             </details>

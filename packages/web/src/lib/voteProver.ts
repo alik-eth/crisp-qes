@@ -4,7 +4,11 @@
 // zk-inputs). The main app stays pure v4; the v3 graph never touches it.
 // Desktop only (the fold proof is ~1.5M gates, past the iOS browser floor).
 
-const VOTE_WORKER_URL = `${import.meta.env.BASE_URL}vote/voteProve.worker.js`;
+// The worker is emitted with a STABLE name (not content-hashed, since it's built
+// separately to public/vote/), so browsers would cache it across deploys. Bump
+// WORKER_REV whenever the vote-worker bundle changes to bust the cache.
+const WORKER_REV = "4b1";
+const VOTE_WORKER_URL = `${import.meta.env.BASE_URL}vote/voteProve.worker.js?v=${WORKER_REV}`;
 
 function spawn(): Worker {
     // Module worker; same-origin, runs under the page's COOP/COEP (SharedArrayBuffer).
