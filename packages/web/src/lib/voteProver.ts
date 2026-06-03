@@ -6,9 +6,7 @@
 export type VoteWorkerSelftest = {
     /** the v3 bb.js version the worker realm loaded */
     version: string;
-    /** true iff the worker loaded v3 (v4 removed the top-level `Fr` export) */
-    hasFr: boolean;
-    /** the v3 WASM instantiated successfully in the worker realm */
+    /** the v3 WASM executed (CRS-free pedersen) in the worker realm */
     initialized: boolean;
 };
 
@@ -26,7 +24,7 @@ export function voteWorkerSelftest(): Promise<VoteWorkerSelftest> {
                 | ({ type: "selftest:done" } & VoteWorkerSelftest)
                 | { type: "error"; detail: string };
             if (m.type === "selftest:done") {
-                resolve({ version: m.version, hasFr: m.hasFr, initialized: m.initialized });
+                resolve({ version: m.version, initialized: m.initialized });
             } else {
                 reject(new Error(m.type === "error" ? m.detail : "unexpected worker message"));
             }

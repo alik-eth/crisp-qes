@@ -56,7 +56,7 @@ export function Rounds() {
         try {
             const r = await voteWorkerSelftest();
             setProverProbe(
-                `v3 worker OK — bb.js ${r.version}, Fr=${r.hasFr ? "present (v3)" : "absent (NOT v3!)"}, wasm initialized=${r.initialized}`,
+                `v3 worker OK — bb.js ${r.version} loaded in isolated realm, wasm executed=${r.initialized}`,
             );
         } catch (e) {
             setProverProbe(`worker failed: ${e instanceof Error ? e.message : String(e)}`);
