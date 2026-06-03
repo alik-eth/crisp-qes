@@ -78,6 +78,12 @@ export interface AppConfig {
     creationDepositWei: bigint;
     /** Mirrors PetitionRegistryV2.MAX_TEXT_BYTES (8 * 1024). */
     maxTextBytes: number;
+    /** CRISP FHE voting — operator chain JSON-RPC (anvil-on-Fly). */
+    fheOperatorRpc: string;
+    /** BallotRegistry on the operator chain (round metadata). */
+    fheBallotRegistry: `0x${string}`;
+    /** CRISPQESProgram on the operator chain (tally decode). */
+    fheCrispProgram: `0x${string}`;
 }
 
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as const;
@@ -105,4 +111,16 @@ export const config: AppConfig = {
     oprfEnrollmentEpoch: req("VITE_OPRF_ENROLLMENT_EPOCH", "v2-2026"),
     creationDepositWei: 1_000_000_000_000_000n,
     maxTextBytes: 8 * 1024,
+    // CRISP FHE voting backend (operator chain). Defaults to the live Fly
+    // deployment; a fresh-chain redeploy changes fheBallotRegistry (nonce) —
+    // override via VITE_FHE_BALLOT_REGISTRY then.
+    fheOperatorRpc: req("VITE_FHE_OPERATOR_RPC", "https://crisp-qes-fhe.fly.dev:8545"),
+    fheBallotRegistry: req(
+        "VITE_FHE_BALLOT_REGISTRY",
+        "0x202CCe504e04bEd6fC0521238dDf04Bc9E8E15aB",
+    ) as `0x${string}`,
+    fheCrispProgram: req(
+        "VITE_FHE_CRISP_PROGRAM",
+        "0x7969c5eD335650692Bc04293B07F5BF2e7A673C0",
+    ) as `0x${string}`,
 };

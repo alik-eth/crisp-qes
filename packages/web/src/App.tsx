@@ -13,6 +13,7 @@ import { Recover } from "./pages/Recover.js";
 import { Me } from "./pages/Me.js";
 import { About } from "./pages/About.js";
 import { V3Enroll } from "./pages/V3Enroll.js";
+import { Rounds } from "./pages/Rounds.js";
 import { NotFound } from "./pages/NotFound.js";
 
 type Modal = null | { kind: "signin" } | { kind: "register" };
@@ -57,6 +58,9 @@ export function App() {
                         </Route>
                         <Route path="/petitions">
                             <Petitions state={state} onSignIn={openSignIn} />
+                        </Route>
+                        <Route path="/rounds">
+                            <Rounds />
                         </Route>
                         <Route path="/p/new">
                             {state.kind !== "verified" ? (
