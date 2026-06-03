@@ -156,6 +156,9 @@ importers:
       '@walletconnect/ethereum-provider':
         specifier: ^2.23.9
         version: 2.23.9(@types/react@18.3.29)(react@18.3.1)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@18.3.1))(zod@3.25.76)
+      buffer:
+        specifier: ^6.0.3
+        version: 6.0.3
       d3-geo:
         specifier: ^3.1.1
         version: 3.1.1

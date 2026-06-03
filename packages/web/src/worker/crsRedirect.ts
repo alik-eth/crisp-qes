@@ -25,7 +25,10 @@ self.fetch = ((input: RequestInfo | URL, init?: RequestInit): Promise<Response> 
     if (url.startsWith(CRS_ORIGIN)) {
         // e.g. https://crs.aztec.network/g1.dat -> <origin>/crs/g1.dat
         const mirrored = self.location.origin + "/crs" + url.slice(CRS_ORIGIN.length);
-        return original(mirrored, init);
+        // Bypass the HTTP cache: if the CRS mirror 404s once (e.g. before it is
+        // provisioned), browsers cache that failure and poison every later proof.
+        // Always revalidate against the server.
+        return original(mirrored, { ...init, cache: "reload" });
     }
     return original(input, init);
 }) as typeof fetch;

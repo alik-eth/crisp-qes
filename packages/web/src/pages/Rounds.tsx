@@ -3,7 +3,7 @@ import { createPublicClient, http } from "viem";
 import { config } from "../config.js";
 import { fetchRounds, type VoteRound } from "../lib/voteRound.js";
 import { fetchTally, toResults, winningOption, type OptionResult } from "../lib/voteTally.js";
-import { voteSdkCheck } from "../lib/voteProver.js";
+import { voteSdkCheck, loadCapturedWitness, proveVoteInBrowser } from "../lib/voteProver.js";
 
 const DECODE_TALLY_ABI = [
     {
@@ -49,7 +49,23 @@ export function Rounds() {
     // ADR-0001 path (C) experimental probe: prove the v3 vote toolchain loads in
     // its own Web Worker realm (isolated from the main thread's v4 bb.js).
     const [proverProbe, setProverProbe] = useState<string | null>(null);
+    const [proveResult, setProveResult] = useState<string | null>(null);
     const now = Math.floor(Date.now() / 1000);
+
+    const proveCapturedVote = async () => {
+        setProveResult("loading witness…");
+        try {
+            const w = await loadCapturedWitness(`${import.meta.env.BASE_URL}vote-witness.json`);
+            const t0 = Date.now();
+            const p = await proveVoteInBrowser(w, (s) => setProveResult(`proving… (${s})`));
+            const secs = ((Date.now() - t0) / 1000).toFixed(1);
+            setProveResult(
+                `REAL in-browser fold proof OK in ${secs}s — ${p.encoded.length} hex chars, nullifier ${p.nullifier.slice(0, 14)}…`,
+            );
+        } catch (e) {
+            setProveResult(`prove failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    };
 
     const probeVoteProver = async () => {
         setProverProbe("running…");
@@ -138,6 +154,10 @@ export function Rounds() {
                     Run v3 worker self-test
                 </button>
                 {proverProbe && <p className="muted" style={{ fontFamily: "monospace" }}>{proverProbe}</p>}
+                <button type="button" onClick={() => void proveCapturedVote()}>
+                    Prove a captured vote in-browser (~130s)
+                </button>
+                {proveResult && <p className="muted" style={{ fontFamily: "monospace" }}>{proveResult}</p>}
             </details>
         </section>
     );

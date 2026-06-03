@@ -55,3 +55,8 @@ vendor/longfellow-zk/
 
 # generated v3 vote-worker bundle (vite.voteworker.config.ts)
 packages/web/public/vote/
+
+# local CRS mirror for in-browser proving (large; fetched from crs.aztec.network)
+packages/web/public/crs/
+# captured vote witness fixture (committee-key-specific, ephemeral)
+packages/web/public/vote-witness.json

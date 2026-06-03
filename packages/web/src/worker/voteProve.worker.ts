@@ -16,6 +16,7 @@
 
 /// <reference lib="webworker" />
 
+import "./bufferPolyfill.js";
 import "./crsRedirect.js";
 import { generateCircuitInputsImpl, generateProof, encodeSolidityProof } from "@crisp-e3/sdk";
 

@@ -262,6 +262,8 @@ set +e
   COMMITTEE_KEY_TIMEOUT_S="$COMMITTEE_KEY_TIMEOUT_S" \
   SKIP_TALLY="${SKIP_TALLY:-}" \
   ENROLLMENT_FILE="${ENROLLMENT_FILE:-}" \
+  DUMP_WITNESS="${DUMP_WITNESS:-}" \
+  DUMP_WITNESS_ONLY="${DUMP_WITNESS_ONLY:-}" \
   node --import tsx "$CRISP/tests/qes-e2e.mjs" 2>&1 | tee "$DRIVER_LOG" )
 DRIVER_RC=${PIPESTATUS[0]}
 set -e 2>/dev/null || true

@@ -53,6 +53,26 @@ export type VoteWitness = {
 
 export type VoteProof = { encoded: `0x${string}`; nullifier: string; publicInputs: string[] };
 
+/** Deserialize a witness captured by qes-e2e (DUMP_WITNESS): base64 pubkey, bigint strings. */
+export async function loadCapturedWitness(url: string): Promise<VoteWitness> {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`witness fetch ${res.status} (${url})`);
+    const j = await res.json();
+    const bin = atob(j.publicKey);
+    const publicKey = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) publicKey[i] = bin.charCodeAt(i);
+    return {
+        vote: j.vote,
+        publicKey,
+        enrollmentSecret: BigInt(j.enrollmentSecret),
+        merklePath: j.merklePath.map((s: string) => BigInt(s)),
+        merklePathIndices: j.merklePathIndices,
+        enrollmentRoot: BigInt(j.enrollmentRoot),
+        nullifier: BigInt(j.nullifier),
+        petitionId: BigInt(j.petitionId),
+    };
+}
+
 /**
  * Generate a real (non-mask) vote proof in the v3 worker realm. Requires the
  * CRS to be reachable (same-origin /crs/ mirror — present in the deployed app,

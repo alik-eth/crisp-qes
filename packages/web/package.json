@@ -19,6 +19,7 @@
     "@noble/hashes": "^1.4.0",
     "@noir-lang/noir_js": "1.0.0-beta.19",
     "@walletconnect/ethereum-provider": "^2.23.9",
+    "buffer": "^6.0.3",
     "d3-geo": "^3.1.1",
     "i18next": "^23.15.0",
     "react": "^18.3.1",
