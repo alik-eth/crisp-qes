@@ -43,7 +43,10 @@ COPY packages/sdk packages/sdk
 COPY packages/web packages/web
 
 RUN pnpm --filter @crisp-qes/sdk build
-RUN pnpm --filter @crisp-qes/web build
+# build:app = tsc + vite build only. The v3 vote worker (public/vote/) is built
+# SEPARATELY (build:voteworker) against the vendored fork's v3 toolchain, which
+# isn't in this image — it's pre-built on the host and COPY'd in via packages/web.
+RUN pnpm --filter @crisp-qes/web build:app
 
 # Mirror the Barretenberg CRS into the build output so we serve it same-origin
 # from /crs/ instead of crs.aztec.network (whose TLS cert expired 2026-06,

@@ -9,6 +9,10 @@ localhost — no Fly, no prod. Spec: `docs/specs/2026-06-03-docker-compose-dev-d
 
 ## 1. Bring it up
 ```bash
+# one-time/host prereq: build the v3 vote worker bundle (needs the vendored fork's
+# v3 toolchain, which isn't inside the slim web image — it's COPY'd in pre-built).
+pnpm -C packages/web build:voteworker
+
 docker compose --env-file .env.dev -f docker-compose.dev.yml up --build
 ```
 First run builds the FHE image (~minutes) + downloads the 128 MiB CRS into the web
