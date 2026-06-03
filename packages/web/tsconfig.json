@@ -13,5 +13,7 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src/**/*", "i18n/**/*"]
+  "include": ["src/**/*", "i18n/**/*"],
+  "// exclude": "voteProve.worker.ts is built by vite.voteworker.config.ts against the fork's v3 toolchain (@crisp-e3/sdk etc.), not the main app graph — keep it out of the app typecheck.",
+  "exclude": ["src/worker/voteProve.worker.ts"]
 }

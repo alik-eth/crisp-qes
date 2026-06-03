@@ -3,7 +3,7 @@ import { createPublicClient, http } from "viem";
 import { config } from "../config.js";
 import { fetchRounds, type VoteRound } from "../lib/voteRound.js";
 import { fetchTally, toResults, winningOption, type OptionResult } from "../lib/voteTally.js";
-import { voteWorkerSelftest } from "../lib/voteProver.js";
+import { voteSdkCheck } from "../lib/voteProver.js";
 
 const DECODE_TALLY_ABI = [
     {
@@ -54,9 +54,10 @@ export function Rounds() {
     const probeVoteProver = async () => {
         setProverProbe("running…");
         try {
-            const r = await voteWorkerSelftest();
+            const fns = await voteSdkCheck();
             setProverProbe(
-                `v3 worker OK — bb.js ${r.version} loaded in isolated realm, wasm executed=${r.initialized}`,
+                `v3 vote SDK loaded in isolated worker — generateProof:${fns.generateProof}, ` +
+                `generateCircuitInputsImpl:${fns.generateCircuitInputsImpl}, encodeSolidityProof:${fns.encodeSolidityProof}`,
             );
         } catch (e) {
             setProverProbe(`worker failed: ${e instanceof Error ? e.message : String(e)}`);

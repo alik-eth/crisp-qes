@@ -52,3 +52,6 @@ bench/package-lock.json
 # Parked vendored experiments — untracked nested checkouts (PQ/longfellow track)
 vendor/longfellow-rs/
 vendor/longfellow-zk/
+
+# generated v3 vote-worker bundle (vite.voteworker.config.ts)
+packages/web/public/vote/
