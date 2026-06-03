@@ -63,6 +63,9 @@ teardown() {
   pkill -9 -f "target/debug/server" 2>/dev/null || true
   pkill -9 -f "bin server"      2>/dev/null || true
   pkill -9 -f "anvil"           2>/dev/null || true
+  # identity layer: the OPRF threshold service (WITH_IDENTITY=1)
+  if [[ -n "${OPRF_PID:-}" ]]; then kill "$OPRF_PID" 2>/dev/null || true; fi
+  pkill -9 -f "service/server.mjs" 2>/dev/null || true
   sleep 1
   log "Teardown complete."
 }
@@ -172,6 +175,73 @@ wait_for "ciphernodes active (.enclave/ready)" "$STACK_READY_TIMEOUT_S" cipherno
 
 log "Stack is up (ciphernodes active). Logs: $STACK_LOG"
 
+# ── 3b. IDENTITY LAYER (WITH_IDENTITY=1): synthetic-cert threshold enrollment ─
+# Deploy EnrollmentRegistry on the local anvil, boot the 3-node OPRF threshold
+# service (synth-CA gate), enroll a SYNTHETIC cert (enroll proof -> threshold
+# blind-eval -> oprf_nullifier proof -> /v3/register), publish the root on-chain
+# via the attester-signed updateRoot, and hand the vote driver the REAL leaf.
+ENROLLMENT_FILE=""
+if [[ "${WITH_IDENTITY:-}" == "1" ]]; then
+  OPRF_DIR="$ROOT/packages/oprf/v3-grumpkin"
+  SYNTH_JSON="$OPRF_DIR/circuits/enroll_commit_v2_synthca/target/enroll_commit_v2_synthca.json"
+  # Canonical depth-20 zero-tree root (service/merkle.mjs) + dev attester addr
+  # (= address of the OPRF service's dev V3_ATTESTER_KEY fallback).
+  GENESIS_ROOT="0x1b49e706af69da35927cdf2b28b02fb2647245ac0ccbc376d062031185d3cd84"
+  DEV_ATTESTER="0xbcD7A4C1e3946c0BaaAC68E0D9A774D3d712f357"
+  DEPLOY_KEY="${IDENTITY_DEPLOY_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}" # anvil[0]
+  OPRF_PORT="${OPRF_PORT:-8788}"
+  OPRF_URL="http://127.0.0.1:${OPRF_PORT}"
+  ENROLLMENT_FILE="$LOG_DIR/enrollment-artifact.json"
+  command -v forge >/dev/null 2>&1 || die "forge required for WITH_IDENTITY (EnrollmentRegistry deploy)"
+
+  log "[identity] building synth-CA enroll circuit…"
+  ( cd "$OPRF_DIR" && node build-synthca-circuit.mjs ) >"$LOG_DIR/identity-build.log" 2>&1 \
+    || die "synth-CA circuit build failed (see $LOG_DIR/identity-build.log)"
+
+  log "[identity] deploying EnrollmentRegistry on anvil…"
+  ENROLL_REG="$(cd "$ROOT/packages/contracts" && \
+    ENROLL_ATTESTER="$DEV_ATTESTER" ENROLL_GENESIS_ROOT="$GENESIS_ROOT" \
+    forge script script/DeployEnrollmentRegistry.s.sol \
+      --rpc-url "$RPC_URL" --private-key "$DEPLOY_KEY" --broadcast 2>"$LOG_DIR/identity-deploy.log" \
+    | awk '/EnrollmentRegistry deployed:/{print $NF}' | tail -1)"
+  [[ "$ENROLL_REG" =~ ^0x[0-9a-fA-F]{40}$ ]] || { cat "$LOG_DIR/identity-deploy.log" >&2; die "EnrollmentRegistry deploy failed (addr='$ENROLL_REG')"; }
+  log "  EnrollmentRegistry=$ENROLL_REG"
+
+  log "[identity] booting 3-node OPRF threshold service (:$OPRF_PORT)…"
+  ( cd "$OPRF_DIR" && \
+    ENROLL_GATE_CIRCUIT="$SYNTH_JSON" CHAIN_ID=31337 ENROLLMENT_REGISTRY="$ENROLL_REG" \
+    PORT="$OPRF_PORT" HOST=127.0.0.1 \
+    exec node service/server.mjs ) >"$LOG_DIR/oprf-service.log" 2>&1 &
+  OPRF_PID=$!
+  oprf_deadline=$(( $(date +%s) + 60 ))
+  until curl -fsS "$OPRF_URL/healthz" >/dev/null 2>&1; do
+    kill -0 "$OPRF_PID" 2>/dev/null || { cat "$LOG_DIR/oprf-service.log" >&2; die "OPRF service exited early"; }
+    (( $(date +%s) < oprf_deadline )) || die "OPRF /healthz not ready in 60s (see $LOG_DIR/oprf-service.log)"
+    sleep 2
+  done
+  log "  OPRF service ready."
+
+  log "[identity] enrolling synthetic cert (enroll proof -> threshold -> /v3/register)…"
+  ( cd "$OPRF_DIR" && OPRF_URL="$OPRF_URL" ENROLLMENT_OUT="$ENROLLMENT_FILE" \
+    node enroll-synthetic.mjs ) >"$LOG_DIR/identity-enroll.log" 2>&1 \
+    || { tail -25 "$LOG_DIR/identity-enroll.log" >&2; die "synthetic enrollment failed (see $LOG_DIR/identity-enroll.log)"; }
+
+  log "[identity] publishing enrollment root on-chain (attester-signed updateRoot)…"
+  read -r NEW_ROOT LEAF_S ATT_SIG < <(python3 - "$ENROLLMENT_FILE" <<'PY'
+import json,sys
+a=json.load(open(sys.argv[1]))
+print(a["enrollmentRoot"], a["newCommitments"][0], a["attesterSig"])
+PY
+)
+  cast send "$ENROLL_REG" "updateRoot(bytes32,bytes32[],bytes)" \
+    "$NEW_ROOT" "[$LEAF_S]" "$ATT_SIG" \
+    --private-key "$DEPLOY_KEY" --rpc-url "$RPC_URL" >"$LOG_DIR/identity-updateroot.log" 2>&1 \
+    || { cat "$LOG_DIR/identity-updateroot.log" >&2; die "updateRoot failed (see $LOG_DIR/identity-updateroot.log)"; }
+  ONCHAIN_ROOT="$(cast call "$ENROLL_REG" "enrollmentRoot()(bytes32)" --rpc-url "$RPC_URL" 2>/dev/null)"
+  [[ "$ONCHAIN_ROOT" == "$NEW_ROOT" ]] || die "on-chain root ($ONCHAIN_ROOT) != enrolled root ($NEW_ROOT)"
+  log "  on-chain enrollmentRoot == enrolled root; vote will use the REAL enrollment leaf."
+fi
+
 # ── 4. run the round driver ──────────────────────────────────────────────────
 PROGRAM_ADDR="$(python3 - "$CRISP/packages/crisp-contracts/deployed_contracts.json" <<'PY'
 import json,sys
@@ -191,6 +261,7 @@ set +e
   CLI_BIN="$CRISP/target/debug/cli" \
   COMMITTEE_KEY_TIMEOUT_S="$COMMITTEE_KEY_TIMEOUT_S" \
   SKIP_TALLY="${SKIP_TALLY:-}" \
+  ENROLLMENT_FILE="${ENROLLMENT_FILE:-}" \
   node --import tsx "$CRISP/tests/qes-e2e.mjs" 2>&1 | tee "$DRIVER_LOG" )
 DRIVER_RC=${PIPESTATUS[0]}
 set -e 2>/dev/null || true

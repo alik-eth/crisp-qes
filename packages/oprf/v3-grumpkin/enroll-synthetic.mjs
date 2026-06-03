@@ -319,20 +319,46 @@ function writeArtifact(result) {
     return artifact;
 }
 
-// — main: in-process buildApp + app.inject (no HTTP port, no chain) ───────────
-async function main() {
-    console.log("CRISP-QES enrollment orchestrator (synthetic cert, in-process)\n");
+// HTTP transport: same { statusCode, json() } shape as Fastify app.inject, but
+// over fetch to a separately-booted OPRF service (set OPRF_URL). Used by the
+// harness; the service there owns the synth-CA gate via ENROLL_GATE_CIRCUIT.
+function httpInject(baseUrl) {
+    const base = baseUrl.replace(/\/+$/, "");
+    return async ({ method, url, payload }) => {
+        const res = await fetch(base + url, {
+            method,
+            headers: { "content-type": "application/json" },
+            body: payload != null ? JSON.stringify(payload) : undefined,
+        });
+        const text = await res.text();
+        return { statusCode: res.status, json: () => JSON.parse(text), body: text };
+    };
+}
 
-    // Gate pinned to the synth-CA circuit (what the harness sets via ENROLL_GATE_CIRCUIT).
+// — main: HTTP (OPRF_URL) against a booted service, else in-process buildApp ───
+async function main() {
+    const OPRF_URL = process.env.OPRF_URL;
+    console.log(
+        `CRISP-QES enrollment orchestrator (synthetic cert, ${OPRF_URL ? "HTTP " + OPRF_URL : "in-process"})\n`,
+    );
+
+    // The prover always needs the synth-CA circuit locally (nargo execute + bb prove).
     if (!existsSync(SYNTH_JSON)) {
-        console.log("  (building synth-CA circuit for the gate)");
+        console.log("  (building synth-CA circuit)");
         execFileSync("node", ["build-synthca-circuit.mjs"], { cwd: ROOT, stdio: "inherit" });
     }
-    const gate = await createGate(SYNTH_JSON);
-    // Real 3-node threshold app; dev V3_THRESHOLD_SEED + V3_ATTESTER_KEY fallbacks
-    // are fine (no chain sync: opts.leaves keeps merkle in-memory, syncCfg=null).
-    const app = await buildApp({ gate, leaves: [], logger: false });
-    const inject = (req) => app.inject(req);
+
+    let app = null;
+    let inject;
+    if (OPRF_URL) {
+        inject = httpInject(OPRF_URL);
+    } else {
+        // In-process: gate pinned to the synth-CA circuit; real 3-node threshold
+        // app (dev seeds OK), merkle in-memory (leaves:[] => syncCfg=null).
+        const gate = await createGate(SYNTH_JSON);
+        app = await buildApp({ gate, leaves: [], logger: false });
+        inject = (req) => app.inject(req);
+    }
 
     let failures = 1;
     try {
@@ -349,7 +375,7 @@ async function main() {
             );
         }
     } finally {
-        await app.close();
+        if (app) await app.close();
     }
 
     console.log(`\n${failures === 0 ? "ALL PASS — enrollment artifact written" : failures + " VALIDATION FAILURE(S)"}`);
