@@ -40,7 +40,15 @@ fixtures/diia/
 # Ad-hoc screenshots taken during reviews
 review-*.png
 live-*.png
+# Root-level marketing / landing / about screenshots (don't dump in repo root)
+/about-*.png
+/fhe-*.png
+/landing-*.png
 
 # Bench dir local install
 bench/node_modules/
 bench/package-lock.json
+
+# Parked vendored experiments — untracked nested checkouts (PQ/longfellow track)
+vendor/longfellow-rs/
+vendor/longfellow-zk/
