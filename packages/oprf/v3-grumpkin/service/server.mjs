@@ -732,7 +732,28 @@ export async function buildApp(opts = {}) {
         if (idx === undefined) {
             return reply.code(404).send({ error: "NotEnrolled", commitment });
         }
-        const proof = await merkle.proofAt(idx);
+        // Optional ?root=<0x..>: return a path against THAT historical snapshot
+        // (an FHE round's pinned root) rather than the live tree. The vote must
+        // prove membership in the round's pinned root, which may predate later
+        // enrollments. Without it, behaviour is unchanged (live root).
+        const wantRoot = typeof req.query?.root === "string" ? req.query.root.toLowerCase() : null;
+        let proof;
+        if (wantRoot) {
+            if (!HEX32.test(wantRoot)) {
+                return reply.code(400).send({ error: "BadRequest", detail: "root must be 0x-prefixed 32-byte hex" });
+            }
+            const count = merkle.leafCountForRoot(wantRoot);
+            if (count === undefined) {
+                return reply.code(404).send({ error: "UnknownRoot", detail: "no snapshot matches this root", root: wantRoot });
+            }
+            if (idx >= count) {
+                // Enrolled AFTER the snapshot — not eligible for that round.
+                return reply.code(409).send({ error: "NotInSnapshot", detail: "commitment was enrolled after this root's snapshot", leafIndex: idx, snapshotLeafCount: count });
+            }
+            proof = await merkle.proofAtCount(idx, count);
+        } else {
+            proof = await merkle.proofAt(idx);
+        }
         const rootHex = bigintToHex32(proof.root);
         return reply.code(200).send({
             leafIndex: proof.leafIndex,

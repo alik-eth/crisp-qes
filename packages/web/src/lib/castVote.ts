@@ -13,6 +13,8 @@ import { pedersenNullifier } from "./pedersen.js";
 import { proveVoteInBrowser, type VoteWitness } from "./voteProver.js";
 import { oneHotVote } from "./vote.js";
 import type { VoteRound } from "./voteRound.js";
+import { unlockVault } from "./unlock.js";
+import { v3RecoverPath } from "./v3enroll.js";
 
 export type Enrollment = {
     /** the citizen's enrollment secret = Merkle leaf */
@@ -29,6 +31,28 @@ export type CastResult = {
     nullifier: string;
     detail?: string;
 };
+
+/**
+ * Build the current user's Enrollment for a round: unlock the local vault (the
+ * enrollment secret = Merkle leaf), then fetch a path against the round's PINNED
+ * snapshot root (option B — see the OPRF service proofAtCount). Throws if the
+ * user isn't enrolled in that snapshot (enrolled after round-open, or no vault).
+ */
+export async function getVoteEnrollment(round: VoteRound): Promise<Enrollment> {
+    const vault = await unlockVault();
+    const sHex = vault.enrollmentSecret as `0x${string}`; // leaf == commitment
+    const fresh = await v3RecoverPath(sHex, round.enrollmentRoot);
+    if (BigInt(fresh.root) !== BigInt(round.enrollmentRoot)) {
+        throw new Error(
+            `enrollment path root ${fresh.root} != round pinned root ${round.enrollmentRoot}`,
+        );
+    }
+    return {
+        enrollmentSecret: BigInt(sHex),
+        merklePath: fresh.merklePath.map((h) => BigInt(h)),
+        merklePathIndices: fresh.merklePathIndices,
+    };
+}
 
 const stripSlash = (u: string) => u.replace(/\/+$/, "");
 

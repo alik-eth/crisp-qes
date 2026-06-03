@@ -101,6 +101,13 @@ export class MerkleIndex {
         /** @type {bigint[]} */
         this._zeros = [];
         this.root = GENESIS_ROOT;
+        // root(hex) -> leafCount, so we can serve a path against a HISTORICAL
+        // root. An FHE round pins a snapshot root; voters must prove membership
+        // against THAT snapshot (not the live tree, which may have grown), and
+        // the broadcast forces enrollment_root == the pinned root. See
+        // proofAtCount() / leafCountForRoot().
+        /** @type {Map<string, number>} */
+        this.rootHistory = new Map();
     }
 
     /** Build from an ordered array of leaves (one per enrolled commitment). */
@@ -117,14 +124,21 @@ export class MerkleIndex {
             );
         }
         idx.leaves = leaves.slice();
+        // Record root -> leafCount for every prefix so a historical root (an FHE
+        // round snapshot) resolves to the leaf count it was taken at. genesis=0.
+        idx.rootHistory.set(bigintToHex32(idx._zeros[TREE_DEPTH]), 0);
+        for (let n = 1; n <= idx.leaves.length; n++) {
+            const r = await idx._computeRoot(idx.leaves.slice(0, n));
+            idx.rootHistory.set(bigintToHex32(r), n);
+        }
         idx.root = await idx._computeRoot();
         return idx;
     }
 
-    /** @private compute the current root from this.leaves. */
-    async _computeRoot() {
-        if (this.leaves.length === 0) return this._zeros[TREE_DEPTH];
-        let level = this.leaves.slice();
+    /** @private compute the root over `leaves` (defaults to this.leaves). */
+    async _computeRoot(leaves = this.leaves) {
+        if (leaves.length === 0) return this._zeros[TREE_DEPTH];
+        let level = leaves.slice();
         for (let d = 0; d < TREE_DEPTH; d++) {
             const next = [];
             for (let i = 0; i < level.length; i += 2) {
@@ -137,11 +151,11 @@ export class MerkleIndex {
         return level[0];
     }
 
-    /** @private inclusion proof (path + indices) for an existing leaf index. */
-    async _proof(leafIndex) {
+    /** @private inclusion proof (path + indices) for a leaf index within `leaves`. */
+    async _proof(leafIndex, leaves = this.leaves) {
         const path = new Array(TREE_DEPTH);
         const indices = new Array(TREE_DEPTH);
-        let level = this.leaves.slice();
+        let level = leaves.slice();
         let i = leafIndex;
         for (let d = 0; d < TREE_DEPTH; d++) {
             const isRight = i % 2 === 1;
@@ -171,6 +185,7 @@ export class MerkleIndex {
         const leafIndex = this.leaves.length;
         this.leaves.push(leaf);
         this.root = await this._computeRoot();
+        this.rootHistory.set(bigintToHex32(this.root), this.leaves.length);
         const { path, indices } = await this._proof(leafIndex);
         return {
             leafIndex,
@@ -191,6 +206,30 @@ export class MerkleIndex {
         }
         const { path, indices } = await this._proof(leafIndex);
         return { leafIndex, path, indices, root: this.root };
+    }
+
+    /** Leaf count a (hex) root was taken at, or undefined if unknown. */
+    leafCountForRoot(rootHex) {
+        return this.rootHistory.get(rootHex.toLowerCase());
+    }
+
+    /**
+     * Inclusion proof for `leafIndex` against the tree of the FIRST `leafCount`
+     * leaves (a historical snapshot). The returned root is that snapshot's root,
+     * so the path verifies against an FHE round's PINNED root even if the live
+     * tree has since grown. `leafIndex` must be < `leafCount`.
+     */
+    async proofAtCount(leafIndex, leafCount) {
+        if (leafCount < 0 || leafCount > this.leaves.length) {
+            throw new RangeError(`leafCount ${leafCount} out of range [0, ${this.leaves.length}]`);
+        }
+        if (leafIndex < 0 || leafIndex >= leafCount) {
+            throw new RangeError(`leafIndex ${leafIndex} not in snapshot of ${leafCount} leaves`);
+        }
+        const prefix = this.leaves.slice(0, leafCount);
+        const { path, indices } = await this._proof(leafIndex, prefix);
+        const root = await this._computeRoot(prefix);
+        return { leafIndex, path, indices, root, leafCount };
     }
 
     snapshot() {

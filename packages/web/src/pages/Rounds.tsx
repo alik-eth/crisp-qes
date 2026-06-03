@@ -4,7 +4,7 @@ import { config } from "../config.js";
 import { fetchRounds, type VoteRound } from "../lib/voteRound.js";
 import { fetchTally, toResults, winningOption, type OptionResult } from "../lib/voteTally.js";
 import { voteSdkCheck, loadCapturedWitness, proveVoteInBrowser } from "../lib/voteProver.js";
-import { castVoteInBrowser } from "../lib/castVote.js";
+import { castVoteInBrowser, getVoteEnrollment } from "../lib/castVote.js";
 
 const DECODE_TALLY_ABI = [
     {
@@ -101,6 +101,33 @@ export function Rounds() {
         }
     };
 
+    // Per-round vote: chosen option + status, keyed by e3Id.
+    const [choice, setChoice] = useState<Record<string, number>>({});
+    const [voteStatus, setVoteStatus] = useState<Record<string, string>>({});
+
+    const voteOnRound = async (r: VoteRound) => {
+        const id = r.e3Id.toString();
+        const set = (s: string) => setVoteStatus((m) => ({ ...m, [id]: s }));
+        set("unlocking enrollment…");
+        try {
+            const enrollment = await getVoteEnrollment(r);
+            const res = await castVoteInBrowser({
+                round: r,
+                optionIndex: choice[id] ?? 0,
+                enrollment,
+                coordinatorUrl: config.fheCoordinatorUrl,
+                onStage: (s) => set(s),
+            });
+            set(
+                res.ok
+                    ? `voted ✓ (tx ${String(res.txHash).slice(0, 12)}…)`
+                    : `failed: ${res.status}${res.detail ? " — " + res.detail : ""}`,
+            );
+        } catch (e) {
+            set(`failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    };
+
     const probeVoteProver = async () => {
         setProverProbe("running…");
         try {
@@ -166,6 +193,34 @@ export function Rounds() {
                                     </li>
                                 ))}
                             </ul>
+                        ) : open ? (
+                            <form
+                                className="round-vote"
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    void voteOnRound(r);
+                                }}
+                            >
+                                {r.options.map((o, i) => (
+                                    <label key={o} className="vote-option">
+                                        <input
+                                            type="radio"
+                                            name={`vote-${r.e3Id}`}
+                                            checked={(choice[r.e3Id.toString()] ?? 0) === i}
+                                            onChange={() =>
+                                                setChoice((m) => ({ ...m, [r.e3Id.toString()]: i }))
+                                            }
+                                        />
+                                        {o}
+                                    </label>
+                                ))}
+                                <button type="submit">Vote (in-browser, desktop)</button>
+                                {voteStatus[r.e3Id.toString()] && (
+                                    <p className="muted" style={{ fontFamily: "monospace" }}>
+                                        {voteStatus[r.e3Id.toString()]}
+                                    </p>
+                                )}
+                            </form>
                         ) : (
                             <ul className="round-options">
                                 {r.options.map((o) => (

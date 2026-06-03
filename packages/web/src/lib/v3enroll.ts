@@ -604,10 +604,15 @@ export class NotEnrolledError extends Error {
 // re-wrap the vault locally (e.g. on a new device). No on-chain change happens.
 export async function v3RecoverPath(
     commitment: `0x${string}`,
+    targetRoot?: `0x${string}`,
 ): Promise<V3RecoverResponse> {
-    const res = await fetch(
-        `${OPRF_SERVICE_URL}/v3/enrollment/${commitment}/path`,
-    );
+    // With targetRoot, ask for a path against THAT historical snapshot (an FHE
+    // round's pinned root) rather than the live tree — see the service's
+    // proofAtCount / leafCountForRoot. The returned `root` will equal targetRoot.
+    const url = targetRoot
+        ? `${OPRF_SERVICE_URL}/v3/enrollment/${commitment}/path?root=${targetRoot}`
+        : `${OPRF_SERVICE_URL}/v3/enrollment/${commitment}/path`;
+    const res = await fetch(url);
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         // 404 NotEnrolled = orphaned vault (registry reset / wrong epoch).
