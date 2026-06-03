@@ -3,3 +3,5 @@ circuits/*/Prover.toml
 # TEST-ONLY generated synth-CA circuit (build-synthca-circuit.mjs); never committed
 circuits/enroll_commit_v2_synthca/
 node_modules/
+# generated enrollment artifact (TEST-ONLY)
+enrollment-artifact.json
