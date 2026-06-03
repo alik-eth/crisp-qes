@@ -229,7 +229,11 @@ export async function buildApp(opts = {}) {
     let gateError = null;
     if (!gate) {
         try {
-            gate = await createGate();
+            // TEST-ONLY override: ENROLL_GATE_CIRCUIT lets the LOCAL E2E point the
+            // gate at a synthetic-CA-pinned enroll_commit_v2 build (so a synthetic
+            // cert proof verifies). Unset in production => the committed real-Diia
+            // circuit is used. NEVER set this in a production deploy.
+            gate = await createGate(process.env.ENROLL_GATE_CIRCUIT || undefined);
         } catch (e) {
             gateError = e.message;
         }
@@ -245,7 +249,11 @@ export async function buildApp(opts = {}) {
     let nullifierGateError = null;
     if (!nullifierGate) {
         try {
-            nullifierGate = await createGate(OPRF_NULLIFIER_JSON);
+            // TEST-ONLY override mirrors ENROLL_GATE_CIRCUIT (see above). Unset in
+            // production => committed oprf_nullifier circuit is used.
+            nullifierGate = await createGate(
+                process.env.OPRF_NULLIFIER_GATE_CIRCUIT || OPRF_NULLIFIER_JSON,
+            );
         } catch (e) {
             nullifierGateError = e.message;
         }
