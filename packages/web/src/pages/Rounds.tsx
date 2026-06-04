@@ -5,6 +5,7 @@ import { fetchRounds, type VoteRound } from "../lib/voteRound.js";
 import { fetchTally, toResults, winningOption, type OptionResult } from "../lib/voteTally.js";
 import { voteSdkCheck, loadCapturedWitness, proveVoteInBrowser } from "../lib/voteProver.js";
 import { castVoteInBrowser, getVoteEnrollment } from "../lib/castVote.js";
+import { recalcTally } from "../lib/liveTally.js";
 
 const DECODE_TALLY_ABI = [
     {
@@ -104,6 +105,31 @@ export function Rounds() {
     // Per-round vote: chosen option + status, keyed by e3Id.
     const [choice, setChoice] = useState<Record<string, number>>({});
     const [voteStatus, setVoteStatus] = useState<Record<string, string>>({});
+
+    // Per-round live "Recalculate tally" peek state, keyed by e3Id: the in-flight
+    // flag, the last decrypted results (or null), and any error message.
+    const [liveBusy, setLiveBusy] = useState<Record<string, boolean>>({});
+    const [liveResults, setLiveResults] = useState<Record<string, OptionResult[]>>({});
+    const [liveErr, setLiveErr] = useState<Record<string, string>>({});
+
+    const recalcRoundTally = async (r: VoteRound) => {
+        const id = r.e3Id.toString();
+        setLiveBusy((m) => ({ ...m, [id]: true }));
+        setLiveErr((m) => ({ ...m, [id]: "" }));
+        try {
+            const live = await recalcTally(config.fheCoordinatorUrl, Number(r.e3Id));
+            // Render via the SAME path the deadline reveal uses, so the live peek
+            // numbers match the eventual on-chain tally exactly.
+            setLiveResults((m) => ({
+                ...m,
+                [id]: toResults(r.options, live.counts.map((c) => BigInt(c))),
+            }));
+        } catch (e) {
+            setLiveErr((m) => ({ ...m, [id]: e instanceof Error ? e.message : String(e) }));
+        } finally {
+            setLiveBusy((m) => ({ ...m, [id]: false }));
+        }
+    };
 
     const voteOnRound = async (r: VoteRound) => {
         const id = r.e3Id.toString();
@@ -228,6 +254,50 @@ export function Rounds() {
                                 ))}
                                 <li className="muted tally-pending">Tally pending decryption</li>
                             </ul>
+                        )}
+
+                        {open && (
+                            <div className="round-live-tally">
+                                <button
+                                    type="button"
+                                    disabled={liveBusy[r.e3Id.toString()]}
+                                    onClick={() => void recalcRoundTally(r)}
+                                >
+                                    {liveBusy[r.e3Id.toString()]
+                                        ? "committee decrypting…"
+                                        : "Recalculate tally"}
+                                </button>
+                                <p className="muted" style={{ fontSize: "0.85em" }}>
+                                    Demo / dev tally peek — reveals the live encrypted total (a real
+                                    deployment hides this until the round closes).
+                                </p>
+                                {liveErr[r.e3Id.toString()] && (
+                                    <p className="error">{liveErr[r.e3Id.toString()]}</p>
+                                )}
+                                {liveResults[r.e3Id.toString()] && (
+                                    <ul className="round-results">
+                                        {(() => {
+                                            const lr = liveResults[r.e3Id.toString()]!;
+                                            const lwin = winningOption(lr);
+                                            return lr.map((o) => (
+                                                <li
+                                                    key={o.label}
+                                                    className={
+                                                        lwin && o.label === lwin.label
+                                                            ? "winner"
+                                                            : ""
+                                                    }
+                                                >
+                                                    <span className="opt">{o.label}</span>
+                                                    <span className="count">
+                                                        {o.count.toString()}
+                                                    </span>
+                                                </li>
+                                            ));
+                                        })()}
+                                    </ul>
+                                )}
+                            </div>
                         )}
                     </article>
                 );
