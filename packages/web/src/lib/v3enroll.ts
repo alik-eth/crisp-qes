@@ -32,7 +32,13 @@ import {
 } from "./grumpkin.js";
 import { buildP7sEnrollWitness } from "./p7sWitness.js";
 
-export const OPRF_SERVICE_URL = "https://crisp-qes-oprf-grumpkin.fly.dev";
+// Respect VITE_OPRF_URL so a fully-local stack (docker-compose-dev) enrolls
+// against its own OPRF; fall back to the prod Grumpkin service when unset (prod
+// build behaviour unchanged). Previously hardcoded, which forced even the local
+// stack to hit prod -> StaleEnrollmentRoot when the local chain stayed at genesis.
+export const OPRF_SERVICE_URL =
+    (import.meta.env.VITE_OPRF_URL as string | undefined) ||
+    "https://crisp-qes-oprf-grumpkin.fly.dev";
 const BLIND_EVAL_PATH = "/v3/blind-eval";
 const REGISTER_PATH = "/v3/register";
 
