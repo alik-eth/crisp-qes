@@ -16,6 +16,11 @@ services:
     ports:
       - "8545:8545"   # anvil JSON-RPC
       - "4000:4000"   # coordination server (/state/lite, /qes/*)
+    environment:
+      # DEV-ONLY: enables the coordination server's /rounds/tally-now live-tally
+      # peek (real threshold decrypt of the running FHE sum, no on-chain write).
+      # The Fly/prod supervisor MUST NOT set this — the endpoint 404s when unset.
+      ENABLE_TALLY_PEEK: "1"
     volumes:
       - fhe-data:/data
     healthcheck:
