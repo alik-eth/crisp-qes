@@ -83,7 +83,8 @@ services:
       PORT: "8789"
       RPC_URL: http://fhe:8545
       CORS_ALLOWED_ORIGINS: http://localhost:8080
-      # ENROLLMENT_REGISTRY + CHAIN_ID from .env.dev
+      RATE_LIMIT_WINDOW_MS: "0"   # dev: disable per-IP limit (enroll+sign share localhost IP)
+      # ENROLLMENT_REGISTRY + PETITION_REGISTRY_V2 + CHAIN_ID from .env.dev
     restart: unless-stopped   # self-heal if it starts before init (see oprf note)
     ports:
       - "8789:8789"
@@ -100,6 +101,7 @@ services:
         VITE_OPRF_URL: http://localhost:8788
         VITE_RELAYER_URL: http://localhost:8789
         VITE_ENROLLMENT_REGISTRY: ${ENROLLMENT_REGISTRY}
+        VITE_PETITION_REGISTRY_V2: ${PETITION_REGISTRY_V2}
         VITE_OPRF_PUBKEY: ${OPRF_PUBKEY}
         VITE_OPRF_ENROLLMENT_EPOCH: ${OPRF_ENROLLMENT_EPOCH}
         VITE_FHE_OPERATOR_RPC: http://localhost:8545

@@ -8,6 +8,7 @@ set -euo pipefail
 RPC="${RPC_URL:-http://fhe:8545}"
 : "${DEPLOYER_KEY:?}" "${DEPLOYER_ADDR:?}" "${ANVIL0_KEY:?}" "${ANVIL0_ADDR:?}"
 : "${ENROLLMENT_REGISTRY:?}" "${BALLOT_REGISTRY:?}" "${ENROLL_ATTESTER:?}" "${GENESIS_ROOT:?}"
+: "${PETITION_REGISTRY_V2:?}"
 
 echo "[init] waiting for anvil at $RPC …"
 until cast block-number --rpc-url "$RPC" >/dev/null 2>&1; do sleep 2; done
@@ -39,7 +40,21 @@ BALLOT_OPERATOR="$ANVIL0_ADDR" \
     --rpc-url "$RPC" --private-key "$DEPLOYER_KEY" --broadcast >/tmp/ballot.log 2>&1 \
   || { cat /tmp/ballot.log; exit 1; }
 
+# v2 petition flow: UltraVerifierV2 + PetitionRegistryV2 wired to the EXISTING
+# EnrollmentRegistry (so an enrolled leaf counts), + one seed petition to sign.
+echo "[init] deploying PetitionRegistryV2 stack …"
+V2_ENROLLMENT_REGISTRY="$ENROLLMENT_REGISTRY" \
+  forge script script/DeployPetitionV2Local.s.sol \
+    --rpc-url "$RPC" --private-key "$DEPLOYER_KEY" --broadcast >/tmp/petition.log 2>&1 \
+  || { cat /tmp/petition.log; exit 1; }
+echo "[init] seeding a test petition …"
+PDEADLINE="$(( $(cast block latest --rpc-url "$RPC" -f timestamp) + 30 * 86400 ))"
+cast send "$PETITION_REGISTRY_V2" "createPetition(bytes,uint64,uint32)" \
+  "$(cast from-utf8 'Test petition (local dev): support the CRISP-QES demo? Sign to support.')" \
+  "$PDEADLINE" 100 --value 1000000000000000 --private-key "$ANVIL0_KEY" --rpc-url "$RPC" >/dev/null
+
 # Verify they landed at the deterministic addresses the rest of the stack pins.
 [ "$(cast code "$ENROLLMENT_REGISTRY" --rpc-url "$RPC")" != "0x" ] || { echo "[init] EnrollmentRegistry NOT at $ENROLLMENT_REGISTRY"; exit 1; }
 [ "$(cast code "$BALLOT_REGISTRY"     --rpc-url "$RPC")" != "0x" ] || { echo "[init] BallotRegistry NOT at $BALLOT_REGISTRY"; exit 1; }
-echo "[init] OK — EnrollmentRegistry=$ENROLLMENT_REGISTRY BallotRegistry=$BALLOT_REGISTRY"
+[ "$(cast code "$PETITION_REGISTRY_V2" --rpc-url "$RPC")" != "0x" ] || { echo "[init] PetitionRegistryV2 NOT at $PETITION_REGISTRY_V2"; exit 1; }
+echo "[init] OK — EnrollmentRegistry=$ENROLLMENT_REGISTRY BallotRegistry=$BALLOT_REGISTRY PetitionRegistryV2=$PETITION_REGISTRY_V2"
