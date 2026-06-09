@@ -10,7 +10,7 @@ interface Props {
 }
 
 interface Stats {
-    citizens: number;
+    participants: number;
     petitions: number;
     signatures: number;
 }
@@ -30,7 +30,7 @@ export function Landing({ state, onSignIn }: Props) {
                 ]);
                 if (!alive) return;
                 setStats({
-                    citizens: Number(leafCount),
+                    participants: Number(leafCount),
                     petitions: petitions.length,
                     signatures: petitions.reduce(
                         (acc, p) => acc + p.signatureCount,
@@ -89,7 +89,7 @@ export function Landing({ state, onSignIn }: Props) {
                     {stats ? (
                         <>
                             <span className="statbar__item">
-                                <span className="statbar__num">{stats.citizens}</span>
+                                <span className="statbar__num">{stats.participants}</span>
                                 <span className="statbar__label">{t("landing.statCitizens")}</span>
                             </span>
                             <span className="statbar__sep" aria-hidden="true">·</span>
@@ -141,8 +141,8 @@ export function Landing({ state, onSignIn }: Props) {
                     <div className="split-col">
                         <span className="split-tag"><span className="split-dot" />{i18n.language === "uk" ? "Соцмережі та месенджери" : "Social media & messengers"}</span>
                         <p>{i18n.language === "uk"
-                            ? "Опитування в соціальних мережах та месенджерах (Telegram, Instagram, X/Twitter) не забезпечують жодної верифікації учасників. Захист від ботів ненадійний — масові накрутки залишаються нормою. Неможливо достовірно встановити, що в голосуванні беруть участь саме повнолітні громадяни певної країни, а не боти, іноземці чи діти. Результати зберігаються на серверах платформи — їх можна змінити, видалити або сфальсифікувати без будь-якого сліду. Таким результатам можна лише довіряти, але неможливо їх перевірити."
-                            : "Polls on social media and messengers (Telegram, Instagram, X/Twitter) provide no verification of participants. Bot protection is unreliable — mass manipulation remains the norm. There is no way to reliably establish that voters are actually adult citizens of a given country, rather than bots, foreigners or children. Results are stored on the platform's servers — they can be changed, deleted or falsified without any trace. Such results can only be trusted, but never verified."}</p>
+                            ? "Опитування в соціальних мережах та месенджерах (Telegram, Instagram, X/Twitter) не забезпечують жодної верифікації учасників. Захист від ботів ненадійний — масові накрутки залишаються нормою. Неможливо достовірно встановити, що в голосуванні беруть участь саме повнолітні верифіковані учасники, а не боти чи діти. Результати зберігаються на серверах платформи — їх можна змінити, видалити або сфальсифікувати без будь-якого сліду. Таким результатам можна лише довіряти, але неможливо їх перевірити."
+                            : "Polls on social media and messengers (Telegram, Instagram, X/Twitter) provide no verification of participants. Bot protection is unreliable — mass manipulation remains the norm. There is no way to reliably establish that voters are actually adult verified participants, rather than bots or children. Results are stored on the platform's servers — they can be changed, deleted or falsified without any trace. Such results can only be trusted, but never verified."}</p>
                         <span className="split-ref">Telegram · Instagram · X / Twitter</span>
                     </div>
                 </div>
@@ -193,7 +193,7 @@ export function Landing({ state, onSignIn }: Props) {
                     <div className="how-card">
                         <span className="how-card__n mono">{i18n.language === "uk" ? "ІПН" : "TAX ID"}</span>
                         <h3 className="how-card__title">{i18n.language === "uk" ? "Незмінний якір" : "An immutable anchor"}</h3>
-                        <p className="how-card__body">{i18n.language === "uk" ? "Податковий номер не змінюється все життя. Один громадянин — один nullifier, який не обнулити перевипуском документів." : "A tax ID doesn't change for a lifetime. One citizen — one nullifier that can't be reset by reissuing documents."}</p>
+                        <p className="how-card__body">{i18n.language === "uk" ? "Податковий номер не змінюється все життя. Один учасник — один nullifier, який не обнулити перевипуском документів." : "A tax ID doesn't change for a lifetime. One participant — one nullifier that can't be reset by reissuing documents."}</p>
                     </div>
                     <div className="how-card">
                         <span className="how-card__n mono">OPRF</span>
