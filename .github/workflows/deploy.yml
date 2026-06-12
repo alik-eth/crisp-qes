@@ -1,0 +1,105 @@
+name: Deploy to Fly
+
+# Redeploy each Fly app on push to main — but only the apps whose files changed.
+# Build contexts (from each Dockerfile):
+#   - web / relayer / oprf-v2  -> repo root  (COPY pnpm-lock.yaml, packages/...)
+#   - oprf-v3                  -> packages/oprf/v3-grumpkin (self-contained)
+# Requires repo secret FLY_API_TOKEN (a Fly deploy/org token).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      relayer: ${{ steps.filter.outputs.relayer }}
+      oprf_v3: ${{ steps.filter.outputs.oprf_v3 }}
+      oprf_v2: ${{ steps.filter.outputs.oprf_v2 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'packages/web/**'
+              - 'packages/sdk/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+            relayer:
+              - 'packages/relayer/**'
+              - 'pnpm-lock.yaml'
+            oprf_v3:
+              - 'packages/oprf/v3-grumpkin/**'
+            oprf_v2:
+              - 'packages/oprf/**'
+              - '!packages/oprf/v3-grumpkin/**'
+              - 'packages/sdk/**'
+              - 'packages/lotl-flattener/**'
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-web
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only --config packages/web/fly.toml --dockerfile packages/web/Dockerfile
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  relayer:
+    needs: changes
+    if: needs.changes.outputs.relayer == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-relayer
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only --config packages/relayer/fly.toml --dockerfile packages/relayer/Dockerfile
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  oprf_v3:
+    needs: changes
+    if: needs.changes.outputs.oprf_v3 == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-oprf-v3
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: packages/oprf/v3-grumpkin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  oprf_v2:
+    needs: changes
+    if: needs.changes.outputs.oprf_v2 == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-oprf-v2
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only --config packages/oprf/fly.toml --dockerfile packages/oprf/Dockerfile
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
