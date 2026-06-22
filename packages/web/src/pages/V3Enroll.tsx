@@ -20,6 +20,7 @@ import { getSessionPrf, setSessionPrf } from "../lib/passkeySession.js";
 import { sha256 } from "@noble/hashes/sha2";
 import { hashToCurve, N } from "../lib/grumpkin.js";
 import { buildChallengeBytesV3, ENROLL_V3_EPOCH } from "../lib/enrollmentChallengeV3.js";
+import { useWakeLock } from "../lib/useWakeLock.js";
 
 // PRIMARY operator-blind enrollment (v3), EXPERIMENTAL / UNAUDITED.
 //
@@ -44,22 +45,22 @@ type Substage =
     | "saving"
     | "saved";
 
-const STAGE_ORDER: RealRunStage["key"][] = [
-    "parseWitness",
-    "enrollProve",
-    "serviceEval",
-    "nullifierProve",
-    "register",
-    "chain",
-];
-
 const RNOKPP_RE = /^[0-9]{10}$/;
 
-function fmtMs(ms?: number): string {
-    if (ms === undefined) return "";
-    if (ms < 1000) return `${Math.round(ms)} ms`;
-    return `${(ms / 1000).toFixed(1)} s`;
+type EnrollPhase = "preparing" | "proving" | "finishing";
+
+// Map the raw RealRunStage keys to the 3 friendly phases. We advance to the
+// next phase as soon as its first stage starts; a stage is "reached" if we've
+// seen ANY status for it.
+function currentPhase(stages: Record<string, RealRunStage>): EnrollPhase {
+    const seen = (k: RealRunStage["key"]) => stages[k] !== undefined;
+    if (seen("register") || seen("chain")) return "finishing";
+    if (seen("enrollProve") || seen("serviceEval") || seen("nullifierProve"))
+        return "proving";
+    return "preparing";
 }
+
+const PHASE_ORDER: EnrollPhase[] = ["preparing", "proving", "finishing"];
 
 // Crypto-random blinding scalar in [1, N) (fresh blinding per session). The
 // SAME r is reused for the enroll proof so the proof's M matches the challenge
@@ -467,51 +468,81 @@ function UploadPanel({
 
 function RunningPanel({ stages }: { stages: Record<string, RealRunStage> }) {
     const { t } = useTranslation();
+    // Hold a screen wake lock for the whole time this panel is mounted (the
+    // proof is in flight). Released automatically on unmount / done / error.
+    useWakeLock(true);
+
+    const phase = currentPhase(stages);
+    const activeIdx = PHASE_ORDER.indexOf(phase);
+
     return (
         <div className="card">
-            <h3>{t("verify.verifyingTitle")}</h3>
-            <p className="muted small" style={{ marginTop: 8 }}>
-                {t("verify.verifyingBody")}
-            </p>
-            <ol
-                style={{ listStyle: "none", padding: "1rem 0 0", margin: 0 }}
+            <h3>{t("verify.runningTitle")}</h3>
+
+            <div
+                className="enroll-run"
+                style={{ marginTop: 16 }}
+                aria-live="polite"
+                aria-busy="true"
             >
-                {STAGE_ORDER.map((key) => {
-                    const s = stages[key];
-                    const status = s?.status;
-                    const icon =
-                        status === "done"
-                            ? "✓"
-                            : status === "running"
-                              ? "…"
-                              : status === "error"
-                                ? "✕"
-                                : "·";
-                    return (
-                        <li
-                            key={key}
-                            className="small"
-                            style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                padding: "0.35rem 0",
-                                opacity: s ? 1 : 0.45,
-                            }}
-                        >
-                            <span>
+                <div className="enroll-run__lede">
+                    <span
+                        className="spinner spinner--lg"
+                        aria-hidden="true"
+                    />
+                    <div>
+                        <div className="enroll-run__status">
+                            {t(`verify.runningPhase.${phase}`)}
+                        </div>
+                        <div className="enroll-run__eta">
+                            {t("verify.runningEta")}
+                        </div>
+                    </div>
+                </div>
+
+                <ol className="enroll-phases">
+                    {PHASE_ORDER.map((p, i) => {
+                        const state =
+                            i < activeIdx
+                                ? "done"
+                                : i === activeIdx
+                                  ? "active"
+                                  : "todo";
+                        return (
+                            <li
+                                key={p}
+                                className={`enroll-phase enroll-phase--${state}`}
+                            >
                                 <span
-                                    className="mono"
-                                    style={{ marginRight: "0.5rem" }}
+                                    className="enroll-phase__mark"
+                                    aria-hidden="true"
                                 >
-                                    {icon}
+                                    <span>{state === "done" ? "✓" : i + 1}</span>
                                 </span>
-                                {s?.label ?? key}
-                            </span>
-                            <span className="mono muted">{fmtMs(s?.ms)}</span>
-                        </li>
-                    );
-                })}
-            </ol>
+                                <span className="enroll-phase__label">
+                                    {t(`verify.runningPhase.${p}`)}
+                                </span>
+                                {state === "active" ? (
+                                    <span
+                                        className="enroll-phase__pulse"
+                                        aria-hidden="true"
+                                    />
+                                ) : null}
+                            </li>
+                        );
+                    })}
+                </ol>
+
+                <p className="enroll-run__keepon">
+                    <span
+                        className="enroll-run__keepon-mark"
+                        aria-hidden="true"
+                    >
+                        !
+                    </span>
+                    <span>{t("verify.runningKeepOn")}</span>
+                </p>
+            </div>
         </div>
     );
 }

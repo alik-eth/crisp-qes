@@ -411,28 +411,28 @@ export async function runEnrollment(
 
     // 1. Build synthetic cert + enroll witness.
     let t = performance.now();
-    onStage({ key: "enrollWitness", label: "Build synthetic cert + witness", status: "running" });
+    onStage({ key: "enrollWitness", label: "Reading your Diia signature", status: "running" });
     const { witness: enrollWitness, r, M } = buildEnrollWitness();
     onStage({
         key: "enrollWitness",
-        label: "Build synthetic cert + witness",
+        label: "Reading your Diia signature",
         status: "done",
         ms: performance.now() - t,
     });
 
     // 2. Prove enroll_commit_v2 (~457k gates).
     t = performance.now();
-    onStage({ key: "enrollProve", label: "Prove enroll_commit_v2 (~457k gates)", status: "running" });
+    onStage({ key: "enrollProve", label: "Confirming you're a unique adult", status: "running" });
     let enroll: ProveResult;
     try {
         enroll = await runProof("enroll", enrollWitness, ENROLL_CIRCUIT_URL, () => {});
     } catch (err) {
-        onStage({ key: "enrollProve", label: "Prove enroll_commit_v2 (~457k gates)", status: "error", detail: String(err) });
+        onStage({ key: "enrollProve", label: "Confirming you're a unique adult", status: "error", detail: String(err) });
         throw err;
     }
     onStage({
         key: "enrollProve",
-        label: "Prove enroll_commit_v2 (~457k gates)",
+        label: "Confirming you're a unique adult",
         status: "done",
         ms: performance.now() - t,
     });
@@ -458,45 +458,45 @@ export async function runEnrollment(
 
     // 3. Round-trip the LIVE service.
     t = performance.now();
-    onStage({ key: "serviceEval", label: "Live OPRF blind-eval (Grumpkin)", status: "running" });
+    onStage({ key: "serviceEval", label: "Checking your signature privately", status: "running" });
     let ev: BlindEvalResponse;
     try {
         ev = await blindEval(M, enroll.proofBytes, enroll.publicInputs);
     } catch (err) {
-        onStage({ key: "serviceEval", label: "Live OPRF blind-eval (Grumpkin)", status: "error", detail: String(err) });
+        onStage({ key: "serviceEval", label: "Checking your signature privately", status: "error", detail: String(err) });
         throw err;
     }
     onStage({
         key: "serviceEval",
-        label: "Live OPRF blind-eval (Grumpkin)",
+        label: "Checking your signature privately",
         status: "done",
         ms: performance.now() - t,
     });
 
     // 4. Prove oprf_nullifier.
     t = performance.now();
-    onStage({ key: "nullifierProve", label: "Prove oprf_nullifier (DLEQ + unblind)", status: "running" });
+    onStage({ key: "nullifierProve", label: "Creating your anonymous voting key", status: "running" });
     const nullifierWitness = buildThresholdNullifierWitness(M, r, ev, enrollCr);
     try {
         await runProof("nullifier", nullifierWitness, NULLIFIER_CIRCUIT_URL, () => {});
     } catch (err) {
-        onStage({ key: "nullifierProve", label: "Prove oprf_nullifier (DLEQ + unblind)", status: "error", detail: String(err) });
+        onStage({ key: "nullifierProve", label: "Creating your anonymous voting key", status: "error", detail: String(err) });
         throw err;
     }
     onStage({
         key: "nullifierProve",
-        label: "Prove oprf_nullifier (DLEQ + unblind)",
+        label: "Creating your anonymous voting key",
         status: "done",
         ms: performance.now() - t,
     });
 
     // 5. Derive commitment.
     t = performance.now();
-    onStage({ key: "commitment", label: "Derive enrollment commitment", status: "running" });
+    onStage({ key: "commitment", label: "Creating your anonymous voting key", status: "running" });
     const { commitment } = await deriveCommitment(r, ev);
     onStage({
         key: "commitment",
-        label: "Derive enrollment commitment",
+        label: "Creating your anonymous voting key",
         status: "done",
         ms: performance.now() - t,
     });
@@ -690,34 +690,34 @@ export async function runRealEnrollment(
 
     // 1. Parse the .p7s and build the enroll_commit_v2 witness.
     let t = performance.now();
-    stage("parseWitness", "Parse .p7s + build witness", "running");
+    stage("parseWitness", "Reading your Diia signature", "running");
     let bundle: ReturnType<typeof buildP7sEnrollWitness>;
     try {
         bundle = buildP7sEnrollWitness(p7sBytes, dobDigits, { r: opts.r });
     } catch (err) {
-        stage("parseWitness", "Parse .p7s + build witness", "error", {
+        stage("parseWitness", "Reading your Diia signature", "error", {
             detail: String(err),
         });
         throw err;
     }
     const { witness: enrollWitness, r, M } = bundle;
-    stage("parseWitness", "Parse .p7s + build witness", "done", {
+    stage("parseWitness", "Reading your Diia signature", "done", {
         ms: performance.now() - t,
     });
 
     // 2. Prove enroll_commit_v2 (~457k gates).
     t = performance.now();
-    stage("enrollProve", "Prove enroll_commit_v2 (~457k gates)", "running");
+    stage("enrollProve", "Confirming you're a unique adult", "running");
     let enroll: ProveResult;
     try {
         enroll = await runProof("enroll", enrollWitness, ENROLL_CIRCUIT_URL, () => {});
     } catch (err) {
-        stage("enrollProve", "Prove enroll_commit_v2 (~457k gates)", "error", {
+        stage("enrollProve", "Confirming you're a unique adult", "error", {
             detail: String(err),
         });
         throw err;
     }
-    stage("enrollProve", "Prove enroll_commit_v2 (~457k gates)", "done", {
+    stage("enrollProve", "Confirming you're a unique adult", "done", {
         ms: performance.now() - t,
     });
 
@@ -738,23 +738,23 @@ export async function runRealEnrollment(
 
     // 3. Round-trip the LIVE service (proof-gated).
     t = performance.now();
-    stage("serviceEval", "Live OPRF blind-eval (Grumpkin)", "running");
+    stage("serviceEval", "Checking your signature privately", "running");
     let ev: BlindEvalResponse;
     try {
         ev = await blindEval(M, enroll.proofBytes, enroll.publicInputs);
     } catch (err) {
-        stage("serviceEval", "Live OPRF blind-eval (Grumpkin)", "error", {
+        stage("serviceEval", "Checking your signature privately", "error", {
             detail: String(err),
         });
         throw err;
     }
-    stage("serviceEval", "Live OPRF blind-eval (Grumpkin)", "done", {
+    stage("serviceEval", "Checking your signature privately", "done", {
         ms: performance.now() - t,
     });
 
     // 4. Prove oprf_nullifier (unblind + DLEQ).
     t = performance.now();
-    stage("nullifierProve", "Prove oprf_nullifier (DLEQ + unblind)", "running");
+    stage("nullifierProve", "Creating your anonymous voting key", "running");
     const nullifierWitness = buildThresholdNullifierWitness(M, r, ev, enrollCr);
     let nullifier: ProveResult;
     try {
@@ -765,12 +765,12 @@ export async function runRealEnrollment(
             () => {},
         );
     } catch (err) {
-        stage("nullifierProve", "Prove oprf_nullifier (DLEQ + unblind)", "error", {
+        stage("nullifierProve", "Creating your anonymous voting key", "error", {
             detail: String(err),
         });
         throw err;
     }
-    stage("nullifierProve", "Prove oprf_nullifier (DLEQ + unblind)", "done", {
+    stage("nullifierProve", "Creating your anonymous voting key", "done", {
         ms: performance.now() - t,
     });
 
@@ -789,7 +789,7 @@ export async function runRealEnrollment(
     //    (deterministic commitment per RNOKPP), treat it as RECOVERY: fetch the
     //    existing leaf + path instead of erroring, and skip the on-chain submit.
     t = performance.now();
-    stage("register", "Register leaf (operator-blind)", "running");
+    stage("register", "Recording your registration", "running");
     let reg: V3RegisterResponse | null = null;
     let recovery: V3RecoverResponse | null = null;
     try {
@@ -805,7 +805,7 @@ export async function runRealEnrollment(
         if (e.status === 409 && (e.bodyText ?? "").includes("AlreadyEnrolled")) {
             recovery = await v3RecoverPath(commitmentHex);
         } else {
-            stage("register", "Register leaf (operator-blind)", "error", {
+            stage("register", "Recording your registration", "error", {
                 detail: String(err),
             });
             throw err;
@@ -813,7 +813,7 @@ export async function runRealEnrollment(
     }
     stage(
         "register",
-        recovery ? "Recover existing enrollment" : "Register leaf (operator-blind)",
+        recovery ? "Restoring your existing registration" : "Recording your registration",
         "done",
         { ms: performance.now() - t },
     );
@@ -823,24 +823,24 @@ export async function runRealEnrollment(
     let txHash: `0x${string}` | null = null;
     if (reg) {
         t = performance.now();
-        stage("chain", "Submit on-chain (relayer)", "running");
+        stage("chain", "Saving it to the public registry", "running");
         const tx = await submitEnrollment({
             newRoot: reg.newRoot,
             newCommitments: reg.newCommitments,
             signature: reg.attesterSig,
         });
         if (!tx.ok) {
-            stage("chain", "Submit on-chain (relayer)", "error", {
+            stage("chain", "Saving it to the public registry", "error", {
                 detail: tx.detail ?? tx.code ?? "chain submit failed",
             });
             throw new Error(tx.detail ?? tx.code ?? "chain submit failed");
         }
         txHash = tx.txHash;
-        stage("chain", "Submit on-chain (relayer)", "done", {
+        stage("chain", "Saving it to the public registry", "done", {
             ms: performance.now() - t,
         });
     } else {
-        stage("chain", "Already on-chain (recovery)", "done", { ms: 0 });
+        stage("chain", "Already saved (recovery)", "done", { ms: 0 });
     }
 
     const path = reg ?? recovery!;

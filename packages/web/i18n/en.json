@@ -16,7 +16,9 @@
         "enroll": "Enroll",
         "verified": "Verified",
         "notVerified": "Not verified",
-        "signIn": "Sign in"
+        "signIn": "Sign in",
+        "menu": "Menu",
+        "language": "Language"
     },
     "landing": {
         "hero": "Anonymous, private voting of participants verified by tax number with results in a public blockchain — <b>impossible to delete or falsify</b>.",
@@ -371,9 +373,14 @@
         "verifyBtn": "Verify",
         "redownload": "Re-download challenge",
         "startOver": "Start over",
-        "verifyingTitle": "Verifying anonymously…",
-        "verifyingBody": "Contacting OPRF · verifying DLEQ · unblinding · submitting to chain.",
-        "verifyingWait": "This can take 10–20 seconds. Don't close this tab.",
+        "runningTitle": "Creating your anonymous key",
+        "runningPhase": {
+            "preparing": "Preparing your proof…",
+            "proving": "Proving on your device…",
+            "finishing": "Finishing and registering…"
+        },
+        "runningEta": "Usually about 40 seconds on a phone.",
+        "runningKeepOn": "Keep this screen on and don't switch apps — the proof runs on your device and pausing it can interrupt verification.",
         "verifiedTitle": "Done — you're verified",
         "verifiedRecoveredTitle": "Welcome back.",
         "verifiedBody": "We created your anonymous voting key. It will now be saved on this device and protected by your Passkey — so only you can vote.",

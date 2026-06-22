@@ -249,6 +249,140 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
     color: var(--ink-soft);
 }
 
+/* ─── mobile nav: hamburger + slide-in drawer ─── */
+.navtoggle {
+    display: none; /* shown only ≤640px */
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    width: var(--tap);
+    height: var(--tap);
+    padding: 0;
+    border: 1px solid var(--ink);
+    border-radius: var(--r);
+    background: var(--bg);
+    color: var(--ink);
+}
+.navtoggle:hover { background: var(--ink); }
+.navtoggle__bars {
+    display: inline-flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    width: 18px;
+}
+.navtoggle__bars > span {
+    display: block;
+    height: 1px;
+    background: var(--ink);
+}
+.navtoggle:hover .navtoggle__bars > span { background: var(--bg); }
+
+/* overlay — reuses the modal scrim value, no shadow */
+.navscrim {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 10, 10, 0.5);
+    z-index: 60;
+}
+
+/* drawer — hairline border, no drop shadow */
+.navdrawer {
+    display: none;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 61;
+    width: min(82vw, 320px);
+    background: var(--bg);
+    border-left: 1px solid var(--ink);
+    transform: translateX(100%);
+    transition: transform 0.18s ease;
+    flex-direction: column;
+}
+.navdrawer.is-open { transform: translateX(0); }
+
+.navdrawer__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--ink);
+}
+.navdrawer__title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink);
+}
+.navdrawer__close {
+    width: var(--tap);
+    height: var(--tap);
+    margin-right: -10px;
+    border: 0;
+    background: transparent;
+    font-size: 24px;
+    line-height: 1;
+    color: var(--ink-soft);
+}
+.navdrawer__close:hover { color: var(--ink); }
+
+.navdrawer__links {
+    display: flex;
+    flex-direction: column;
+}
+.navdrawer__links a {
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    text-decoration: none !important;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--line);
+}
+.navdrawer__links a.is-active {
+    box-shadow: inset 3px 0 0 var(--ink);
+}
+.navdrawer__links a:hover { background: var(--paper-2); }
+
+.navdrawer__foot {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px;
+    border-top: 1px solid var(--ink);
+}
+.navdrawer__foot .btn,
+.navdrawer__foot .chip { width: 100%; justify-content: center; }
+
+/* show drawer + scrim only on mobile when open. The drawer stays in the DOM
+   (so it can slide), so when CLOSED we visibility:hidden it — that removes its
+   controls from the tab order and the a11y tree (no focusable offscreen
+   controls). The visibility flip is delayed one transition so the slide-out
+   still animates. */
+@media (max-width: 640px) {
+    .navdrawer {
+        display: flex;
+        visibility: hidden;
+        transition: transform 0.18s ease, visibility 0s linear 0.18s;
+    }
+    .navdrawer.is-open {
+        visibility: visible;
+        transition: transform 0.18s ease;
+    }
+    .navscrim.is-open { display: block; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .navdrawer { transition: none; }
+}
+
 /* ─── buttons ─── */
 .btn {
     display: inline-flex;
@@ -1028,9 +1162,11 @@ textarea { min-height: 120px; resize: vertical; }
 .small { font-size: 13px; }
 
 @media (max-width: 640px) {
-    .masthead--bar { flex-wrap: wrap; gap: 16px; }
-    .topnav { display: none; }
-    .topnav__right { gap: 12px; }
+    .masthead--bar { gap: 16px; }
+    /* Hide the inline desktop cluster; the drawer takes over. */
+    .topnav__right { display: none; }
+    /* Reveal the hamburger toggle. */
+    .navtoggle { display: inline-flex; }
 }
 
 /* ─── petitions list ─── */
@@ -1209,6 +1345,114 @@ textarea { min-height: 120px; resize: vertical; }
     display: inline-block;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── enrollment running panel ─── */
+/* Larger, calmer spinner variant for the long on-device proof. Reuses the
+   base .spinner ring + spin keyframes; just scales it up. */
+.spinner--lg {
+    width: 28px;
+    height: 28px;
+    border-width: 2px;
+}
+
+.enroll-run {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-5);
+}
+.enroll-run__lede {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    padding: var(--s-4);
+    border: 1px solid var(--accent);
+    background: var(--accent-faint);
+    border-radius: var(--r-md);
+}
+.enroll-run__status {
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.3;
+}
+.enroll-run__eta {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin-top: 2px;
+}
+
+/* Three friendly phases — reuses the rotated-diamond .strip__n marker. */
+.enroll-phases {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+}
+.enroll-phase {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    font-size: 14px;
+    color: var(--muted-2);
+}
+.enroll-phase--done { color: var(--ink-soft); }
+.enroll-phase--active { color: var(--ink); }
+.enroll-phase__mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: var(--paper-2);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    transform: rotate(45deg);
+    flex-shrink: 0;
+}
+.enroll-phase__mark > * { transform: rotate(-45deg); }
+.enroll-phase--active .enroll-phase__mark,
+.enroll-phase--done .enroll-phase__mark {
+    background: var(--ink);
+    color: #fff;
+}
+.enroll-phase__label { line-height: 1.3; }
+.enroll-phase--active .enroll-phase__label { font-weight: 600; }
+
+/* The active phase gets a quiet pulsing dot (mirrors .roadmap__phase--progress). */
+.enroll-phase--active .enroll-phase__pulse {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+    animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+/* "Keep screen on, don't switch apps" guidance — hairline, low-key. */
+.enroll-run__keepon {
+    display: flex;
+    gap: var(--s-2);
+    align-items: flex-start;
+    border-top: 1px solid var(--rule);
+    padding-top: var(--s-4);
+    font-size: 13px;
+    color: var(--warn);
+}
+.enroll-run__keepon-mark {
+    font-family: var(--mono);
+    flex-shrink: 0;
+    line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .spinner,
+    .spinner--lg { animation: none; }
+    .enroll-phase--active .enroll-phase__pulse { animation: none; opacity: 1; }
+}
 
 /* ─── verify strip + panels ─── */
 .verify { max-width: 760px; }
